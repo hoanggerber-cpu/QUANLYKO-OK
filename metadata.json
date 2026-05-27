@@ -1,0 +1,6 @@
+{
+  "name": "Quản lý Bán hàng Kho và Công nợ",
+  "description": "Bảng điều khiển quản lý đơn hàng chuyên nghiệp cho In Pet DTF & Áo thun, kiểm soát tồn kho sỉ lẻ và cân đối công nợ khách nợ thời gian thực",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
