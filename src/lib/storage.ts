@@ -557,19 +557,14 @@ export class StorageManager {
     return JSON.parse(raw);
   }
 
-  static addProduct(product: Omit<Product, 'id' | 'createdAt'>): Product {
-    const products = this.getProducts();
+  static async addProduct(product: Omit<Product, 'id' | 'createdAt'>): Promise<Product> {
     const newProduct: Product = {
       ...product,
       id: 'p_' + Math.random().toString(36).substr(2, 9),
       createdAt: new Date().toISOString()
     };
-    products.unshift(newProduct);
-    localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
 
-    // Try background sync to Supabase (non-blocking)
     if (this.isSupabaseActive) {
-      // Gracefully attempt with size field, if fails/omitted fallback safely
       const payload: any = {
         id: newProduct.id,
         name: newProduct.name,
@@ -586,21 +581,27 @@ export class StorageManager {
         payload.size = newProduct.size;
       }
 
-      Promise.resolve(supabase.from('products').insert([payload])).then(({ error }) => {
+      try {
+        const { error } = await supabase.from('products').insert([payload]);
         if (error) {
           console.warn('Supabase product sync failed (retrying without size):', error.message);
-          // Retry without size to handle case where size column is missing
           if (payload.size) {
             delete payload.size;
-            Promise.resolve(supabase.from('products').insert([payload])).catch(retryErr => {
-              console.warn('Supabase product retry sync failed:', retryErr);
-            });
+            const { error: retryErr } = await supabase.from('products').insert([payload]);
+            if (retryErr) throw retryErr;
+          } else {
+            throw error;
           }
         }
-      }).catch(err => {
-        console.warn('Supabase product initial sync failed:', err);
-      });
+      } catch (err: any) {
+        console.error('Supabase product initial sync failed:', err);
+        throw err;
+      }
     }
+
+    const products = this.getProducts();
+    products.unshift(newProduct);
+    localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
 
     return newProduct;
   }
@@ -656,18 +657,20 @@ export class StorageManager {
     }
   }
 
-  static deleteProduct(id: string): void {
+  static async deleteProduct(id: string): Promise<void> {
+    if (this.isSupabaseActive) {
+      try {
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase product delete failed:', err);
+        throw err;
+      }
+    }
+
     const products = this.getProducts();
     const filtered = products.filter(p => p.id !== id);
     localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(filtered));
-
-    if (this.isSupabaseActive) {
-      Promise.resolve(
-        supabase.from('products').delete().eq('id', id)
-      ).catch(err => {
-        console.warn('Supabase product delete failed:', err);
-      });
-    }
   }
 
   // --- ORDERS MANAGEMENT ---
@@ -724,8 +727,7 @@ export class StorageManager {
     localStorage.setItem(this.STORAGE_PREFIX + 'customer_pins', JSON.stringify(pins));
   }
 
-  static addOrder(order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }): Order {
-    const orders = this.getOrders();
+  static async addOrder(order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }): Promise<Order> {
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const prefix = order.type === 'dtf' ? 'ORD-DTF-' : 'ORD-TS-';
     const qty = order.type === 'dtf' ? this.extractLengthFromOrder(order) : order.quantity;
@@ -736,42 +738,8 @@ export class StorageManager {
       orderCode: `${prefix}${randomCode}`,
       createdAt: order.createdAt || new Date().toISOString()
     } as Order;
-    orders.unshift(newOrder);
-    this.saveOrders(orders);
 
-    // Adjust product stock based on items in cart or single order
-    if (order.items && order.items.length > 0) {
-      const products = this.getProducts();
-      order.items.forEach(item => {
-        if (item.type === 'tshirt') {
-          const prd = products.find(p => {
-            const sizeMatches = p.size === item.size;
-            const nameMatches = p.name === item.productName || `${p.name} - Màu: ${p.color}` === item.productName;
-            const colorMatches = p.color === item.color || item.color.includes(p.color);
-            return nameMatches && colorMatches && sizeMatches;
-          });
-          if (prd) {
-            this.updateProductStock(prd.id, Math.max(0, prd.stock - item.quantity));
-          }
-        }
-      });
-    } else if (order.type === 'tshirt') {
-      const products = this.getProducts();
-      // Match exactly by name AND color + size
-      let item = products.find(p => {
-        const colorAndSize = `${p.color} - Size ${p.size || 'N/A'}`;
-        return order.productName === p.name && order.color === colorAndSize;
-      });
-      if (!item) {
-        // Fallback for older formats or customized titles
-        item = products.find(p => p.name === order.productName || p.name + ' - ' + p.color === order.productName);
-      }
-      if (item) {
-        this.updateProductStock(item.id, Math.max(0, item.stock - order.quantity));
-      }
-    }
-
-    // Background sync to Supabase
+    // Background sync to Supabase (await it to handle errors correctly)
     if (this.isSupabaseActive) {
       const payload: any = {
         id: newOrder.id,
@@ -795,7 +763,8 @@ export class StorageManager {
         notes: newOrder.notes || ''
       });
 
-      Promise.resolve(supabase.from('orders').insert([payload])).then(({ error }) => {
+      try {
+        const { error } = await supabase.from('orders').insert([payload]);
         if (error) {
           console.warn('Supabase order sync failed, retrying with raw payload stripped of order_images', error.message);
           if (error.message?.includes('type integer') || error.message?.includes('invalid input syntax')) {
@@ -804,30 +773,65 @@ export class StorageManager {
           }
           const retryPayload = { ...payload };
           delete retryPayload.order_images;
-          Promise.resolve(supabase.from('orders').insert([retryPayload])).then(({ error: retryErr }) => {
-            if (retryErr) {
-              if (retryErr.message?.includes('type integer') || retryErr.message?.includes('invalid input syntax')) {
-                localStorage.setItem('supabase_migration_needed', 'true');
-                window.dispatchEvent(new Event('supabase_sync_error'));
-              }
-            } else if (newOrder.items && newOrder.items.length > 0) {
-              this.syncOrderItems(newOrder.id, newOrder.items);
+          const { error: retryErr } = await supabase.from('orders').insert([retryPayload]);
+          if (retryErr) {
+            if (retryErr.message?.includes('type integer') || retryErr.message?.includes('invalid input syntax')) {
+              localStorage.setItem('supabase_migration_needed', 'true');
+              window.dispatchEvent(new Event('supabase_sync_error'));
             }
-          }).catch(retryErr => {
-            console.warn('Supabase order retry sync failed:', retryErr);
-          });
-        } else if (newOrder.items && newOrder.items.length > 0) {
-          this.syncOrderItems(newOrder.id, newOrder.items);
+            throw retryErr;
+          }
         }
-      }).catch(err => {
-        console.warn('Supabase order initial sync failed:', err);
+
+        if (newOrder.items && newOrder.items.length > 0) {
+          await this.syncOrderItems(newOrder.id, newOrder.items);
+        }
+      } catch (err: any) {
+        console.error('Supabase order initial sync failed:', err);
+        throw err;
+      }
+    }
+
+    const orders = this.getOrders();
+    orders.unshift(newOrder);
+    this.saveOrders(orders);
+
+    // Adjust product stock based on items in cart or single order
+    if (order.items && order.items.length > 0) {
+      const products = this.getProducts();
+      for (const item of order.items) {
+        if (item.type === 'tshirt') {
+          const prd = products.find(p => {
+            const sizeMatches = p.size === item.size;
+            const nameMatches = p.name === item.productName || `${p.name} - Màu: ${p.color}` === item.productName;
+            const colorMatches = p.color === item.color || item.color.includes(p.color);
+            return nameMatches && colorMatches && sizeMatches;
+          });
+          if (prd) {
+            await this.updateProductStock(prd.id, Math.max(0, prd.stock - item.quantity));
+          }
+        }
+      }
+    } else if (order.type === 'tshirt') {
+      const products = this.getProducts();
+      // Match exactly by name AND color + size
+      let item = products.find(p => {
+        const colorAndSize = `${p.color} - Size ${p.size || 'N/A'}`;
+        return order.productName === p.name && order.color === colorAndSize;
       });
+      if (!item) {
+        // Fallback for older formats or customized titles
+        item = products.find(p => p.name === order.productName || p.name + ' - ' + p.color === order.productName);
+      }
+      if (item) {
+        await this.updateProductStock(item.id, Math.max(0, item.stock - order.quantity));
+      }
     }
 
     return newOrder;
   }
 
-  static syncOrderItems(orderId: string, items: any[]): void {
+  static async syncOrderItems(orderId: string, items: any[]): Promise<void> {
     const itemPayloads = items.map(item => ({
       id: item.id || 'item_' + Math.random().toString(36).substr(2, 9),
       order_id: orderId,
@@ -841,30 +845,30 @@ export class StorageManager {
       image: item.image || null
     }));
 
-    Promise.resolve(supabase.from('order_items').insert(itemPayloads))
-      .then(({ error }) => {
-        if (error) {
-          console.warn('Supabase bulk order_items sync warning (trying individual sync chunks):', error.message);
-          if (error.message?.includes('type integer') || error.message?.includes('invalid input syntax')) {
-            localStorage.setItem('supabase_migration_needed', 'true');
-            window.dispatchEvent(new Event('supabase_sync_error'));
-          }
-          // Try inserting items individually so schema issues don't crash
-          itemPayloads.forEach(payload => {
-            Promise.resolve(supabase.from('order_items').insert([payload]))
-              .then(({ error: itemErr }) => {
-                if (itemErr && (itemErr.message?.includes('type integer') || itemErr.message?.includes('invalid input syntax'))) {
-                  localStorage.setItem('supabase_migration_needed', 'true');
-                  window.dispatchEvent(new Event('supabase_sync_error'));
-                }
-              })
-              .catch(() => {});
-          });
+    try {
+      const { error } = await supabase.from('order_items').insert(itemPayloads);
+      if (error) {
+        console.warn('Supabase bulk order_items sync warning (trying individual sync chunks):', error.message);
+        if (error.message?.includes('type integer') || error.message?.includes('invalid input syntax')) {
+          localStorage.setItem('supabase_migration_needed', 'true');
+          window.dispatchEvent(new Event('supabase_sync_error'));
         }
-      })
-      .catch(err => {
-        console.warn('Supabase order_items sync rejection caught and ignored safely:', err);
-      });
+        // Try inserting items individually so schema issues don't crash
+        for (const payload of itemPayloads) {
+          const { error: itemErr } = await supabase.from('order_items').insert([payload]);
+          if (itemErr) {
+            if (itemErr.message?.includes('type integer') || itemErr.message?.includes('invalid input syntax')) {
+              localStorage.setItem('supabase_migration_needed', 'true');
+              window.dispatchEvent(new Event('supabase_sync_error'));
+            }
+            throw itemErr;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Supabase order_items sync failed:', err);
+      throw err;
+    }
   }
 
   static async updateOrderPayment(id: string, additionalPay: number, status?: 'pending' | 'completed'): Promise<Order | null> {
@@ -1021,20 +1025,22 @@ export class StorageManager {
     this.saveOrders(orders);
   }
 
-  static deleteOrder(id: string): void {
+  static async deleteOrder(id: string): Promise<void> {
+    if (this.isSupabaseActive) {
+      try {
+        const { error: itemsError } = await supabase.from('order_items').delete().eq('order_id', id);
+        if (itemsError) throw itemsError;
+        const { error: orderError } = await supabase.from('orders').delete().eq('id', id);
+        if (orderError) throw orderError;
+      } catch (err) {
+        console.error('Supabase order delete failed:', err);
+        throw err;
+      }
+    }
+
     const orders = this.getOrders();
     const filtered = orders.filter(o => o.id !== id);
     this.saveOrders(filtered);
-
-    if (this.isSupabaseActive) {
-      Promise.resolve(
-        supabase.from('order_items').delete().eq('order_id', id)
-      ).then(() => {
-        return supabase.from('orders').delete().eq('id', id);
-      }).catch(err => {
-        console.warn('Supabase order delete failed:', err);
-      });
-    }
   }
 
   static async updateCustomer(
@@ -1168,7 +1174,20 @@ export class StorageManager {
     this.saveCustomerPins(pins);
   }
 
-  static deleteCustomer(customerName: string, type: OrderType): void {
+  static async deleteCustomer(customerName: string, type: OrderType): Promise<void> {
+    if (this.isSupabaseActive) {
+      const customerId = `c_${type}_` + btoa(encodeURIComponent(customerName)).replace(/=/g, '');
+      try {
+        const { error: deleteOrdersErr } = await supabase.from('orders').delete().eq('customer_name', customerName).eq('type', type);
+        if (deleteOrdersErr) throw deleteOrdersErr;
+        const { error: deleteCustErr } = await supabase.from('customers').delete().eq('id', customerId);
+        if (deleteCustErr) throw deleteCustErr;
+      } catch (err) {
+        console.error('Supabase customer delete failed:', err);
+        throw err;
+      }
+    }
+
     const orders = this.getOrders();
     const filtered = orders.filter(o => o.customerName !== customerName || o.type !== type);
     this.saveOrders(filtered);
@@ -1177,19 +1196,6 @@ export class StorageManager {
     const pins = this.getCustomerPins();
     delete pins[`${customerName}_${type}`];
     this.saveCustomerPins(pins);
-
-    if (this.isSupabaseActive) {
-      const customerId = `c_${type}_` + btoa(encodeURIComponent(customerName)).replace(/=/g, '');
-      const deleteCustomerDb = async () => {
-        try {
-          await supabase.from('orders').delete().eq('customer_name', customerName).eq('type', type);
-          await supabase.from('customers').delete().eq('id', customerId);
-        } catch (err) {
-          console.warn('Supabase customer delete failed:', err);
-        }
-      };
-      deleteCustomerDb();
-    }
   }
 
   // --- CUSTOMER CALCULATIONS & DEBTS (Calculated in real-time derived from actual orders) ---
@@ -1236,7 +1242,7 @@ export class StorageManager {
   }
 
   // Helper to record payment directly from customer card
-  static recordCustomerPayment(customerName: string, type: OrderType, amount: number, paymentMethod: string): void {
+  static async recordCustomerPayment(customerName: string, type: OrderType, amount: number, paymentMethod: string): Promise<void> {
     // 1. Record the transaction inside payment_history (insert in local state and push to database)
     const uuid = typeof crypto !== 'undefined' && crypto.randomUUID 
       ? crypto.randomUUID() 
@@ -1245,7 +1251,6 @@ export class StorageManager {
           return v.toString(16); 
         });
 
-    const payments = this.getPaymentHistory();
     const newPayment: PaymentHistory = {
       id: uuid,
       customerName,
@@ -1255,8 +1260,6 @@ export class StorageManager {
       paymentMethod: paymentMethod || 'Mặc định',
       createdAt: new Date().toISOString()
     };
-    payments.unshift(newPayment);
-    this.savePaymentHistory(payments);
 
     if (this.isSupabaseActive) {
       const payload = {
@@ -1268,12 +1271,22 @@ export class StorageManager {
         payment_method: newPayment.paymentMethod,
         created_at: newPayment.createdAt
       };
-      Promise.resolve(supabase.from('payment_history').insert([payload])).then(({ error }) => {
-        if (error) console.error('Supabase payment_history insert failed:', error.message);
-      }).catch(err => {
-        console.warn('Supabase payment_history insertion promise rejected:', err);
-      });
+      
+      try {
+        const { error } = await supabase.from('payment_history').insert([payload]);
+        if (error) {
+          console.error('Supabase payment_history insert failed:', error.message);
+          throw error;
+        }
+      } catch (err) {
+        console.error('Supabase payment history initial sync failed:', err);
+        throw err;
+      }
     }
+
+    const payments = this.getPaymentHistory();
+    payments.unshift(newPayment);
+    this.savePaymentHistory(payments);
 
     // 2. FIFO Allocation to unpaid/debt orders
     const orders = this.getOrders();
@@ -1294,21 +1307,19 @@ export class StorageManager {
       remainingAmount -= paymentToApply;
 
       if (this.isSupabaseActive) {
-        Promise.resolve(
-          supabase.from('orders')
+        try {
+          const { error } = await supabase.from('orders')
             .update({
               paid_amount: order.paidAmount,
               debt_amount: order.debtAmount,
               status: order.status
             })
-            .eq('id', order.id)
-        )
-        .then(({ error }) => {
-          if (error) console.error('Supabase order payment update failed inside FIFO:', error.message);
-        })
-        .catch(err => {
-          console.warn('Supabase order update promise rejected inside FIFO:', err);
-        });
+            .eq('id', order.id);
+          if (error) throw error;
+        } catch (err) {
+          console.error('Supabase FIFO order update failed:', err);
+          throw err;
+        }
       }
     }
 
