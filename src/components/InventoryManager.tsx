@@ -14,7 +14,8 @@ import {
   ChevronDown,
   ChevronUp,
   Pencil,
-  Trash2
+  Trash2,
+  MoreVertical
 } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
 
@@ -64,6 +65,16 @@ const TshirtIconSVG = ({ colorName, strokeColor = '#475569', className = 'w-10 h
   );
 };
 
+const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', 'Freesize'];
+const sortSizes = (a: string, b: string) => {
+  const indexA = sizeOrder.indexOf(a.toUpperCase());
+  const indexB = sizeOrder.indexOf(b.toUpperCase());
+  if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+  if (indexA === -1) return 1;
+  if (indexB === -1) return -1;
+  return indexA - indexB;
+};
+
 interface InventoryManagerProps {
   products: Product[];
   onAddProduct: (product: Omit<Product, 'id' | 'createdAt'>) => any;
@@ -77,6 +88,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
   const [isCustomSize, setIsCustomSize] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   // Autocomplete suggestions state
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -96,6 +108,15 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   const [showEditSuggestions, setShowEditSuggestions] = useState(false);
 
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
+
+  // States for Quick Editing of size variants in Detail modal
+  const [editingVariant, setEditingVariant] = useState<Product | null>(null);
+  const [vStock, setVStock] = useState<number>(0);
+  const [vImportPrice, setVImportPrice] = useState<number>(0);
+  const [vSalePrice, setVSalePrice] = useState<number>(0);
+  const [vSource, setVSource] = useState<ProductSource>('self_produced');
+  const [vNote, setVNote] = useState<string>('');
 
   // Form State
   const [name, setName] = useState('');
@@ -103,7 +124,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   const [size, setSize] = useState('L');
   const [stock, setStock] = useState(1);
   const [importPrice, setImportPrice] = useState(50000);
-  const [salePrice, setSalePrice] = useState(100000);
   const [source, setSource] = useState<ProductSource>('self_produced');
   
   // Real Image Uploading states
@@ -205,12 +225,10 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     return Object.values(groups);
   }, [filtered]);
 
-  const toggleGroup = (groupKey: string) => {
-    setExpandedGroups(prev => ({
-      ...prev,
-      [groupKey]: !prev[groupKey]
-    }));
-  };
+  const selectedGroup = useMemo(() => {
+    if (!selectedGroupKey) return null;
+    return groupedProducts.find(g => g.key === selectedGroupKey) || null;
+  }, [selectedGroupKey, groupedProducts]);
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -334,7 +352,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
           await onUpdateProduct(exactMatch.id, {
             stock: exactMatch.stock + Number(stock),
             importPrice: Number(importPrice),
-            salePrice: Number(salePrice),
+            salePrice: 0,
             image: imageUrl || exactMatch.image || '',
             source
           });
@@ -347,7 +365,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
           size: trimmedSize,
           stock: Number(stock),
           importPrice: Number(importPrice),
-          salePrice: Number(salePrice),
+          salePrice: 0,
           source,
           image: imageUrl || ''
         });
@@ -360,7 +378,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
       setIsCustomSize(false);
       setStock(1);
       setImportPrice(50000);
-      setSalePrice(100000);
       setSource('self_produced');
       setImageUrl('');
       setShowModal(false);
@@ -423,6 +440,39 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
       }
     } else {
       setDeletingProduct(null);
+    }
+  };
+
+  const handleVariantClick = (variant: Product) => {
+    setEditingVariant(variant);
+    setVStock(variant.stock);
+    setVImportPrice(variant.importPrice);
+    setVSalePrice(variant.salePrice);
+    setVSource(variant.source);
+    setVNote(localStorage.getItem(`product_note_${variant.id}`) || '');
+  };
+
+  const handleSaveVariant = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingVariant) return;
+
+    if (onUpdateProduct) {
+      try {
+        await onUpdateProduct(editingVariant.id, {
+          stock: Number(vStock),
+          importPrice: Number(vImportPrice),
+          salePrice: Number(vSalePrice),
+          source: vSource
+        });
+        localStorage.setItem(`product_note_${editingVariant.id}`, vNote.trim());
+        setEditingVariant(null);
+      } catch (err) {
+        console.error('Failed to quick-save product variant:', err);
+        alert('Lỗi: Không thể cập nhật biến thể vào hệ thống!');
+      }
+    } else {
+      localStorage.setItem(`product_note_${editingVariant.id}`, vNote.trim());
+      setEditingVariant(null);
     }
   };
 
@@ -489,255 +539,511 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
       </div>
 
       {/* Products Inventory List */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/40">
-          <h3 className="font-bold text-slate-800">Cơ sở dữ liệu tồn kho sỉ lẻ (Xưởng may mặc sỉ)</h3>
-          <span className="text-xs font-mono text-slate-400">Bấm vào bất cứ dòng nào để xổ ra chi tiết phân loại áo và màu sắc</span>
+      <div className="space-y-5">
+        {/* Section Title */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/30">
+          <div>
+            <h3 className="font-extrabold text-slate-800 text-base leading-snug tracking-tight">CƠ SỞ DỮ LIỆU TỒN KHÔ THUN TRƠN CHI TIẾT</h3>
+            <p className="text-xs text-slate-400 font-medium mt-1">Hệ thống phân tầng thông minh quy mô xưởng: Toàn bộ phôi áo &rarr; Thống kê chi tiết &rarr; Quản lý trạng thái tồn của từng Size áo</p>
+          </div>
+          <span className="text-xs font-mono font-black text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-xl self-start sm:self-auto shadow-sm">
+            ⚡ {groupedProducts.length} nhóm phôi áo độc lập
+          </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <th className="py-4 px-6 text-center w-24">Hình đại diện</th>
-                <th className="py-4 px-6">Tên mặt hàng sản phẩm</th>
-                <th className="py-4 px-6">Tập hợp màu hiện có</th>
-                <th className="py-4 px-6 text-center">Tổng lượng tồn kho</th>
-                <th className="py-4 px-6 text-right">Khung giá nhập</th>
-                <th className="py-4 px-6 text-right">Khung giá bán sỉ</th>
-                <th className="py-4 px-6 text-center">Nguồn cung ứng</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm text-slate-600">
-              {groupedProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400 font-medium">
-                    Không tìm thấy sản phẩm nào trong kho thun trơn
-                  </td>
-                </tr>
-              ) : (
-                groupedProducts.map((group) => {
-                  const isExpanded = !!expandedGroups[group.key];
-                  const hasUnsplash = isUnsplashUrl(group.image);
-                  return (
-                    <React.Fragment key={group.key}>
-                      <tr 
-                        onClick={() => toggleGroup(group.key)}
-                        className="hover:bg-blue-50/20 transition-all cursor-pointer border-b border-slate-100/80"
-                      >
-                        <td className="py-3 px-6 text-center select-none">
-                          <div className="flex items-center gap-1.5 justify-center">
-                            <span className="text-slate-450 mr-0.5">
-                              {isExpanded ? (
-                                <ChevronUp className="w-4 h-4 text-blue-600 transition-transform" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-slate-400 transition-transform" />
-                              )}
-                            </span>
-                            
-                            <div className="relative group overflow-hidden w-11 h-11 rounded-xl shadow-inner border border-slate-200 bg-slate-50 flex items-center justify-center">
-                              {!hasUnsplash ? (
-                                <>
-                                  <img
-                                    src={group.image}
-                                    alt={group.name}
-                                    className="w-full h-full object-cover transition-all"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActivePreviewImage(group.image);
-                                    }}
-                                    className="absolute inset-0 bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-zoom-in"
-                                    title="Phóng to ảnh xưởng"
-                                  >
-                                    <Eye className="w-4.5 h-4.5" />
-                                  </button>
-                                </>
-                              ) : (
-                                <TshirtIconSVG colorName={group.colors[0] || 'Blue'} className="w-8 h-8" />
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-6 font-bold text-slate-800">
-                          <div className="flex flex-col">
-                            <span className="text-[15px]">{group.name}</span>
-                            <span className="text-[10px] text-slate-450 font-mono font-bold mt-0.5 mt-1 text-blue-600">
-                              ⚡ Chứa {group.items.length} mặt hàng chi tiết (Bấm để xem)
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-6">
-                          <div className="flex flex-wrap gap-1">
-                            {group.colors.map((color, cIdx) => (
-                              <span key={cIdx} className="inline-flex items-center px-2 py-0.5 bg-slate-100 text-slate-750 rounded text-xs font-semibold">
-                                {color}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="py-3 px-6 text-center font-black">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold ${
-                            group.totalStock <= 10
-                              ? 'bg-amber-100 text-amber-700 animate-pulse'
-                              : 'bg-emerald-150 text-emerald-850'
-                          }`}>
-                            {group.totalStock} cái
-                          </span>
-                        </td>
-                        <td className="py-3 px-6 text-right font-mono font-semibold text-slate-550">
-                          {group.minImportPrice === group.maxImportPrice ? (
-                            formatVND(group.minImportPrice)
-                          ) : (
-                            `${formatVND(group.minImportPrice)} - ${formatVND(group.maxImportPrice)}`
-                          )}
-                        </td>
-                        <td className="py-3 px-6 text-right font-mono font-black text-blue-600">
-                          {group.minPrice === group.maxPrice ? (
-                            formatVND(group.minPrice)
-                          ) : (
-                            `${formatVND(group.minPrice)} - ${formatVND(group.maxPrice)}`
-                          )}
-                        </td>
-                        <td className="py-3 px-6 text-center">
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-                            group.source === 'self_produced'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                              : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                          }`}>
-                            {group.source === 'self_produced' ? (
-                              <>
-                                <Layers className="w-3 h-3" />
-                                <span>Tự sản xuất</span>
-                              </>
-                            ) : (
-                              <>
-                                <FileCheck2 className="w-3 h-3" />
-                                <span>Mua ngoài</span>
-                              </>
-                            )}
-                          </span>
-                        </td>
-                      </tr>
+        {groupedProducts.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-150 p-16 text-center text-slate-400 font-medium shadow-sm animate-fade-in">
+            Không tìm thấy phôi áo thun trơn nào phù hợp với từ khóa tìm kiếm của bạn
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {groupedProducts.map((group) => {
+              const hasUnsplash = isUnsplashUrl(group.image);
+              const hasSelfProduced = group.items.some((p) => p.source === 'self_produced');
+              const hasExternal = group.items.some((p) => p.source === 'external');
+              const isOutOfStock = group.totalStock === 0;
+              const isLowStock = group.totalStock > 0 && group.totalStock <= 10;
 
-                      {isExpanded && (
-                        <tr className="bg-slate-50/50">
-                          <td colSpan={7} className="p-4 pl-12 bg-slate-50/40 border-b border-slate-205">
-                            <div className="bg-white rounded-xl border border-slate-200 p-4.5 shadow-sm animate-fade-in">
-                              <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
-                                <ShoppingBag className="w-4 h-4 text-blue-600" />
-                                <span>Danh Sách Phân Loại Màu/Size & Thao tác Sửa Xóa của: {group.name}</span>
-                              </h4>
-                              
-                              <div className="overflow-x-auto mt-2">
-                                <table className="w-full text-left border-collapse border border-slate-100 rounded-xl overflow-hidden">
-                                  <thead>
-                                    <tr className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-205">
-                                      <th className="py-2.5 px-4 text-center w-16">Ảnh thật</th>
-                                      <th className="py-2.5 px-4">Màu sắc</th>
-                                      <th className="py-2.5 px-4 text-center">Size</th>
-                                      <th className="py-2.5 px-4 text-center">S.Lượng tồn</th>
-                                      <th className="py-2.5 px-4 text-right">Giá bán sỉ (VND)</th>
-                                      <th className="py-2.5 px-4 text-right">Giá nhập (VND)</th>
-                                      <th className="py-2.5 px-4 text-center">Nguồn cung</th>
-                                      <th className="py-2.5 px-4 text-center">Thao tác</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100 text-xs text-slate-650">
-                                    {group.items.map((szPrd) => {
-                                      const itemHasUnsplash = isUnsplashUrl(szPrd.image);
-                                      return (
-                                        <tr key={szPrd.id} className="hover:bg-slate-100/40 transition-colors">
-                                          <td className="py-2.5 px-4 text-center">
-                                            <div className="relative group overflow-hidden w-9 h-9 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center mx-auto">
-                                              {!itemHasUnsplash ? (
-                                                <>
-                                                  <img
-                                                    src={szPrd.image}
-                                                    alt={szPrd.name}
-                                                    className="w-full h-full object-cover"
-                                                    referrerPolicy="no-referrer"
-                                                  />
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setActivePreviewImage(szPrd.image);
-                                                    }}
-                                                    className="absolute inset-0 bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-zoom-in"
-                                                  >
-                                                    <Eye className="w-3.5 h-3.5" />
-                                                  </button>
-                                                </>
-                                              ) : (
-                                                <TshirtIconSVG colorName={szPrd.color} className="w-6 h-6" />
-                                              )}
-                                            </div>
-                                          </td>
-                                          <td className="py-2.5 px-4">
-                                            <span className="font-bold text-slate-700">{szPrd.color}</span>
-                                          </td>
-                                          <td className="py-2.5 px-4 text-center">
-                                            <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-black">{szPrd.size || 'L'}</span>
-                                          </td>
-                                          <td className="py-2.5 px-4 text-center font-bold">
-                                            <span className={szPrd.stock <= 10 ? 'text-rose-600 font-extrabold animate-pulse' : 'text-slate-800'}>
-                                              {szPrd.stock} cái
-                                            </span>
-                                          </td>
-                                          <td className="py-2.5 px-4 text-right font-mono font-bold text-blue-650">
-                                            {formatVND(szPrd.salePrice)}
-                                          </td>
-                                          <td className="py-2.5 px-4 text-right font-mono text-slate-500">
-                                            {formatVND(szPrd.importPrice)}
-                                          </td>
-                                          <td className="py-2.5 px-4 text-center">
-                                            <span className="text-[10px] bg-slate-50 text-slate-600 px-2 py-0.5 rounded border border-slate-200/50">
-                                              {szPrd.source === 'self_produced' ? 'Tự sản xuất' : 'Mua ngoài'}
-                                            </span>
-                                          </td>
-                                          <td className="py-2.5 px-4 text-center">
-                                            <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleEditClick(szPrd)}
-                                                className="p-1 px-2.5 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 text-blue-600 rounded-md transition-all cursor-pointer font-bold inline-flex items-center gap-1"
-                                                title="Sửa phân loại"
-                                              >
-                                                <Pencil className="w-3.5 h-3.5" />
-                                                <span>Sửa</span>
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleDeleteClick(szPrd)}
-                                                className="p-1 px-2.5 bg-rose-50 hover:bg-rose-150 hover:text-rose-700 text-rose-600 rounded-md transition-all cursor-pointer font-bold inline-flex items-center gap-1"
-                                                title="Xóa phân loại"
-                                              >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                                <span>Xóa</span>
-                                              </button>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
+              return (
+                <div 
+                  key={group.key}
+                  onClick={() => setSelectedGroupKey(group.key)}
+                  className="group cursor-pointer bg-white rounded-2xl border border-slate-150/80 hover:border-blue-500/40 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 flex flex-col h-full overflow-hidden relative"
+                >
+                  {/* Card Header Summary */}
+                  <div className="p-5 pb-4 flex items-center gap-4">
+                    <div className="relative overflow-hidden w-12 h-12 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform duration-300">
+                      {!hasUnsplash ? (
+                        <img
+                          src={group.image}
+                          alt={group.name}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <TshirtIconSVG colorName={group.colors[0] || 'White'} className="w-9 h-9" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-base flex-shrink-0">👕</span>
+                        <h4 className="font-extrabold text-slate-800 text-[15px] leading-snug tracking-tight truncate group-hover:text-blue-600 transition-colors" title={group.name}>
+                          {group.name}
+                        </h4>
+                      </div>
+                      
+                      <p className="text-xs font-mono font-bold text-slate-450 mt-1">
+                        {group.minPrice === group.maxPrice ? (
+                          formatVND(group.minPrice)
+                        ) : (
+                          `${formatVND(group.minPrice)} - ${formatVND(group.maxPrice)}`
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Summary Micro Badges */}
+                  <div className="px-5 pb-5 pt-3 flex flex-wrap gap-1.5 mt-auto border-t border-slate-50 bg-slate-50/10">
+                    {/* Colors */}
+                    {group.colors.map((clr, cIdx) => (
+                      <span key={cIdx} className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-white border border-slate-150 rounded-full text-[10px] font-bold text-slate-600 shadow-2xs">
+                        <span 
+                          className="w-1.5 h-1.5 rounded-full border border-black/5" 
+                          style={{ backgroundColor: getHexFromColorName(clr) }}
+                        />
+                        {clr}
+                      </span>
+                    ))}
+                    
+                    {/* Source Badges */}
+                    {hasSelfProduced && (
+                      <span className="inline-flex items-center px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md text-[9.5px] font-bold">
+                        🌱 Tự SX
+                      </span>
+                    )}
+                    {hasExternal && (
+                      <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-750 border border-blue-105 rounded-md text-[9.5px] font-bold">
+                        📦 Ngoài
+                      </span>
+                    )}
+
+                    {/* Stock status indicator */}
+                    <span className={`inline-flex items-center px-2 py-0.5 border rounded-md text-[9.5px] font-black ${
+                      isOutOfStock 
+                        ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                        : isLowStock 
+                          ? 'bg-amber-50 text-amber-700 border-amber-150 animate-pulse' 
+                          : 'bg-emerald-50/50 text-emerald-750 border-emerald-150/50'
+                    }`}>
+                      {isOutOfStock ? '🚨 Hết' : isLowStock ? '⚠️ Tồn thấp' : '🟢 Sẵn'}: {group.totalStock} cái
+                    </span>
+
+                    {/* Total sizes count */}
+                    <span className="inline-flex items-center px-2 py-0.5 bg-indigo-50 text-indigo-750 border border-indigo-100 rounded-md text-[9.5px] font-bold">
+                      📏 {group.sizes.length} size
+                    </span>
+                  </div>
+
+                  {/* Aesthetic tap target hint visible on hover */}
+                  <div className="absolute right-3.5 top-3.5 w-7 h-7 bg-blue-50 text-blue-600 rounded-full items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-1 group-hover:-translate-x-0 hidden sm:flex shadow-xs">
+                    <span className="font-bold text-sm">&rarr;</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* LEVEL 2: DETAILED VIEW MODAL OVERLAY */}
+        {selectedGroup && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedGroupKey(null)}>
+            <div 
+              className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden animate-scale-in flex flex-col text-slate-705"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal header */}
+              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white flex-shrink-0">
+                <div className="flex items-center gap-4">
+                  <span className="text-3xl">👕</span>
+                  <div>
+                    <h3 className="font-extrabold text-xl tracking-tight leading-snug">{selectedGroup.name}</h3>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">
+                      Đại diện tổng quan màu {selectedGroup.items[0]?.color || ''} &bull; Xem chi tiết biến thể và chỉnh sửa nhanh
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedGroupKey(null)}
+                  className="text-white/80 hover:text-white cursor-pointer text-xl bg-slate-800 hover:bg-slate-700 transition-all rounded-full h-10 w-10 flex items-center justify-center shadow-md border border-slate-700/50"
+                  title="Đóng chi tiết"
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-8 overflow-y-auto space-y-8 flex-1 bg-slate-100/70 border-t border-b border-slate-200">
+                {/* Meta overview parameters in detail view */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                  <div className="bg-white border-2 border-slate-200/60 rounded-2xl p-5 flex flex-col justify-center shadow-xs">
+                    <span className="text-[10px] text-slate-450 font-black uppercase tracking-wider block">TỔNG TỒN KHO</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1">{selectedGroup.totalStock} cái</span>
+                  </div>
+                  
+                  <div className="bg-white border-2 border-slate-200/60 rounded-2xl p-5 flex flex-col justify-center shadow-xs">
+                    <span className="text-[10px] text-slate-450 font-black uppercase tracking-wider block">PHÂN LOẠI SIZE</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1">{selectedGroup.sizes.length} cỡ size</span>
+                  </div>
+
+                  <div className="bg-white border-2 border-slate-200/60 rounded-2xl p-5 flex flex-col justify-center shadow-xs">
+                    <span className="text-[10px] text-slate-450 font-black uppercase tracking-wider block">GIÁ SỈ TRÊN MÃ</span>
+                    <span className="text-lg font-black text-blue-650 mt-1">
+                      {selectedGroup.minPrice === selectedGroup.maxPrice ? (
+                        formatVND(selectedGroup.minPrice)
+                      ) : (
+                        `${formatVND(selectedGroup.minPrice)} - ${formatVND(selectedGroup.maxPrice)}`
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="bg-white border-2 border-slate-200/60 rounded-2xl p-5 flex flex-col justify-center shadow-xs">
+                    <span className="text-[10px] text-slate-450 font-black uppercase tracking-wider block">NGUỒN HÀNG NHẬP</span>
+                    <div className="flex flex-wrap gap-1.5 mt-2 animate-fade-in">
+                      {selectedGroup.items.some(p => p.source === 'self_produced') && (
+                        <span className="inline-block px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black rounded-lg uppercase tracking-wide shadow-2xs">
+                          🌱 Tự SX
+                        </span>
+                      )}
+                      {selectedGroup.items.some(p => p.source === 'external') && (
+                        <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 border border-blue-105 text-[10px] font-black rounded-lg uppercase tracking-wide shadow-2xs">
+                          📦 Ngoài
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub variants Grid container */}
+                <div>
+                  <div className="flex items-center justify-between pb-3 border-b-2 border-slate-250">
+                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">DANH SÁCH BIẾN THỂ PHÔI ÁO (CLICK ĐỂ SỬA NHANH)</h4>
+                    <span className="text-[10px] font-black text-slate-450 uppercase tracking-widest bg-slate-200/80 px-2.5 py-1 rounded-md text-slate-600">Phân loại áo thun sỉ</span>
+                  </div>
+
+                  {/* SIZE GRID / MINI CARDS inside modal */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 pt-6">
+                    {selectedGroup.items.sort((a,b) => sortSizes(a.size || '', b.size || '')).map((variant) => {
+                      const isOut = variant.stock <= 0;
+                      const isLow = variant.stock > 0 && variant.stock <= 10;
+
+                      let stockStyle = "bg-emerald-50/90 text-emerald-800 border-emerald-250";
+                      let dotStyle = "bg-emerald-500 animate-pulse";
+                      if (isOut) {
+                        stockStyle = "bg-rose-50/90 text-rose-850 border-rose-250 line-through";
+                        dotStyle = "bg-rose-500";
+                      } else if (isLow) {
+                        stockStyle = "bg-amber-50/95 text-amber-900 border-amber-300 animate-pulse";
+                        dotStyle = "bg-amber-550";
+                      }
+
+                      return (
+                        <div
+                          key={variant.id}
+                          onClick={() => handleVariantClick(variant)}
+                          className="bg-white border border-slate-200 hover:border-blue-500 shadow-[0_12px_36px_rgba(0,0,0,0.035)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.09)] rounded-3xl p-8 flex flex-col justify-between transition-all duration-300 relative group/variant cursor-pointer text-slate-700 hover:-translate-y-1.5"
+                        >
+                          {/* Mini Card Header info */}
+                          <div className="flex items-center justify-between gap-1.5 mb-5">
+                            <div className="flex items-center gap-3.5 min-w-0">
+                              <span className="w-14 h-14 flex items-center justify-center text-lg font-black bg-slate-900 border border-slate-800 text-white rounded-2xl group-hover/variant:bg-blue-600 group-hover/variant:border-blue-600 transition-all duration-300 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+                                {variant.size || 'L'}
+                              </span>
+                              <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span 
+                                    className="w-3.5 h-3.5 rounded-full border border-black/10 inline-block flex-shrink-0 shadow-inner" 
+                                    style={{ backgroundColor: getHexFromColorName(variant.color) }}
+                                  />
+                                  <span className="font-extrabold text-slate-900 truncate text-[14px] tracking-tight" title={variant.color}>
+                                    Màu {variant.color}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide mt-0.5">
+                                  Biến thể phân loại
+                                </span>
                               </div>
                             </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+
+                            {/* Actions ellipsis menu ⋮ */}
+                            <div className="relative" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuId(activeMenuId === variant.id ? null : variant.id);
+                                }}
+                                className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-650 rounded-lg cursor-pointer transition-colors"
+                                title="Tùy chọn"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {/* Ellipsis Actions Popup */}
+                              {activeMenuId === variant.id && (
+                                <>
+                                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); }} />
+                                  <div className="absolute right-0 mt-1 w-36 bg-white rounded-xl border border-slate-200 shadow-xl py-1.5 z-50 text-left">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenuId(null);
+                                        handleEditClick(variant);
+                                      }}
+                                      className="w-full px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-1.5 text-slate-700 font-bold transition-all"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 text-blue-500" />
+                                      <span>Sửa chi tiết</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenuId(null);
+                                        handleDeleteClick(variant);
+                                      }}
+                                      className="w-full px-3 py-1.5 text-xs hover:bg-rose-50 flex items-center gap-1.5 text-rose-600 font-bold transition-all"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                      <span>Xóa bỏ mã</span>
+                                    </button>
+                                    {variant.image && !isUnsplashUrl(variant.image) && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveMenuId(null);
+                                          setActivePreviewImage(variant.image);
+                                        }}
+                                        className="w-full px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-1.5 text-slate-600 font-bold transition-all"
+                                      >
+                                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                        <span>Xem ảnh thật</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Stock value indicator card */}
+                          <div className={`p-4 rounded-xl border-2 ${stockStyle} flex items-center justify-between shadow-[0_4px_12px_rgba(0,0,0,0.015)] my-2`}>
+                            <span className="text-[10px] uppercase font-black tracking-widest opacity-80">TỒN KHO THỰC TẾ</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2.5 h-2.5 rounded-full ${dotStyle}`} />
+                              <span className="text-base font-black tracking-tight">{isOut ? 'HẾT HÀNG' : `${variant.stock} cái`}</span>
+                            </div>
+                          </div>
+
+                          {/* Dynamic detailed price table */}
+                          <div className="mt-5 pt-4.5 border-t border-slate-100 text-xs text-slate-600 font-mono space-y-2">
+                            <div className="flex justify-between items-center bg-slate-50/80 py-2.5 px-4 rounded-xl border border-slate-150 shadow-2xs">
+                              <span className="text-slate-400 uppercase font-black text-[9px] tracking-wider">Giá sỉ Nhập:</span>
+                              <span className="font-extrabold text-slate-700 text-xs">{formatVND(variant.importPrice)}</span>
+                            </div>
+                            <div className="flex justify-between items-center bg-blue-50/20 py-2.5 px-4 rounded-xl border border-blue-100/50 font-bold text-blue-650 shadow-2xs">
+                              <span className="text-blue-500 uppercase font-black text-[9px] tracking-wider">Mã Sỉ lẻ:</span>
+                              <span className="font-black text-blue-700 text-sm">{formatVND(variant.salePrice)}</span>
+                            </div>
+                          </div>
+
+                          {/* Ghi chú preview */}
+                          {localStorage.getItem(`product_note_${variant.id}`) && (
+                            <div className="mt-4 bg-amber-50/40 border border-dashed border-amber-200/70 p-3 rounded-xl text-[11px] text-amber-800 line-clamp-2 leading-relaxed shadow-2xs">
+                              📝 <strong>Note:</strong> {localStorage.getItem(`product_note_${variant.id}`)}
+                            </div>
+                          )}
+
+                          {/* Sửa trực tiếp tap target overlay link */}
+                          <div className="mt-5 pt-3 border-t border-dashed border-slate-100 text-center text-xs text-blue-500 font-black group-hover/variant:text-blue-650 group-hover/variant:underline transition-all flex items-center justify-center gap-1.5 bg-slate-50/30 rounded-lg p-1.5 hover:bg-slate-50">
+                            <span>Chỉnh sửa nhanh biến thể</span>
+                            <span className="transform group-hover/variant:translate-x-1 transition-transform duration-200">&rarr;</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Close controls */}
+              <div className="px-8 py-5 border-t border-slate-100 flex items-center justify-end bg-slate-50/50 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedGroupKey(null)}
+                  className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-xs rounded-xl shadow-xs transition-all cursor-pointer uppercase tracking-wider"
+                >
+                  Đóng lại
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SUB LEVEL: DIRECT EDITING POPUP PANEL OVER DETAIL MODAL */}
+        {editingVariant && (
+          <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[60] flex items-center justify-center p-4 animate-fade-in" onClick={() => setEditingVariant(null)}>
+            <div 
+              className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in text-slate-705 flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 py-5 border-b border-rose-50 flex items-center justify-between bg-blue-900 text-white flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🛠️</span>
+                  <div>
+                    <h4 className="font-extrabold text-sm tracking-tight">CẬP NHẬT BIẾN THỂ SIZE {editingVariant.size}</h4>
+                    <p className="text-[10px] text-blue-200 font-bold mt-0.5">Sản phẩm áo: {editingVariant.name}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingVariant(null)}
+                  className="text-white hover:text-red-100 font-black cursor-pointer text-xl w-6 h-6 flex items-center justify-center rounded-full bg-blue-800"
+                >
+                  &times;
+                </button>
+              </div>
+
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSaveVariant();
+                }} 
+                className="p-6 space-y-5 flex-1 overflow-y-auto"
+              >
+                {/* Stock Edit with + - buttons */}
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-2">Số lượng tồn kho</label>
+                  <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200/70">
+                    <button 
+                      type="button" 
+                      onClick={() => setVStock(prev => Math.max(0, prev - 1))}
+                      className="w-10 h-10 border border-slate-250 bg-white hover:bg-slate-50 rounded-xl font-black text-slate-600 flex items-center justify-center text-lg transition-transform cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
+                    >
+                      -
+                    </button>
+                    <input 
+                      type="number" 
+                      required
+                      value={vStock} 
+                      onChange={e => setVStock(Math.max(0, Number(e.target.value)))}
+                      className="flex-1 py-2 px-4 border border-slate-350 bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-center rounded-xl font-black text-slate-850 text-base"
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setVStock(prev => prev + 1)}
+                      className="w-10 h-10 border border-slate-250 bg-white hover:bg-slate-50 rounded-xl font-black text-slate-600 flex items-center justify-center text-lg transition-transform cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-1.5 ml-1">Sử dụng nút bấm nhanh hoặc nhập phôi số liệu thực tế.</p>
+                </div>
+
+                {/* Import and Sale Price */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-1.5">Giá nhập kho (đ)</label>
+                    <input 
+                      type="number" 
+                      required
+                      value={vImportPrice} 
+                      onChange={e => setVImportPrice(Math.max(0, Number(e.target.value)))}
+                      className="w-full py-2.5 px-3 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl font-bold text-xs"
+                    />
+                    <span className="text-[10px] text-amber-600 font-bold block mt-1 ml-1 truncate">
+                      {formatVND(vImportPrice)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-1.5">Giá bán sỉ lẻ (đ)</label>
+                    <input 
+                      type="number" 
+                      required
+                      value={vSalePrice} 
+                      onChange={e => setVSalePrice(Math.max(0, Number(e.target.value)))}
+                      className="w-full py-2.5 px-3 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl font-bold text-xs"
+                    />
+                    <span className="text-[10px] text-emerald-600 font-bold block mt-1 ml-1 truncate">
+                      {formatVND(vSalePrice)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Source Pill selection */}
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-2">Nguồn hàng nhập</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setVSource('self_produced')}
+                      className={`flex-1 py-2.5 px-3 text-xs font-bold rounded-xl border text-center cursor-pointer transition-all ${
+                        vSource === 'self_produced'
+                          ? 'bg-emerald-50 border-emerald-400 text-emerald-700 shadow-xs ring-2 ring-emerald-500/10'
+                          : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50/50'
+                      }`}
+                    >
+                      🌱 Tự SX (Xưởng May)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVSource('external')}
+                      className={`flex-1 py-2.5 px-3 text-xs font-bold rounded-xl border text-center cursor-pointer transition-all ${
+                        vSource === 'external'
+                          ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-xs ring-2 ring-blue-500/10'
+                          : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50/50'
+                      }`}
+                    >
+                      📦 Ngoài (Nhập Ngoài)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Custom note textarea */}
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-1.5">Ghi chú chi tiết</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Nhập ghi chú chi tiết về lô hàng, nhà dệt, trạng thái chất thun..."
+                    value={vNote}
+                    onChange={e => setVNote(e.target.value)}
+                    className="w-full py-2 px-3 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl text-xs font-medium"
+                  />
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-3 pt-3.5 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setEditingVariant(null)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider text-center cursor-pointer"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md uppercase tracking-wider text-center cursor-pointer hover:shadow-lg hover:-translate-y-0.5 duration-150 active:translate-y-0"
+                  >
+                    Lưu Thay Đổi
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Add New Product Modal */}
@@ -866,17 +1172,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                   />
                 </div>
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Giá bán niêm yết (VND)</label>
-                  <input
-                    type="number"
-                    min="1000"
-                    required
-                    value={salePrice}
-                    onChange={(e) => setSalePrice(Math.max(1000, Number(e.target.value)))}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm focus:border-blue-500 transition-all font-mono font-bold"
-                  />
-                </div>
+
 
                 {/* Direct factory real photo loader */}
                 <div className="col-span-2">
