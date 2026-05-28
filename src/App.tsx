@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Product, Order, Customer, DashboardStats, OrderType } from './types';
-import { StorageManager } from './lib/storage';
+import { StorageManager, supabase } from './lib/storage';
 import Login from './components/Login';
 import Overview from './components/Overview';
 import InventoryManager from './components/InventoryManager';
@@ -145,6 +145,35 @@ export default function App() {
     setCustomers(c);
     setStats(s);
   }, [orders, products]);
+
+  // 3. Listen to Realtime updates from Supabase to auto-sync cross-device actions
+  useEffect(() => {
+    if (isSupabaseOnline) {
+      console.log('Initializing Supabase Realtime Listener...');
+      const channel = supabase
+        .channel('db_realtime_changes')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public' },
+          async (payload) => {
+            console.log('Realtime change event received from Supabase:', payload);
+            try {
+              // Re-fetch all fresh records from database and update local storage/memory states
+              await StorageManager.syncAllDataFromSupabase();
+              setProducts(StorageManager.getProducts());
+              setOrders(StorageManager.getOrders());
+            } catch (e) {
+              console.error('Realtime auto-sync error:', e);
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [isSupabaseOnline]);
 
   // Auth logins
   const handleLoginSuccess = (adminUser: string) => {
