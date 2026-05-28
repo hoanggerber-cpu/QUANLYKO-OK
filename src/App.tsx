@@ -80,9 +80,15 @@ export default function App() {
         setDbMigrationNeeded(true);
       }
     };
+    const handleSyncSuccess = () => {
+      setProducts(StorageManager.getProducts());
+      setOrders(StorageManager.getOrders());
+    };
     window.addEventListener('supabase_sync_error', handleSyncError);
+    window.addEventListener('supabase_sync_success', handleSyncSuccess);
     return () => {
       window.removeEventListener('supabase_sync_error', handleSyncError);
+      window.removeEventListener('supabase_sync_success', handleSyncSuccess);
     };
   }, []);
 
@@ -313,13 +319,6 @@ export default function App() {
               🟠 Local Backup Mode
             </span>
           )}
-          <button 
-            type="button"
-            onClick={() => setDbMigrationNeeded(true)}
-            className="mt-1 text-blue-400 hover:text-blue-300 text-[10px] font-bold underline flex items-center gap-1 cursor-pointer bg-transparent border-none p-0 text-left self-start"
-          >
-            📋 Xem câu lệnh SQL đồng bộ cột
-          </button>
         </div>
 
         {/* User Account summary */}
@@ -375,51 +374,6 @@ export default function App() {
 
         {/* Component Panels rendering depending on selection flow */}
         <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto">
-          {dbMigrationNeeded && (
-            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 shrink-0">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-amber-900 font-bold text-sm">
-                    ⚠️ Cần cập nhật kiểu dữ liệu cột Số lượng trong Supabase
-                  </h4>
-                  <p className="text-amber-700 text-xs mt-1.5 leading-relaxed">
-                    Hệ thống ghi nhận lỗi <code className="bg-amber-100/60 font-semibold px-1 py-0.5 rounded font-mono text-[11px]">invalid input syntax for type integer</code> khi đồng bộ dữ liệu đơn hàng in PET/DTF có kích thước lẻ (như <code className="font-mono font-semibold">0.415m</code>). Hãy sao chép và chạy câu lệnh SQL bên dưới tại mục <strong>SQL Editor</strong> trên Supabase của bạn để đổi kiểu dữ liệu cột sang <code className="font-semibold">NUMERIC</code> (số thập phân).
-                  </p>
-                  
-                  <div className="mt-4 flex flex-col gap-3">
-                    <pre className="flex-1 bg-slate-900 text-slate-100 rounded-xl p-4 font-mono text-[10px] md:text-[11px] select-all relative group overflow-x-auto leading-relaxed whitespace-pre font-medium">
-                      {MIGRATION_SQL}
-                    </pre>
-                    <div className="flex items-center gap-2 justify-end">
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(MIGRATION_SQL);
-                          setCopiedCode(true);
-                          setTimeout(() => setCopiedCode(false), 2000);
-                        }}
-                        className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer shrink-0 flex items-center justify-center gap-1.5 h-10"
-                      >
-                        {copiedCode ? <Check className="w-4 h-4 text-emerald-450" /> : <Copy className="w-4 h-4" />}
-                        <span>{copiedCode ? 'Đã copy!' : 'Copy SQL'}</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          localStorage.removeItem('supabase_migration_needed');
-                          setDbMigrationNeeded(false);
-                        }}
-                        className="px-4 py-2 bg-white text-slate-600 border border-slate-200 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer shrink-0 h-10"
-                      >
-                        Bỏ qua
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
           {loading ? (
             <div className="h-96 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
