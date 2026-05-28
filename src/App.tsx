@@ -187,10 +187,14 @@ export default function App() {
   };
 
   // --- ACTIONS ---
-  const handleAddProduct = (newProd: Omit<Product, 'id' | 'createdAt'>) => {
-    const p = StorageManager.addProduct(newProd);
-    // Reload products list
-    setProducts(StorageManager.getProducts());
+  const handleAddProduct = async (newProd: Omit<Product, 'id' | 'createdAt'>) => {
+    try {
+      await StorageManager.addProduct(newProd);
+      // Reload products list
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      alert("Lỗi: Không thể thêm sản phẩm mới vào hệ thống, vui lòng kiểm tra lại kết nối mạng!");
+    }
   };
 
   const handleUpdateProduct = async (id: string, updatedFields: Partial<Product>) => {
@@ -202,28 +206,44 @@ export default function App() {
     }
   };
 
-  const handleDeleteProduct = (id: string) => {
-    StorageManager.deleteProduct(id);
-    setProducts(StorageManager.getProducts());
+  const handleDeleteProduct = async (id: string) => {
+    try {
+      await StorageManager.deleteProduct(id);
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      alert("Lỗi: Không thể xóa sản phẩm khỏi hệ thống!");
+    }
   };
 
-  const handleAddOrder = (newOrder: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }) => {
-    StorageManager.addOrder(newOrder);
-    // Reload orders and products (since products stock changes)
-    setOrders(StorageManager.getOrders());
-    setProducts(StorageManager.getProducts());
+  const handleAddOrder = async (newOrder: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }) => {
+    try {
+      await StorageManager.addOrder(newOrder);
+      // Reload orders and products (since products stock changes)
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      alert("Lỗi: Không thể tạo đơn hàng mới, vui lòng kiểm tra lại cấu hình hoặc dữ liệu kết nối!");
+    }
   };
 
-  const handleRecordPayment = (customerName: string, type: OrderType, amount: number, paymentMethod: string) => {
-    StorageManager.recordCustomerPayment(customerName, type, amount, paymentMethod);
-    // Reload orders
-    setOrders(StorageManager.getOrders());
+  const handleRecordPayment = async (customerName: string, type: OrderType, amount: number, paymentMethod: string) => {
+    try {
+      await StorageManager.recordCustomerPayment(customerName, type, amount, paymentMethod);
+      // Reload orders
+      setOrders(StorageManager.getOrders());
+    } catch (error) {
+      alert("Lỗi: Không thể ghi nhận giao dịch thu tiền vào hệ thống!");
+    }
   };
 
   const handleUndoPayment = async (paymentId: string, customerName: string, type: OrderType) => {
-    await StorageManager.deletePaymentAndRecalculate(paymentId, customerName, type);
-    // Reload ordersafter rollback
-    setOrders(StorageManager.getOrders());
+    try {
+      await StorageManager.deletePaymentAndRecalculate(paymentId, customerName, type);
+      // Reload ordersafter rollback
+      setOrders(StorageManager.getOrders());
+    } catch (error) {
+      alert("Lỗi: Không thể hủy giao dịch thu tiền!");
+    }
   };
 
   const handleRecordOrderPayment = async (orderId: string, amount: number) => {
@@ -245,10 +265,14 @@ export default function App() {
     }
   };
 
-  const handleDeleteOrder = (id: string) => {
-    StorageManager.deleteOrder(id);
-    setOrders(StorageManager.getOrders());
-    setProducts(StorageManager.getProducts());
+  const handleDeleteOrder = async (id: string) => {
+    try {
+      await StorageManager.deleteOrder(id);
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      alert("Lỗi: Không thể xóa đơn hàng từ hệ thống!");
+    }
   };
 
   const handleUpdateCustomer = async (oldName: string, type: OrderType, newName: string, newTotalSpent?: number, newTotalPaid?: number, newPinCode?: string | null) => {
@@ -261,10 +285,14 @@ export default function App() {
     }
   };
 
-  const handleDeleteCustomer = (customerName: string, type: OrderType) => {
-    StorageManager.deleteCustomer(customerName, type);
-    setOrders(StorageManager.getOrders());
-    setProducts(StorageManager.getProducts());
+  const handleDeleteCustomer = async (customerName: string, type: OrderType) => {
+    try {
+      await StorageManager.deleteCustomer(customerName, type);
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      alert("Lỗi: Không thể xóa khách hàng khỏi hệ thống!");
+    }
   };
 
   if (trackingId) {
