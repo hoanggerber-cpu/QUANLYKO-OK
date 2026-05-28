@@ -102,10 +102,10 @@ export default function App() {
     }
     const path = window.location.pathname;
     const hash = window.location.hash;
-    const match = path.match(/\/(?:tracking|cong-no|c)\/([a-f0-9-]+)/i) || 
-                  hash.match(/\/(?:tracking|cong-no|c)\/([a-f0-9-]+)/i) ||
-                  path.match(/\/(?:tracking|cong-no|c)\/([^\/]+)/i) ||
-                  hash.match(/\/(?:tracking|cong-no|c)\/([^\/]+)/i);
+    const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
+    const cleanHash = hash.endsWith('/') ? hash.slice(0, -1) : hash;
+    const match = cleanPath.match(/\/(?:tracking|cong-no|c)\/([^\/\?\#]+)/i) || 
+                  cleanHash.match(/\/(?:tracking|cong-no|c)\/([^\/\?\#]+)/i);
     if (match) {
       setTrackingId(match[1]);
     }
