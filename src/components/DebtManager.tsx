@@ -25,9 +25,9 @@ interface DebtManagerProps {
   onRecordPayment: (customerName: string, type: OrderType, amount: number, paymentMethod: string) => void;
   onUndoPayment?: (paymentId: string, customerName: string, type: OrderType) => void;
   onRecordOrderPayment?: (orderId: string, amount: number) => void;
-  onUpdateCustomer?: (oldName: string, type: OrderType, newName: string, newTotalSpent?: number, newTotalPaid?: number, newPinCode?: string | null) => void;
+  onUpdateCustomer?: (oldName: string, type: OrderType, newName: string, newTotalSpent?: number, newTotalPaid?: number, newPinCode?: string | null) => any;
   onDeleteCustomer?: (customerName: string, type: OrderType) => void;
-  onUpdateOrder?: (id: string, updatedFields: Partial<Order>) => void;
+  onUpdateOrder?: (id: string, updatedFields: Partial<Order>) => any;
 }
 
 export default function DebtManager({ 
@@ -109,7 +109,7 @@ export default function DebtManager({
     setEditNotes(order.notes || '');
   };
 
-  const handleEditOrderSubmit = (e: React.FormEvent) => {
+  const handleEditOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOrder) return;
 
@@ -162,10 +162,16 @@ export default function DebtManager({
     }
 
     if (onUpdateOrder) {
-      onUpdateOrder(editingOrder.id, updatedFields);
-      showToast('Đã cập nhật chi tiết đơn hàng thành công!', 'success');
+      try {
+        await onUpdateOrder(editingOrder.id, updatedFields);
+        showToast('Đã cập nhật chi tiết đơn hàng thành công!', 'success');
+        setEditingOrder(null);
+      } catch (err) {
+        console.error('Update order submit failed in DebtManager:', err);
+      }
+    } else {
+      setEditingOrder(null);
     }
-    setEditingOrder(null);
   };
 
 
@@ -212,22 +218,28 @@ export default function DebtManager({
     setEditCustPinCode(customer.pinCode || '');
   };
 
-  const handleEditCustomerSubmit = (e: React.FormEvent) => {
+  const handleEditCustomerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCustomer) return;
 
     if (onUpdateCustomer) {
-      onUpdateCustomer(
-        editingCustomer.name,
-        editingCustomer.type,
-        editCustName.trim(),
-        editCustTotalSpent,
-        editCustTotalPaid,
-        editCustPinCode.trim() || null
-      );
-      showToast(`Đã cập nhật công nợ khách hàng ${editCustName.trim()} thành công!`, 'success');
+      try {
+        await onUpdateCustomer(
+          editingCustomer.name,
+          editingCustomer.type,
+          editCustName.trim(),
+          editCustTotalSpent,
+          editCustTotalPaid,
+          editCustPinCode.trim() || null
+        );
+        showToast(`Đã cập nhật công nợ khách hàng ${editCustName.trim()} thành công!`, 'success');
+        setEditingCustomer(null);
+      } catch (err) {
+        console.error('Update customer submit failed in DebtManager:', err);
+      }
+    } else {
+      setEditingCustomer(null);
     }
-    setEditingCustomer(null);
   };
 
   const handleDeleteCustomerConfirm = () => {
