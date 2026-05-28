@@ -67,7 +67,7 @@ const TshirtIconSVG = ({ colorName, strokeColor = '#475569', className = 'w-10 h
 interface InventoryManagerProps {
   products: Product[];
   onAddProduct: (product: Omit<Product, 'id' | 'createdAt'>) => void;
-  onUpdateProduct?: (id: string, updatedFields: Partial<Product>) => void;
+  onUpdateProduct?: (id: string, updatedFields: Partial<Product>) => any;
   onDeleteProduct?: (id: string) => void;
 }
 
@@ -379,25 +379,30 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     setEditImageUrl(prod.image || '');
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
     if (!editName.trim() || !editColor.trim()) return;
 
     if (onUpdateProduct) {
-      onUpdateProduct(editingProduct.id, {
-        name: editName.trim(),
-        color: editColor.trim(),
-        size: editSize.trim() || 'L',
-        stock: Number(editStock),
-        importPrice: Number(editImportPrice),
-        salePrice: Number(editSalePrice),
-        source: editSource,
-        image: editImageUrl
-      });
+      try {
+        await onUpdateProduct(editingProduct.id, {
+          name: editName.trim(),
+          color: editColor.trim(),
+          size: editSize.trim() || 'L',
+          stock: Number(editStock),
+          importPrice: Number(editImportPrice),
+          salePrice: Number(editSalePrice),
+          source: editSource,
+          image: editImageUrl
+        });
+        setEditingProduct(null);
+      } catch (err) {
+        console.error('Update product submit failed:', err);
+      }
+    } else {
+      setEditingProduct(null);
     }
-
-    setEditingProduct(null);
   };
 
   const handleDeleteClick = (prod: Product) => {
