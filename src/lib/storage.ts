@@ -605,53 +605,54 @@ export class StorageManager {
     return newProduct;
   }
 
-  static updateProductStock(id: string, newStock: number): void {
+  static async updateProductStock(id: string, newStock: number): Promise<void> {
+    if (this.isSupabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('products')
+          .update({ stock: newStock })
+          .eq('id', id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase stock update failed:', err);
+        throw err;
+      }
+    }
+
     const products = this.getProducts();
     const idx = products.findIndex(p => p.id === id);
     if (idx !== -1) {
       products[idx].stock = newStock;
       localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
-
-      if (this.isSupabaseActive) {
-        Promise.resolve(
-          supabase.from('products')
-            .update({ stock: newStock })
-            .eq('id', id)
-        )
-        .then(({ error }) => {
-          if (error) console.error('Supabase stock update failed:', error.message);
-        })
-        .catch(err => {
-          console.warn('Supabase stock update promise rejected:', err);
-        });
-      }
     }
   }
 
-  static updateProduct(id: string, updatedFields: Partial<Product>): void {
+  static async updateProduct(id: string, updatedFields: Partial<Product>): Promise<void> {
+    if (this.isSupabaseActive) {
+      const payload: any = {};
+      if (updatedFields.name !== undefined) payload.name = updatedFields.name;
+      if (updatedFields.color !== undefined) payload.color = updatedFields.color;
+      if (updatedFields.size !== undefined) payload.size = updatedFields.size;
+      if (updatedFields.stock !== undefined) payload.stock = updatedFields.stock;
+      if (updatedFields.importPrice !== undefined) payload.import_price = updatedFields.importPrice;
+      if (updatedFields.salePrice !== undefined) payload.sale_price = updatedFields.salePrice;
+      if (updatedFields.source !== undefined) payload.source = updatedFields.source;
+      if (updatedFields.image !== undefined) payload.image = updatedFields.image;
+
+      try {
+        const { error } = await supabase.from('products').update(payload).eq('id', id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Supabase product update failed:', err);
+        throw err;
+      }
+    }
+
     const products = this.getProducts();
     const idx = products.findIndex(p => p.id === id);
     if (idx !== -1) {
       products[idx] = { ...products[idx], ...updatedFields };
       localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
-
-      if (this.isSupabaseActive) {
-        const payload: any = {};
-        if (updatedFields.name !== undefined) payload.name = updatedFields.name;
-        if (updatedFields.color !== undefined) payload.color = updatedFields.color;
-        if (updatedFields.size !== undefined) payload.size = updatedFields.size;
-        if (updatedFields.stock !== undefined) payload.stock = updatedFields.stock;
-        if (updatedFields.importPrice !== undefined) payload.import_price = updatedFields.importPrice;
-        if (updatedFields.salePrice !== undefined) payload.sale_price = updatedFields.salePrice;
-        if (updatedFields.source !== undefined) payload.source = updatedFields.source;
-        if (updatedFields.image !== undefined) payload.image = updatedFields.image;
-
-        Promise.resolve(
-          supabase.from('products').update(payload).eq('id', id)
-        ).catch(err => {
-          console.warn('Supabase product update failed:', err);
-        });
-      }
     }
   }
 
@@ -866,156 +867,158 @@ export class StorageManager {
       });
   }
 
-  static updateOrderPayment(id: string, additionalPay: number, status?: 'pending' | 'completed'): Order | null {
+  static async updateOrderPayment(id: string, additionalPay: number, status?: 'pending' | 'completed'): Promise<Order | null> {
     const orders = this.getOrders();
     const idx = orders.findIndex(o => o.id === id);
-    if (idx !== -1) {
-      const o = orders[idx];
-      o.paidAmount = Math.min(o.totalPrice, o.paidAmount + additionalPay);
-      o.debtAmount = o.totalPrice - o.paidAmount;
-      if (status) {
-        o.status = status;
-      } else if (o.debtAmount === 0) {
-        o.status = 'completed';
-      }
-      
-      this.saveOrders(orders);
+    if (idx === -1) return null;
 
-      if (this.isSupabaseActive) {
-        Promise.resolve(
-          supabase.from('orders')
-            .update({
-              paid_amount: o.paidAmount,
-              debt_amount: o.debtAmount,
-              status: o.status
-            })
-            .eq('id', id)
-        )
-        .then(({ error }) => {
-          if (error) console.error('Supabase order payment update failed:', error.message);
-        })
-        .catch(err => {
-          console.warn('Supabase order payment update promise rejected:', err);
-        });
-      }
-      return o;
+    const o = { ...orders[idx] };
+    o.paidAmount = Math.min(o.totalPrice, o.paidAmount + additionalPay);
+    o.debtAmount = o.totalPrice - o.paidAmount;
+    if (status) {
+      o.status = status;
+    } else if (o.debtAmount === 0) {
+      o.status = 'completed';
     }
-    return null;
+
+    if (this.isSupabaseActive) {
+      try {
+        const { error } = await supabase
+          .from('orders')
+          .update({
+            paid_amount: o.paidAmount,
+            debt_amount: o.debtAmount,
+            status: o.status
+          })
+          .eq('id', id);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Supabase order payment update failed:', err?.message || err);
+        throw err;
+      }
+    }
+
+    orders[idx] = o;
+    this.saveOrders(orders);
+    return o;
   }
 
-  static updateOrder(id: string, updatedFields: Partial<Order>): void {
+  static async updateOrder(id: string, updatedFields: Partial<Order>): Promise<void> {
     const orders = this.getOrders();
     const idx = orders.findIndex(o => o.id === id);
-    if (idx !== -1) {
-      if (orders[idx].type === 'dtf') {
-        const merged = { ...orders[idx], ...updatedFields };
-        const correctQty = this.extractLengthFromOrder(merged);
-        updatedFields.quantity = correctQty;
-      }
-      const existingItems = orders[idx].items || [];
-      if (existingItems.length > 0) {
-        existingItems[0].unitPrice = updatedFields.unitPrice !== undefined ? updatedFields.unitPrice : existingItems[0].unitPrice;
-        existingItems[0].quantity = updatedFields.quantity !== undefined ? updatedFields.quantity : existingItems[0].quantity;
-        existingItems[0].totalPrice = updatedFields.totalPrice !== undefined ? updatedFields.totalPrice : Number((existingItems[0].quantity * existingItems[0].unitPrice).toFixed(0));
-        if (updatedFields.productName !== undefined) existingItems[0].productName = updatedFields.productName;
-        if (updatedFields.color !== undefined) existingItems[0].color = updatedFields.color;
-        orders[idx].items = [existingItems[0]]; // Simplify to single representative item
-      }
+    if (idx === -1) return;
 
-      orders[idx] = { ...orders[idx], ...updatedFields };
-      this.saveOrders(orders);
+    let correctQty = updatedFields.quantity;
+    if (orders[idx].type === 'dtf') {
+      const merged = { ...orders[idx], ...updatedFields };
+      correctQty = this.extractLengthFromOrder(merged);
+      updatedFields.quantity = correctQty;
+    }
 
-      if (this.isSupabaseActive) {
-        const payload: any = {};
-        if (updatedFields.customerName !== undefined) payload.customer_name = updatedFields.customerName;
-        if (updatedFields.type !== undefined) payload.type = updatedFields.type;
-        if (updatedFields.productName !== undefined) payload.product_name = updatedFields.productName;
-        if (updatedFields.color !== undefined) payload.color = updatedFields.color;
-        if (updatedFields.quantity !== undefined) payload.quantity = updatedFields.quantity;
-        if (updatedFields.unitPrice !== undefined) payload.unit_price = updatedFields.unitPrice;
-        if (updatedFields.totalPrice !== undefined) payload.total_price = updatedFields.totalPrice;
-        if (updatedFields.paidAmount !== undefined) payload.paid_amount = updatedFields.paidAmount;
-        if (updatedFields.debtAmount !== undefined) payload.debt_amount = updatedFields.debtAmount;
-        if (updatedFields.status !== undefined) payload.status = updatedFields.status;
-        if (updatedFields.createdAt !== undefined) payload.created_at = updatedFields.createdAt;
+    const payload: any = {};
+    if (updatedFields.customerName !== undefined) payload.customer_name = updatedFields.customerName;
+    if (updatedFields.type !== undefined) payload.type = updatedFields.type;
+    if (updatedFields.productName !== undefined) payload.product_name = updatedFields.productName;
+    if (updatedFields.color !== undefined) payload.color = updatedFields.color;
+    if (updatedFields.quantity !== undefined) payload.quantity = updatedFields.quantity;
+    if (updatedFields.unitPrice !== undefined) payload.unit_price = updatedFields.unitPrice;
+    if (updatedFields.totalPrice !== undefined) payload.total_price = updatedFields.totalPrice;
+    if (updatedFields.paidAmount !== undefined) payload.paid_amount = updatedFields.paidAmount;
+    if (updatedFields.debtAmount !== undefined) payload.debt_amount = updatedFields.debtAmount;
+    if (updatedFields.status !== undefined) payload.status = updatedFields.status;
+    if (updatedFields.createdAt !== undefined) payload.created_at = updatedFields.createdAt;
 
-        // Serialize notes and orderImages under order_images column to avoid columns schema limitations
-        const existingOrder = orders[idx];
-        const notesToSave = updatedFields.notes !== undefined ? updatedFields.notes : (existingOrder.notes || '');
-        const imagesToSave = updatedFields.orderImages !== undefined ? updatedFields.orderImages : (existingOrder.orderImages || []);
+    const existingOrder = orders[idx];
+    const notesToSave = updatedFields.notes !== undefined ? updatedFields.notes : (existingOrder.notes || '');
+    const imagesToSave = updatedFields.orderImages !== undefined ? updatedFields.orderImages : (existingOrder.orderImages || []);
 
-        payload.order_images = JSON.stringify({
-          images: Array.isArray(imagesToSave) ? imagesToSave : [imagesToSave],
-          notes: notesToSave
-        });
+    payload.order_images = JSON.stringify({
+      images: Array.isArray(imagesToSave) ? imagesToSave : [imagesToSave],
+      notes: notesToSave
+    });
 
-        // Run full database synchronization for order and its items safely with async/await
-        const syncOrderDatabase = async () => {
-          try {
-            // 1. Update orders table
-            const { error: orderError } = await supabase
-              .from('orders')
-              .update(payload)
-              .eq('id', id);
+    if (this.isSupabaseActive) {
+      try {
+        // 1. Update orders table
+        const { error: orderError } = await supabase
+          .from('orders')
+          .update(payload)
+          .eq('id', id);
 
-            if (orderError) {
-              console.error('Supabase order update failed:', orderError.message);
-              if (orderError.message?.includes('type integer') || orderError.message?.includes('invalid input syntax')) {
-                localStorage.setItem('supabase_migration_needed', 'true');
-                window.dispatchEvent(new Event('supabase_sync_error'));
-              }
-              // Retry without order_images just in case
-              const retryPayload = { ...payload };
-              delete retryPayload.order_images;
-              const { error: retryErr } = await supabase.from('orders').update(retryPayload).eq('id', id);
-              if (retryErr && (retryErr.message?.includes('type integer') || retryErr.message?.includes('invalid input syntax'))) {
-                localStorage.setItem('supabase_migration_needed', 'true');
-                window.dispatchEvent(new Event('supabase_sync_error'));
-              }
-            } else {
-              console.log('Successfully updated order in Supabase:', id);
-            }
-
-            // 2. Re-sync order_items table representation
-            if (updatedFields.unitPrice !== undefined || updatedFields.quantity !== undefined || updatedFields.productName !== undefined || updatedFields.color !== undefined) {
-              // Delete old items
-              await supabase.from('order_items').delete().eq('order_id', id);
-
-              // Re-insert single updated representative item
-              const targetItem = orders[idx].items?.[0];
-              if (targetItem) {
-                const itemPayload = {
-                  id: targetItem.id || 'itm_' + Math.random().toString(36).substring(2, 11),
-                  order_id: id,
-                  type: targetItem.type,
-                  product_name: targetItem.productName,
-                  color: (targetItem.color || 'Mặc định').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim(),
-                  size: targetItem.size || null,
-                  quantity: targetItem.quantity,
-                  unit_price: targetItem.unitPrice,
-                  total_price: targetItem.totalPrice,
-                  image: targetItem.image || null
-                };
-                const { error: itemError } = await supabase.from('order_items').insert([itemPayload]);
-                if (itemError) {
-                  console.error('Supabase order_items insert failed in updateOrder:', itemError.message);
-                  if (itemError.message?.includes('type integer') || itemError.message?.includes('invalid input syntax')) {
-                    localStorage.setItem('supabase_migration_needed', 'true');
-                    window.dispatchEvent(new Event('supabase_sync_error'));
-                  }
-                } else {
-                  console.log('Successfully re-synced order_items in Supabase:', id);
-                }
-              }
-            }
-          } catch (syncErr: any) {
-            console.error('Catch block error in syncOrderDatabase:', syncErr?.message || syncErr);
+        if (orderError) {
+          console.error('Supabase order update failed:', orderError.message);
+          if (orderError.message?.includes('type integer') || orderError.message?.includes('invalid input syntax')) {
+            localStorage.setItem('supabase_migration_needed', 'true');
+            window.dispatchEvent(new Event('supabase_sync_error'));
           }
-        };
+          // Retry without order_images just in case
+          const retryPayload = { ...payload };
+          delete retryPayload.order_images;
+          const { error: retryErr } = await supabase.from('orders').update(retryPayload).eq('id', id);
+          if (retryErr) {
+            if (retryErr.message?.includes('type integer') || retryErr.message?.includes('invalid input syntax')) {
+              localStorage.setItem('supabase_migration_needed', 'true');
+              window.dispatchEvent(new Event('supabase_sync_error'));
+            }
+            throw retryErr;
+          }
+        }
 
-        syncOrderDatabase();
+        // 2. Re-sync order_items table representation
+        if (updatedFields.unitPrice !== undefined || updatedFields.quantity !== undefined || updatedFields.productName !== undefined || updatedFields.color !== undefined) {
+          // Delete old items
+          await supabase.from('order_items').delete().eq('order_id', id);
+
+          // Get items from updated state
+          const targetItem = { ...(orders[idx].items?.[0] || {}) };
+          targetItem.unitPrice = updatedFields.unitPrice !== undefined ? updatedFields.unitPrice : targetItem.unitPrice;
+          targetItem.quantity = updatedFields.quantity !== undefined ? updatedFields.quantity : targetItem.quantity;
+          targetItem.totalPrice = updatedFields.totalPrice !== undefined ? updatedFields.totalPrice : Number(((targetItem.quantity || 0) * (targetItem.unitPrice || 0)).toFixed(0));
+          if (updatedFields.productName !== undefined) targetItem.productName = updatedFields.productName;
+          if (updatedFields.color !== undefined) targetItem.color = updatedFields.color;
+
+          if (targetItem.productName) {
+            const itemPayload = {
+              id: targetItem.id || 'itm_' + Math.random().toString(36).substring(2, 11),
+              order_id: id,
+              type: targetItem.type || orders[idx].type,
+              product_name: targetItem.productName,
+              color: (targetItem.color || 'Mặc định').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim(),
+              size: targetItem.size || null,
+              quantity: targetItem.quantity,
+              unit_price: targetItem.unitPrice,
+              total_price: targetItem.totalPrice,
+              image: targetItem.image || null
+            };
+            const { error: itemError } = await supabase.from('order_items').insert([itemPayload]);
+            if (itemError) {
+              console.error('Supabase order_items insert failed in updateOrder:', itemError.message);
+              if (itemError.message?.includes('type integer') || itemError.message?.includes('invalid input syntax')) {
+                localStorage.setItem('supabase_migration_needed', 'true');
+                window.dispatchEvent(new Event('supabase_sync_error'));
+              }
+              throw itemError;
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error('Error in updateOrder Supabase sync:', err?.message || err);
+        throw err;
       }
     }
+
+    const existingItems = orders[idx].items || [];
+    if (existingItems.length > 0) {
+      existingItems[0].unitPrice = updatedFields.unitPrice !== undefined ? updatedFields.unitPrice : existingItems[0].unitPrice;
+      existingItems[0].quantity = updatedFields.quantity !== undefined ? updatedFields.quantity : existingItems[0].quantity;
+      existingItems[0].totalPrice = updatedFields.totalPrice !== undefined ? updatedFields.totalPrice : Number((existingItems[0].quantity * existingItems[0].unitPrice).toFixed(0));
+      if (updatedFields.productName !== undefined) existingItems[0].productName = updatedFields.productName;
+      if (updatedFields.color !== undefined) existingItems[0].color = updatedFields.color;
+      orders[idx].items = [existingItems[0]];
+    }
+
+    orders[idx] = { ...orders[idx], ...updatedFields };
+    this.saveOrders(orders);
   }
 
   static deleteOrder(id: string): void {
@@ -1034,14 +1037,14 @@ export class StorageManager {
     }
   }
 
-  static updateCustomer(
+  static async updateCustomer(
     oldName: string,
     type: OrderType,
     newName: string,
     newTotalSpent?: number,
     newTotalPaid?: number,
     newPinCode?: string | null
-  ): void {
+  ): Promise<void> {
     const orders = this.getOrders();
     if (newName.trim() && newName.trim() !== oldName) {
       orders.forEach(o => {
@@ -1069,7 +1072,6 @@ export class StorageManager {
     } else {
       delete pins[`${currentName}_${type}`];
     }
-    this.saveCustomerPins(pins);
 
     if (newTotalSpent !== undefined) {
       const customerOrders = orders.filter(o => o.customerName === currentName && o.type === type);
@@ -1125,44 +1127,45 @@ export class StorageManager {
       }
     }
 
-    this.saveOrders(orders);
-
     if (this.isSupabaseActive) {
-      const customerOrders = orders.filter(o => o.customerName === currentName && o.type === type);
-      customerOrders.forEach(o => {
-        Promise.resolve(
-          supabase.from('orders').update({
+      try {
+        const customerOrders = orders.filter(o => o.customerName === currentName && o.type === type);
+        for (const o of customerOrders) {
+          const { error } = await supabase.from('orders').update({
             customer_name: o.customerName,
             total_price: o.totalPrice,
             paid_amount: o.paidAmount,
             debt_amount: o.debtAmount,
             status: o.status
-          }).eq('id', o.id)
-        ).catch(err => {
-          console.warn('Sync updated customer order to Supabase failed for order', o.id, err);
-        });
-      });
-
-      // Sync customer PIN to Supabase customers table
-      const customerId = `c_${type}_` + btoa(encodeURIComponent(currentName)).replace(/=/g, '');
-      const oldCustomerId = `c_${type}_` + btoa(encodeURIComponent(oldName)).replace(/=/g, '');
-      const syncCustomerDb = async () => {
-        try {
-          if (newName.trim() && newName.trim() !== oldName) {
-            await supabase.from('customers').delete().eq('id', oldCustomerId);
-          }
-          await supabase.from('customers').upsert({
-            id: customerId,
-            name: currentName,
-            type: type,
-            pin_code: pinToSave || null
-          });
-        } catch (err) {
-          console.warn('Supabase customers table pin code sync failed:', err);
+          }).eq('id', o.id);
+          if (error) throw error;
         }
-      };
-      syncCustomerDb();
+
+        // Sync customer PIN to Supabase customers table
+        const customerId = `c_${type}_` + btoa(encodeURIComponent(currentName)).replace(/=/g, '');
+        const oldCustomerId = `c_${type}_` + btoa(encodeURIComponent(oldName)).replace(/=/g, '');
+
+        if (newName.trim() && newName.trim() !== oldName) {
+          const { error: delErr } = await supabase.from('customers').delete().eq('id', oldCustomerId);
+          if (delErr) console.warn('Supabase customer delete failed:', delErr.message);
+        }
+
+        const { error: upsertErr } = await supabase.from('customers').upsert({
+          id: customerId,
+          name: currentName,
+          type: type,
+          pin_code: pinToSave || null
+        });
+        if (upsertErr) throw upsertErr;
+
+      } catch (err: any) {
+        console.error('Supabase customer or related orders updates failed:', err?.message || err);
+        throw err;
+      }
     }
+
+    this.saveOrders(orders);
+    this.saveCustomerPins(pins);
   }
 
   static deleteCustomer(customerName: string, type: OrderType): void {
