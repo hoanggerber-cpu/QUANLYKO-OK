@@ -1543,10 +1543,6 @@ export class StorageManager {
     const customers = this.getCustomers();
     const normalizedId = trackingId.toLowerCase().trim();
     
-    // 0. Support matching by direct unique customer ID (e.g. c_tshirt_..., c_dtf_...)
-    const matchedById = customers.find(c => c.id.toLowerCase() === normalizedId || c.id === trackingId);
-    if (matchedById) return matchedById;
-
     const stripAndNormalize = (str: string): string => {
       return str
         .toLowerCase()
@@ -1559,43 +1555,20 @@ export class StorageManager {
     const targetStripped = stripAndNormalize(normalizedId);
     if (!targetStripped) return null;
 
-    // Detect if target has a specific suffix indicating the type
-    const isTshirtTarget = targetStripped.endsWith('ao') || targetStripped.endsWith('tshirt');
-    const isDtfTarget = targetStripped.endsWith('dtf');
-
-    // 1. If has type suffix, try to find matching customer where c.type corresponds to that suffix
-    if (isTshirtTarget) {
-      const nameWithoutSuffix = targetStripped.endsWith('tshirt') 
-        ? targetStripped.slice(0, -6) 
-        : targetStripped.slice(0, -2);
-      const matched = customers.find(c => c.type === 'tshirt' && stripAndNormalize(c.name) === nameWithoutSuffix);
-      if (matched) return matched;
-    } else if (isDtfTarget) {
-      const nameWithoutSuffix = targetStripped.slice(0, -3);
-      const matched = customers.find(c => c.type === 'dtf' && stripAndNormalize(c.name) === nameWithoutSuffix);
-      if (matched) return matched;
-    }
-
-    // 2. Direct match with stripped customer name (e.g. trangcn2 matches Trang cn 2)
+    // 1. Direct match with stripped customer name (e.g. trangcn2 matches Trang cn 2)
     let matched = customers.find(c => stripAndNormalize(c.name) === targetStripped);
     if (matched) return matched;
 
-    // 3. Direct match with stripped customer name + type suffix (matching "-ao", "-dtf", "-tshirt")
+    // 2. Direct match with stripped customer name + type suffix (matching "-ao", "-dtf", "-tshirt")
     matched = customers.find(c => {
       const nameStripped = stripAndNormalize(c.name);
-      if (c.type === 'dtf') {
-        return nameStripped + 'dtf' === targetStripped;
-      } else if (c.type === 'tshirt') {
-        return nameStripped + 'ao' === targetStripped || nameStripped + 'tshirt' === targetStripped;
-      }
-      return nameStripped === targetStripped ||
-             nameStripped + 'dtf' === targetStripped ||
+      return nameStripped + 'dtf' === targetStripped ||
              nameStripped + 'ao' === targetStripped ||
              nameStripped + 'tshirt' === targetStripped;
     });
     if (matched) return matched;
 
-    // 4. Fallback to full or short UUID matching
+    // 3. Fallback to full or short UUID matching
     return customers.find(c => {
       const full = this.getTrackingIdForCustomer(c.name, c.type).toLowerCase();
       const shortId = full.split('-')[0];
