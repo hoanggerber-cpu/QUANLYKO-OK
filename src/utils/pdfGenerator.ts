@@ -275,7 +275,7 @@ export async function generateReconciliationPDF(
   const typeText = type === 'tshirt' ? 'Bán sỉ Áo thun trơn' : type === 'dtf' ? 'In phim PET DTF gia công' : 'Giao dịch hỗn hợp gộp';
 
   const ordersHtml = ordersList.map((order, idx) => {
-    const isTshirt = order.type === 'tshirt';
+    const isTshirt = order.type === 'tshirt' || order.productName.toLowerCase().includes('áo') || order.productName.toLowerCase().includes('t-shirt');
     const classification = order.color ? `Phân loại: ${order.color}` : 'Giao dịch gộp';
     
     // Check design image
@@ -283,6 +283,16 @@ export async function generateReconciliationPDF(
     const thumbnailHtml = imgUrl
       ? `<img src="${imgUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid #e2e8f0;" referrerPolicy="no-referrer" />`
       : `<div style="width: 32px; height: 32px; background-color: #f8fafc; border-radius: 4px; border: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; color: #94a3b8; font-family: 'JetBrains Mono', monospace;">N/O</div>`;
+
+    let sizeDetails = '';
+    if (isTshirt) {
+      if (order.items && order.items.length > 0) {
+        const parts = order.items.map(item => `Size ${item.size || 'N/A'}: ${item.quantity}`);
+        sizeDetails = `Chi tiết size: ${parts.join(', ')}`;
+      } else if (order.color && order.color.includes('Size')) {
+        sizeDetails = `Chi tiết: ${order.color}`;
+      }
+    }
 
     return `
       <tr style="border-bottom: 1px solid #f1f5f9; font-size: 11px;">
@@ -293,6 +303,7 @@ export async function generateReconciliationPDF(
         <td style="padding: 10px 0; font-weight: 700; color: #0f172a;">
           <div>${order.productName}</div>
           <div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 1.5px;">${classification}</div>
+          ${sizeDetails ? `<div style="font-size: 10px; color: #2563eb; font-weight: bold; margin-top: 3px; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block;">${sizeDetails}</div>` : ''}
         </td>
         <td style="padding: 10px 0; text-align: center; font-weight: 700; color: #0f172a; width: 45px;">${order.quantity}</td>
         <td style="padding: 10px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #475569; width: 90px;">${order.unitPrice.toLocaleString('vi-VN')}</td>
