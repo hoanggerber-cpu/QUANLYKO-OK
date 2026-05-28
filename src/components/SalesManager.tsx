@@ -30,7 +30,7 @@ interface SalesManagerProps {
   orders: Order[];
   products: Product[];
   onAddOrder: (order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }) => void;
-  onUpdateOrder: (id: string, updatedFields: Partial<Order>) => void;
+  onUpdateOrder: (id: string, updatedFields: Partial<Order>) => any;
   onDeleteOrder: (id: string) => void;
 }
 
@@ -118,7 +118,7 @@ export default function SalesManager({
     setEditNotes(order.notes || '');
   };
 
-  const handleEditOrderSubmit = (e: React.FormEvent) => {
+  const handleEditOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOrder) return;
 
@@ -170,10 +170,13 @@ export default function SalesManager({
       updatedFields.createdAt = new Date(editCreatedAt + 'T12:00:00.000Z').toISOString();
     }
 
-    onUpdateOrder(editingOrder.id, updatedFields);
-
-    setEditingOrder(null);
-    showToast('Đã cập nhật đơn hàng thành công!', 'success');
+    try {
+      await onUpdateOrder(editingOrder.id, updatedFields);
+      setEditingOrder(null);
+      showToast('Đã cập nhật đơn hàng thành công!', 'success');
+    } catch (err) {
+      console.error('Update order submit failed:', err);
+    }
   };
 
   const handleDeleteOrderConfirm = () => {
