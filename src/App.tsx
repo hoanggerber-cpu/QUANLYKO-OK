@@ -164,9 +164,13 @@ export default function App() {
     setProducts(StorageManager.getProducts());
   };
 
-  const handleUpdateProduct = (id: string, updatedFields: Partial<Product>) => {
-    StorageManager.updateProduct(id, updatedFields);
-    setProducts(StorageManager.getProducts());
+  const handleUpdateProduct = async (id: string, updatedFields: Partial<Product>) => {
+    try {
+      await StorageManager.updateProduct(id, updatedFields);
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      alert("Lỗi: Không thể lưu sản phẩm vào hệ thống, vui lòng thử lại!");
+    }
   };
 
   const handleDeleteProduct = (id: string) => {
@@ -193,16 +197,23 @@ export default function App() {
     setOrders(StorageManager.getOrders());
   };
 
-  const handleRecordOrderPayment = (orderId: string, amount: number) => {
-    StorageManager.updateOrderPayment(orderId, amount);
-    // Reload orders
-    setOrders(StorageManager.getOrders());
+  const handleRecordOrderPayment = async (orderId: string, amount: number) => {
+    try {
+      await StorageManager.updateOrderPayment(orderId, amount);
+      setOrders(StorageManager.getOrders());
+    } catch (error) {
+      alert("Lỗi: Không thể lưu hóa đơn thanh toán vào hệ thống!");
+    }
   };
 
-  const handleUpdateOrder = (id: string, updatedFields: Partial<Order>) => {
-    StorageManager.updateOrder(id, updatedFields);
-    setOrders(StorageManager.getOrders());
-    setProducts(StorageManager.getProducts());
+  const handleUpdateOrder = async (id: string, updatedFields: Partial<Order>) => {
+    try {
+      await StorageManager.updateOrder(id, updatedFields);
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      alert("Lỗi: Không thể lưu đơn hàng vào hệ thống, vui lòng thử lại!");
+    }
   };
 
   const handleDeleteOrder = (id: string) => {
@@ -211,10 +222,14 @@ export default function App() {
     setProducts(StorageManager.getProducts());
   };
 
-  const handleUpdateCustomer = (oldName: string, type: OrderType, newName: string, newTotalSpent?: number, newTotalPaid?: number, newPinCode?: string | null) => {
-    StorageManager.updateCustomer(oldName, type, newName, newTotalSpent, newTotalPaid, newPinCode);
-    setOrders(StorageManager.getOrders());
-    setProducts(StorageManager.getProducts());
+  const handleUpdateCustomer = async (oldName: string, type: OrderType, newName: string, newTotalSpent?: number, newTotalPaid?: number, newPinCode?: string | null) => {
+    try {
+      await StorageManager.updateCustomer(oldName, type, newName, newTotalSpent, newTotalPaid, newPinCode);
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      alert("Lỗi: Không thể lưu khách hàng vào hệ thống!");
+    }
   };
 
   const handleDeleteCustomer = (customerName: string, type: OrderType) => {
