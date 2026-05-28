@@ -609,11 +609,33 @@ export class StorageManager {
   static async updateProductStock(id: string, newStock: number): Promise<void> {
     if (this.isSupabaseActive) {
       try {
-        const { error } = await supabase
-          .from('products')
-          .update({ stock: newStock })
-          .eq('id', id);
-        if (error) throw error;
+        const { data: existing } = await supabase.from('products').select('id').eq('id', id).maybeSingle();
+        if (!existing) {
+          const products = this.getProducts();
+          const localProd = products.find(p => p.id === id);
+          if (localProd) {
+            const fullPayload: any = {
+              id: localProd.id,
+              name: localProd.name,
+              color: localProd.color,
+              stock: newStock,
+              import_price: localProd.importPrice,
+              sale_price: localProd.salePrice,
+              source: localProd.source,
+              image: localProd.image,
+              created_at: localProd.createdAt || new Date().toISOString()
+            };
+            if (localProd.size) fullPayload.size = localProd.size;
+            const { error: insertErr } = await supabase.from('products').insert([fullPayload]);
+            if (insertErr) throw insertErr;
+          }
+        } else {
+          const { error } = await supabase
+            .from('products')
+            .update({ stock: newStock })
+            .eq('id', id);
+          if (error) throw error;
+        }
       } catch (err) {
         console.error('Supabase stock update failed:', err);
         throw err;
@@ -630,19 +652,44 @@ export class StorageManager {
 
   static async updateProduct(id: string, updatedFields: Partial<Product>): Promise<void> {
     if (this.isSupabaseActive) {
-      const payload: any = {};
-      if (updatedFields.name !== undefined) payload.name = updatedFields.name;
-      if (updatedFields.color !== undefined) payload.color = updatedFields.color;
-      if (updatedFields.size !== undefined) payload.size = updatedFields.size;
-      if (updatedFields.stock !== undefined) payload.stock = updatedFields.stock;
-      if (updatedFields.importPrice !== undefined) payload.import_price = updatedFields.importPrice;
-      if (updatedFields.salePrice !== undefined) payload.sale_price = updatedFields.salePrice;
-      if (updatedFields.source !== undefined) payload.source = updatedFields.source;
-      if (updatedFields.image !== undefined) payload.image = updatedFields.image;
-
       try {
-        const { error } = await supabase.from('products').update(payload).eq('id', id);
-        if (error) throw error;
+        const { data: existing } = await supabase.from('products').select('id').eq('id', id).maybeSingle();
+        if (!existing) {
+          const products = this.getProducts();
+          const localProd = products.find(p => p.id === id);
+          if (localProd) {
+            const finalFields = { ...localProd, ...updatedFields };
+            const fullPayload: any = {
+              id: finalFields.id,
+              name: finalFields.name,
+              color: finalFields.color,
+              stock: Number(finalFields.stock),
+              import_price: Number(finalFields.importPrice),
+              sale_price: Number(finalFields.salePrice),
+              source: finalFields.source,
+              image: finalFields.image || '',
+              created_at: finalFields.createdAt || new Date().toISOString()
+            };
+            if (finalFields.size) fullPayload.size = finalFields.size;
+            const { error: insertErr } = await supabase.from('products').insert([fullPayload]);
+            if (insertErr) throw insertErr;
+          } else {
+            console.warn('Local product not found for update-insert ID:', id);
+          }
+        } else {
+          const payload: any = {};
+          if (updatedFields.name !== undefined) payload.name = updatedFields.name;
+          if (updatedFields.color !== undefined) payload.color = updatedFields.color;
+          if (updatedFields.size !== undefined) payload.size = updatedFields.size;
+          if (updatedFields.stock !== undefined) payload.stock = updatedFields.stock;
+          if (updatedFields.importPrice !== undefined) payload.import_price = updatedFields.importPrice;
+          if (updatedFields.salePrice !== undefined) payload.sale_price = updatedFields.salePrice;
+          if (updatedFields.source !== undefined) payload.source = updatedFields.source;
+          if (updatedFields.image !== undefined) payload.image = updatedFields.image;
+
+          const { error } = await supabase.from('products').update(payload).eq('id', id);
+          if (error) throw error;
+        }
       } catch (err) {
         console.error('Supabase product update failed:', err);
         throw err;
