@@ -29,9 +29,9 @@ const urlToFile = async (url: string, prefixName: string): Promise<File | null> 
 interface SalesManagerProps {
   orders: Order[];
   products: Product[];
-  onAddOrder: (order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }) => void;
+  onAddOrder: (order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }) => any;
   onUpdateOrder: (id: string, updatedFields: Partial<Order>) => any;
-  onDeleteOrder: (id: string) => void;
+  onDeleteOrder: (id: string) => any;
 }
 
 export default function SalesManager({ 
