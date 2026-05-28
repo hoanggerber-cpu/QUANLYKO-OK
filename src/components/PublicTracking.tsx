@@ -48,6 +48,46 @@ interface PublicTrackingProps {
 export default function PublicTracking({ trackingId }: PublicTrackingProps) {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+
+  const setSortedOrders = (rawOrders: Order[]) => {
+    const parseOrderDate = (dateVal: any): Date => {
+      if (!dateVal) return new Date(0);
+      if (dateVal instanceof Date) return dateVal;
+      
+      const dateStr = String(dateVal).trim();
+      
+      // Match DD/MM/YYYY or D/M/YYYY formats
+      const vRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/;
+      const match = dateStr.match(vRegex);
+      if (match) {
+        const day = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1;
+        const year = parseInt(match[3], 10);
+        const timePart = dateStr.slice(match[0].length).trim();
+        if (timePart) {
+          const timeMatch = timePart.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+          if (timeMatch) {
+            const hours = parseInt(timeMatch[1], 10);
+            const mins = parseInt(timeMatch[2], 10);
+            const secs = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
+            return new Date(year, month, day, hours, mins, secs);
+          }
+        }
+        return new Date(year, month, day);
+      }
+      
+      const parsed = new Date(dateStr);
+      return isNaN(parsed.getTime()) ? new Date(0) : parsed;
+    };
+
+    const sorted = [...rawOrders].sort((a, b) => {
+      const dateA = parseOrderDate(a.createdAt || (a as any).date);
+      const dateB = parseOrderDate(b.createdAt || (b as any).date);
+      return dateB.getTime() - dateA.getTime();
+    });
+    setOrders(sorted);
+  };
+
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState<number>(1);
@@ -99,7 +139,7 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
           if (isAuthedInSession) {
             setIsVerified(true);
             const custOrders = StorageManager.getOrdersForCustomer(cust.name, cust.type);
-            setOrders(custOrders);
+            setSortedOrders(custOrders);
           } else {
             setIsVerified(false);
             setOrders([]); // Security: Ensure orders are completely empty until PIN matches
@@ -108,7 +148,7 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
           setHasPinCode(false);
           setIsVerified(true);
           const custOrders = StorageManager.getOrdersForCustomer(cust.name, cust.type);
-          setOrders(custOrders);
+          setSortedOrders(custOrders);
         }
       }
       setLoading(false);
@@ -153,7 +193,7 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
       setIsVerified(true);
 
       const custOrders = StorageManager.getOrdersForCustomer(customer.name, customer.type);
-      setOrders(custOrders);
+      setSortedOrders(custOrders);
     } else {
       setPinError('Mã bảo mật không chính xác. Vui lòng nhập lại.');
     }
