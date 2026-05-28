@@ -66,9 +66,9 @@ const TshirtIconSVG = ({ colorName, strokeColor = '#475569', className = 'w-10 h
 
 interface InventoryManagerProps {
   products: Product[];
-  onAddProduct: (product: Omit<Product, 'id' | 'createdAt'>) => void;
+  onAddProduct: (product: Omit<Product, 'id' | 'createdAt'>) => any;
   onUpdateProduct?: (id: string, updatedFields: Partial<Product>) => any;
-  onDeleteProduct?: (id: string) => void;
+  onDeleteProduct?: (id: string) => any;
 }
 
 export default function InventoryManager({ products, onAddProduct, onUpdateProduct, onDeleteProduct }: InventoryManagerProps) {
@@ -304,7 +304,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !color.trim()) return;
 
@@ -327,42 +327,46 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
            (p.size || 'L').trim().toLowerCase() === trimmedSize.toLowerCase()
     );
 
-    if (exactMatch) {
-      // Automatic merge/gộp: increment stock and use newest prices and details
-      if (onUpdateProduct) {
-        onUpdateProduct(exactMatch.id, {
-          stock: exactMatch.stock + Number(stock),
+    try {
+      if (exactMatch) {
+        // Automatic merge/gộp: increment stock and use newest prices and details
+        if (onUpdateProduct) {
+          await onUpdateProduct(exactMatch.id, {
+            stock: exactMatch.stock + Number(stock),
+            importPrice: Number(importPrice),
+            salePrice: Number(salePrice),
+            image: imageUrl || exactMatch.image || '',
+            source
+          });
+        }
+      } else {
+        // Add as a new item variant
+        await onAddProduct({
+          name: finalName,
+          color: trimmedColor,
+          size: trimmedSize,
+          stock: Number(stock),
           importPrice: Number(importPrice),
           salePrice: Number(salePrice),
-          image: imageUrl || exactMatch.image || '',
-          source
+          source,
+          image: imageUrl || ''
         });
       }
-    } else {
-      // Add as a new item variant
-      onAddProduct({
-        name: finalName,
-        color: trimmedColor,
-        size: trimmedSize,
-        stock: Number(stock),
-        importPrice: Number(importPrice),
-        salePrice: Number(salePrice),
-        source,
-        image: imageUrl || ''
-      });
-    }
 
-    // Reset fields
-    setName('');
-    setColor('');
-    setSize('L');
-    setIsCustomSize(false);
-    setStock(1);
-    setImportPrice(50000);
-    setSalePrice(100000);
-    setSource('self_produced');
-    setImageUrl('');
-    setShowModal(false);
+      // Reset fields
+      setName('');
+      setColor('');
+      setSize('L');
+      setIsCustomSize(false);
+      setStock(1);
+      setImportPrice(50000);
+      setSalePrice(100000);
+      setSource('self_produced');
+      setImageUrl('');
+      setShowModal(false);
+    } catch (err) {
+      console.error('Submit product variant failed:', err);
+    }
   };
 
   const handleEditClick = (prod: Product) => {
@@ -409,11 +413,17 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     setDeletingProduct(prod);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (deletingProduct && onDeleteProduct) {
-      onDeleteProduct(deletingProduct.id);
+      try {
+        await onDeleteProduct(deletingProduct.id);
+        setDeletingProduct(null);
+      } catch (err) {
+        console.error('Delete product confirm failed:', err);
+      }
+    } else {
+      setDeletingProduct(null);
     }
-    setDeletingProduct(null);
   };
 
   return (
