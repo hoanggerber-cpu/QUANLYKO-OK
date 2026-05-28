@@ -172,6 +172,7 @@ export default function DebtManager({
   // Toast notifications states
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage(msg);
@@ -179,6 +180,28 @@ export default function DebtManager({
     setTimeout(() => {
       setToastMessage(prev => prev === msg ? null : prev);
     }, 4000);
+  };
+
+  const handleSyncSupabase = async () => {
+    setIsSyncing(true);
+    try {
+      const isOnline = await StorageManager.checkSupabaseConnection();
+      if (isOnline) {
+        const success = await StorageManager.syncAllDataFromSupabase();
+        if (success) {
+          showToast("Đã đồng bộ hóa dữ liệu từ Supabase thành công!", "success");
+          window.dispatchEvent(new CustomEvent('supabase_sync_success'));
+        } else {
+          showToast("Lỗi đồng bộ dữ liệu từ Supabase!", "error");
+        }
+      } else {
+        showToast("Không thể kết nối đến Supabase. Hệ thống đang chạy chế độ Local Backup.", "error");
+      }
+    } catch (error) {
+      showToast("Lỗi đồng bộ dữ liệu từ Supabase!", "error");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const openEditCustomer = (customer: Customer) => {
@@ -1092,6 +1115,63 @@ export default function DebtManager({
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Box Cấu hình Trạng thái hệ thống */}
+      <div className="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm font-sans max-w-xl mx-auto">
+        <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">Trạng thái hệ thống</h3>
+              <p className="text-xs text-slate-400 font-medium">Kết nối cơ sở dữ liệu thời gian thực</p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleSyncSupabase}
+            disabled={isSyncing}
+            className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all uppercase flex items-center gap-2 cursor-pointer text-white shadow-sm hover:shadow-md ${
+              isSyncing ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {isSyncing ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Đang đồng bộ...</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18" />
+                </svg>
+                <span>Đồng bộ ngay</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-3">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-slate-500 font-medium">Nền tảng lưu trữ:</span>
+            <span className="font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded">Supabase Cloud Postgres</span>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-slate-500 font-medium">Trạng thái đồng bộ:</span>
+            <span className="font-bold text-emerald-600 flex items-center gap-1.5 bg-emerald-50 px-2.5 py-0.5 rounded">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse text-xs"></span>
+              Thời gian thực (Real-time)
+            </span>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-slate-400 mt-4 italic text-center leading-relaxed">
+          * Hệ thống đã tự động cấu hình và đồng bộ hóa, không cần can thiệp bằng lệnh SQL thủ công.
+        </p>
       </div>
 
       </>
