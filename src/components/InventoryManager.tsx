@@ -65,6 +65,18 @@ const TshirtIconSVG = ({ colorName, strokeColor = '#475569', className = 'w-10 h
   );
 };
 
+const FACTORY_COLORS = [
+  { name: 'Trắng', hex: '#ffffff' },
+  { name: 'Đen', hex: '#1e293b' },
+  { name: 'Xám Tiêu', hex: '#94a3b8' },
+  { name: 'Đỏ Đô', hex: '#991b1b' },
+  { name: 'Xanh Navy', hex: '#1e3a8a' },
+  { name: 'Xanh Pastel', hex: '#bfdbfe' },
+  { name: 'Hồng Pastel', hex: '#fbcfee' },
+  { name: 'Vàng Nhạt', hex: '#fef08a' },
+  { name: 'Be/Cream', hex: '#fef3c7' }
+];
+
 const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', 'Freesize'];
 const sortSizes = (a: string, b: string) => {
   const indexA = sizeOrder.indexOf(a.toUpperCase());
@@ -952,35 +964,19 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                   <p className="text-[10px] text-slate-400 font-semibold mt-1.5 ml-1">Sử dụng nút bấm nhanh hoặc nhập phôi số liệu thực tế.</p>
                 </div>
 
-                {/* Import and Sale Price */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-1.5">Giá nhập kho (đ)</label>
-                    <input 
-                      type="number" 
-                      required
-                      value={vImportPrice} 
-                      onChange={e => setVImportPrice(Math.max(0, Number(e.target.value)))}
-                      className="w-full py-2.5 px-3 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl font-bold text-xs"
-                    />
-                    <span className="text-[10px] text-amber-600 font-bold block mt-1 ml-1 truncate">
-                      {formatVND(vImportPrice)}
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-1.5">Giá bán sỉ lẻ (đ)</label>
-                    <input 
-                      type="number" 
-                      required
-                      value={vSalePrice} 
-                      onChange={e => setVSalePrice(Math.max(0, Number(e.target.value)))}
-                      className="w-full py-2.5 px-3 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl font-bold text-xs"
-                    />
-                    <span className="text-[10px] text-emerald-600 font-bold block mt-1 ml-1 truncate">
-                      {formatVND(vSalePrice)}
-                    </span>
-                  </div>
+                {/* Import Price Only */}
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-1.5">Giá nhập kho (đ)</label>
+                  <input 
+                    type="number" 
+                    required
+                    value={vImportPrice} 
+                    onChange={e => setVImportPrice(Math.max(0, Number(e.target.value)))}
+                    className="w-full py-2.5 px-3 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl font-bold text-xs"
+                  />
+                  <span className="text-[10px] text-amber-600 font-bold block mt-1 ml-1 truncate">
+                    {formatVND(vImportPrice)}
+                  </span>
                 </div>
 
                 {/* Source Pill selection */}
@@ -1097,15 +1093,18 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Màu sắc (Ví dụ: Đỏ Cam, Navy)</label>
-                  <input
-                    type="text"
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Màu sắc</label>
+                  <select
                     required
-                    placeholder="Màu sắc..."
                     value={color}
                     onChange={(e) => setColor(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm focus:border-blue-500 transition-all font-bold"
-                  />
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm focus:border-blue-500 transition-all font-bold text-slate-700 cursor-pointer"
+                  >
+                    <option value="" disabled>Chọn màu sắc...</option>
+                    {FACTORY_COLORS.map((c) => (
+                      <option key={c.name} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -1335,13 +1334,17 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Màu sắc</label>
-                  <input
-                    type="text"
+                  <select
                     required
                     value={editColor}
                     onChange={(e) => setEditColor(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold"
-                  />
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm focus:border-blue-500 transition-all font-bold text-slate-700 cursor-pointer"
+                  >
+                    <option value="" disabled>Chọn màu sắc...</option>
+                    {FACTORY_COLORS.map((c) => (
+                      <option key={c.name} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
