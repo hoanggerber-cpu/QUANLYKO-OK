@@ -108,12 +108,10 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   // Edit/Delete Modal states
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editName, setEditName] = useState('');
-  const [editColor, setEditColor] = useState('');
   const [editSize, setEditSize] = useState('L');
   const [editIsCustomSize, setEditIsCustomSize] = useState(false);
   const [editStock, setEditStock] = useState(1);
   const [editImportPrice, setEditImportPrice] = useState(50000);
-  const [editSalePrice, setEditSalePrice] = useState(100000);
   const [editSource, setEditSource] = useState<ProductSource>('self_produced');
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editUploading, setEditUploading] = useState(false);
@@ -122,17 +120,8 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
 
-  // States for Quick Editing of size variants in Detail modal
-  const [editingVariant, setEditingVariant] = useState<Product | null>(null);
-  const [vStock, setVStock] = useState<number>(0);
-  const [vImportPrice, setVImportPrice] = useState<number>(0);
-  const [vSalePrice, setVSalePrice] = useState<number>(0);
-  const [vSource, setVSource] = useState<ProductSource>('self_produced');
-  const [vNote, setVNote] = useState<string>('');
-
   // Form State
   const [name, setName] = useState('');
-  const [color, setColor] = useState('');
   const [size, setSize] = useState('L');
   const [stock, setStock] = useState(1);
   const [importPrice, setImportPrice] = useState(50000);
@@ -336,10 +325,10 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !color.trim()) return;
+    if (!name.trim()) return;
 
     const trimmedName = name.trim();
-    const trimmedColor = color.trim();
+    const trimmedColor = 'Mặc định';
     const trimmedSize = size.trim() || 'L';
 
     // Check if name already exists in a case-insensitive match
@@ -385,7 +374,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
 
       // Reset fields
       setName('');
-      setColor('');
       setSize('L');
       setIsCustomSize(false);
       setStock(1);
@@ -401,13 +389,11 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   const handleEditClick = (prod: Product) => {
     setEditingProduct(prod);
     setEditName(prod.name);
-    setEditColor(prod.color);
     setEditSize(prod.size || 'L');
     const isCustom = !['S', 'M', 'L', 'XL', 'XXL', '3XL', 'Freesize'].includes(prod.size || 'L');
     setEditIsCustomSize(isCustom);
     setEditStock(prod.stock);
     setEditImportPrice(prod.importPrice);
-    setEditSalePrice(prod.salePrice);
     setEditSource(prod.source);
     setEditImageUrl(prod.image || '');
   };
@@ -415,17 +401,17 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
-    if (!editName.trim() || !editColor.trim()) return;
+    if (!editName.trim()) return;
 
     if (onUpdateProduct) {
       try {
         await onUpdateProduct(editingProduct.id, {
           name: editName.trim(),
-          color: editColor.trim(),
+          color: 'Mặc định',
           size: editSize.trim() || 'L',
           stock: Number(editStock),
           importPrice: Number(editImportPrice),
-          salePrice: Number(editSalePrice),
+          salePrice: 0,
           source: editSource,
           image: editImageUrl
         });
@@ -452,39 +438,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
       }
     } else {
       setDeletingProduct(null);
-    }
-  };
-
-  const handleVariantClick = (variant: Product) => {
-    setEditingVariant(variant);
-    setVStock(variant.stock);
-    setVImportPrice(variant.importPrice);
-    setVSalePrice(variant.salePrice);
-    setVSource(variant.source);
-    setVNote(localStorage.getItem(`product_note_${variant.id}`) || '');
-  };
-
-  const handleSaveVariant = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!editingVariant) return;
-
-    if (onUpdateProduct) {
-      try {
-        await onUpdateProduct(editingVariant.id, {
-          stock: Number(vStock),
-          importPrice: Number(vImportPrice),
-          salePrice: Number(vSalePrice),
-          source: vSource
-        });
-        localStorage.setItem(`product_note_${editingVariant.id}`, vNote.trim());
-        setEditingVariant(null);
-      } catch (err) {
-        console.error('Failed to quick-save product variant:', err);
-        alert('Lỗi: Không thể cập nhật biến thể vào hệ thống!');
-      }
-    } else {
-      localStorage.setItem(`product_note_${editingVariant.id}`, vNote.trim());
-      setEditingVariant(null);
     }
   };
 
@@ -604,30 +557,11 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                           {group.name}
                         </h4>
                       </div>
-                      
-                      <p className="text-xs font-mono font-bold text-slate-450 mt-1">
-                        {group.minPrice === group.maxPrice ? (
-                          formatVND(group.minPrice)
-                        ) : (
-                          `${formatVND(group.minPrice)} - ${formatVND(group.maxPrice)}`
-                        )}
-                      </p>
                     </div>
                   </div>
 
                   {/* Summary Micro Badges */}
                   <div className="px-5 pb-5 pt-3 flex flex-wrap gap-1.5 mt-auto border-t border-slate-50 bg-slate-50/10">
-                    {/* Colors */}
-                    {group.colors.map((clr, cIdx) => (
-                      <span key={cIdx} className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-white border border-slate-150 rounded-full text-[10px] font-bold text-slate-600 shadow-2xs">
-                        <span 
-                          className="w-1.5 h-1.5 rounded-full border border-black/5" 
-                          style={{ backgroundColor: getHexFromColorName(clr) }}
-                        />
-                        {clr}
-                      </span>
-                    ))}
-                    
                     {/* Source Badges */}
                     {hasSelfProduced && (
                       <span className="inline-flex items-center px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md text-[9.5px] font-bold">
@@ -681,7 +615,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                   <div>
                     <h3 className="font-extrabold text-xl tracking-tight leading-snug">{selectedGroup.name}</h3>
                     <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      Đại diện tổng quan màu {selectedGroup.items[0]?.color || ''} &bull; Xem chi tiết biến thể và chỉnh sửa nhanh
+                      Xem chi tiết các kích thước và tồn kho áo
                     </p>
                   </div>
                 </div>
@@ -697,7 +631,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
               {/* Modal Content */}
               <div className="p-8 overflow-y-auto space-y-8 flex-1 bg-slate-100/70 border-t border-b border-slate-200">
                 {/* Meta overview parameters in detail view */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                   <div className="bg-white border-2 border-slate-200/60 rounded-2xl p-5 flex flex-col justify-center shadow-xs">
                     <span className="text-[10px] text-slate-450 font-black uppercase tracking-wider block">TỔNG TỒN KHO</span>
                     <span className="text-2xl font-black text-slate-800 mt-1">{selectedGroup.totalStock} cái</span>
@@ -706,17 +640,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                   <div className="bg-white border-2 border-slate-200/60 rounded-2xl p-5 flex flex-col justify-center shadow-xs">
                     <span className="text-[10px] text-slate-450 font-black uppercase tracking-wider block">PHÂN LOẠI SIZE</span>
                     <span className="text-2xl font-black text-slate-800 mt-1">{selectedGroup.sizes.length} cỡ size</span>
-                  </div>
-
-                  <div className="bg-white border-2 border-slate-200/60 rounded-2xl p-5 flex flex-col justify-center shadow-xs">
-                    <span className="text-[10px] text-slate-450 font-black uppercase tracking-wider block">GIÁ SỈ TRÊN MÃ</span>
-                    <span className="text-lg font-black text-blue-650 mt-1">
-                      {selectedGroup.minPrice === selectedGroup.maxPrice ? (
-                        formatVND(selectedGroup.minPrice)
-                      ) : (
-                        `${formatVND(selectedGroup.minPrice)} - ${formatVND(selectedGroup.maxPrice)}`
-                      )}
-                    </span>
                   </div>
 
                   <div className="bg-white border-2 border-slate-200/60 rounded-2xl p-5 flex flex-col justify-center shadow-xs">
@@ -739,7 +662,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                 {/* Sub variants Grid container */}
                 <div>
                   <div className="flex items-center justify-between pb-3 border-b-2 border-slate-250">
-                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">DANH SÁCH BIẾN THỂ PHÔI ÁO (CLICK ĐỂ SỬA NHANH)</h4>
+                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">DANH SÁCH BIẾN THỂ PHÔI ÁO TRONG KHO</h4>
                     <span className="text-[10px] font-black text-slate-450 uppercase tracking-widest bg-slate-200/80 px-2.5 py-1 rounded-md text-slate-600">Phân loại áo thun sỉ</span>
                   </div>
 
@@ -762,8 +685,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                       return (
                         <div
                           key={variant.id}
-                          onClick={() => handleVariantClick(variant)}
-                          className="bg-white border border-slate-200 hover:border-blue-500 shadow-[0_12px_36px_rgba(0,0,0,0.035)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.09)] rounded-3xl p-8 flex flex-col justify-between transition-all duration-300 relative group/variant cursor-pointer text-slate-700 hover:-translate-y-1.5"
+                          className="bg-white border border-slate-200 shadow-[0_12px_36px_rgba(0,0,0,0.035)] rounded-3xl p-8 flex flex-col justify-between relative group/variant text-slate-700"
                         >
                           {/* Mini Card Header info */}
                           <div className="flex items-center justify-between gap-1.5 mb-5">
@@ -772,17 +694,11 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                                 {variant.size || 'L'}
                               </span>
                               <div className="flex flex-col min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span 
-                                    className="w-3.5 h-3.5 rounded-full border border-black/10 inline-block flex-shrink-0 shadow-inner" 
-                                    style={{ backgroundColor: getHexFromColorName(variant.color) }}
-                                  />
-                                  <span className="font-extrabold text-slate-900 truncate text-[14px] tracking-tight" title={variant.color}>
-                                    Màu {variant.color}
-                                  </span>
-                                </div>
+                                <span className="font-extrabold text-slate-900 text-[15px] tracking-tight">
+                                  Biến thể áo thun
+                                </span>
                                 <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide mt-0.5">
-                                  Biến thể phân loại
+                                  Phân loại size: {variant.size}
                                 </span>
                               </div>
                             </div>
@@ -860,14 +776,10 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                           </div>
 
                           {/* Dynamic detailed price table */}
-                          <div className="mt-5 pt-4.5 border-t border-slate-100 text-xs text-slate-600 font-mono space-y-2">
+                          <div className="mt-5 pt-4.5 border-t border-slate-100 text-xs text-slate-600 font-mono">
                             <div className="flex justify-between items-center bg-slate-50/80 py-2.5 px-4 rounded-xl border border-slate-150 shadow-2xs">
-                              <span className="text-slate-400 uppercase font-black text-[9px] tracking-wider">Giá sỉ Nhập:</span>
-                              <span className="font-extrabold text-slate-700 text-xs">{formatVND(variant.importPrice)}</span>
-                            </div>
-                            <div className="flex justify-between items-center bg-blue-50/20 py-2.5 px-4 rounded-xl border border-blue-100/50 font-bold text-blue-650 shadow-2xs">
-                              <span className="text-blue-500 uppercase font-black text-[9px] tracking-wider">Mã Sỉ lẻ:</span>
-                              <span className="font-black text-blue-700 text-sm">{formatVND(variant.salePrice)}</span>
+                              <span className="text-slate-400 uppercase font-black text-[9px] tracking-wider">Giá nhập kho:</span>
+                              <span className="font-extrabold text-slate-705 text-xs">{formatVND(variant.importPrice)}</span>
                             </div>
                           </div>
 
@@ -877,12 +789,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                               📝 <strong>Note:</strong> {localStorage.getItem(`product_note_${variant.id}`)}
                             </div>
                           )}
-
-                          {/* Sửa trực tiếp tap target overlay link */}
-                          <div className="mt-5 pt-3 border-t border-dashed border-slate-100 text-center text-xs text-blue-500 font-black group-hover/variant:text-blue-650 group-hover/variant:underline transition-all flex items-center justify-center gap-1.5 bg-slate-50/30 rounded-lg p-1.5 hover:bg-slate-50">
-                            <span>Chỉnh sửa nhanh biến thể</span>
-                            <span className="transform group-hover/variant:translate-x-1 transition-transform duration-200">&rarr;</span>
-                          </div>
                         </div>
                       );
                     })}
@@ -900,143 +806,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                   Đóng lại
                 </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* SUB LEVEL: DIRECT EDITING POPUP PANEL OVER DETAIL MODAL */}
-        {editingVariant && (
-          <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[60] flex items-center justify-center p-4 animate-fade-in" onClick={() => setEditingVariant(null)}>
-            <div 
-              className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in text-slate-705 flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="px-6 py-5 border-b border-rose-50 flex items-center justify-between bg-blue-900 text-white flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">🛠️</span>
-                  <div>
-                    <h4 className="font-extrabold text-sm tracking-tight">CẬP NHẬT BIẾN THỂ SIZE {editingVariant.size}</h4>
-                    <p className="text-[10px] text-blue-200 font-bold mt-0.5">Sản phẩm áo: {editingVariant.name}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingVariant(null)}
-                  className="text-white hover:text-red-100 font-black cursor-pointer text-xl w-6 h-6 flex items-center justify-center rounded-full bg-blue-800"
-                >
-                  &times;
-                </button>
-              </div>
-
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSaveVariant();
-                }} 
-                className="p-6 space-y-5 flex-1 overflow-y-auto"
-              >
-                {/* Stock Edit with + - buttons */}
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-2">Số lượng tồn kho</label>
-                  <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200/70">
-                    <button 
-                      type="button" 
-                      onClick={() => setVStock(prev => Math.max(0, prev - 1))}
-                      className="w-10 h-10 border border-slate-250 bg-white hover:bg-slate-50 rounded-xl font-black text-slate-600 flex items-center justify-center text-lg transition-transform cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
-                    >
-                      -
-                    </button>
-                    <input 
-                      type="number" 
-                      required
-                      value={vStock} 
-                      onChange={e => setVStock(Math.max(0, Number(e.target.value)))}
-                      className="flex-1 py-2 px-4 border border-slate-350 bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-center rounded-xl font-black text-slate-850 text-base"
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setVStock(prev => prev + 1)}
-                      className="w-10 h-10 border border-slate-250 bg-white hover:bg-slate-50 rounded-xl font-black text-slate-600 flex items-center justify-center text-lg transition-transform cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
-                    >
-                      +
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-400 font-semibold mt-1.5 ml-1">Sử dụng nút bấm nhanh hoặc nhập phôi số liệu thực tế.</p>
-                </div>
-
-                {/* Import Price Only */}
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-1.5">Giá nhập kho (đ)</label>
-                  <input 
-                    type="number" 
-                    required
-                    value={vImportPrice} 
-                    onChange={e => setVImportPrice(Math.max(0, Number(e.target.value)))}
-                    className="w-full py-2.5 px-3 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl font-bold text-xs"
-                  />
-                  <span className="text-[10px] text-amber-600 font-bold block mt-1 ml-1 truncate">
-                    {formatVND(vImportPrice)}
-                  </span>
-                </div>
-
-                {/* Source Pill selection */}
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-2">Nguồn hàng nhập</label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setVSource('self_produced')}
-                      className={`flex-1 py-2.5 px-3 text-xs font-bold rounded-xl border text-center cursor-pointer transition-all ${
-                        vSource === 'self_produced'
-                          ? 'bg-emerald-50 border-emerald-400 text-emerald-700 shadow-xs ring-2 ring-emerald-500/10'
-                          : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50/50'
-                      }`}
-                    >
-                      🌱 Tự SX (Xưởng May)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setVSource('external')}
-                      className={`flex-1 py-2.5 px-3 text-xs font-bold rounded-xl border text-center cursor-pointer transition-all ${
-                        vSource === 'external'
-                          ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-xs ring-2 ring-blue-500/10'
-                          : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50/50'
-                      }`}
-                    >
-                      📦 Ngoài (Nhập Ngoài)
-                    </button>
-                  </div>
-                </div>
-
-                {/* Custom note textarea */}
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-1.5">Ghi chú chi tiết</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Nhập ghi chú chi tiết về lô hàng, nhà dệt, trạng thái chất thun..."
-                    value={vNote}
-                    onChange={e => setVNote(e.target.value)}
-                    className="w-full py-2 px-3 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 rounded-xl text-xs font-medium"
-                  />
-                </div>
-
-                {/* Action buttons */}
-                <div className="flex items-center gap-3 pt-3.5 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setEditingVariant(null)}
-                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-extrabold rounded-xl transition-all uppercase tracking-wider text-center cursor-pointer"
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md uppercase tracking-wider text-center cursor-pointer hover:shadow-lg hover:-translate-y-0.5 duration-150 active:translate-y-0"
-                  >
-                    Lưu Thay Đổi
-                  </button>
-                </div>
-              </form>
             </div>
           </div>
         )}
@@ -1092,22 +861,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Màu sắc</label>
-                  <select
-                    required
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm focus:border-blue-500 transition-all font-bold text-slate-700 cursor-pointer"
-                  >
-                    <option value="" disabled>Chọn màu sắc...</option>
-                    {FACTORY_COLORS.map((c) => (
-                      <option key={c.name} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
+                <div className="col-span-2">
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Kích thước (Size)</label>
                     <button
@@ -1181,7 +935,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                       {imageUrl && !isUnsplashUrl(imageUrl) ? (
                         <img src={imageUrl} alt="Tải lên" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
-                        <TshirtIconSVG colorName={color || 'Blue'} strokeColor="#94a3b8" className="w-12 h-12" />
+                        <TshirtIconSVG colorName="White" strokeColor="#94a3b8" className="w-12 h-12" />
                       )}
                     </div>
 
@@ -1332,22 +1086,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Màu sắc</label>
-                  <select
-                    required
-                    value={editColor}
-                    onChange={(e) => setEditColor(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm focus:border-blue-500 transition-all font-bold text-slate-700 cursor-pointer"
-                  >
-                    <option value="" disabled>Chọn màu sắc...</option>
-                    {FACTORY_COLORS.map((c) => (
-                      <option key={c.name} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
+                <div className="col-span-2">
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Kích thước (Size)</label>
                     <button
@@ -1411,18 +1150,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                   />
                 </div>
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Giá bán sỉ (VND)</label>
-                  <input
-                    type="number"
-                    min="1000"
-                    required
-                    value={editSalePrice}
-                    onChange={(e) => setEditSalePrice(Math.max(1000, Number(e.target.value)))}
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-sm"
-                  />
-                </div>
-
                 {/* Edit Photo Loader */}
                 <div className="col-span-2">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Ảnh thật vải / Phôi áo thực tế</label>
@@ -1431,7 +1158,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                       {editImageUrl && !isUnsplashUrl(editImageUrl) ? (
                         <img src={editImageUrl} alt="Tải lên" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
-                        <TshirtIconSVG colorName={editColor || 'Blue'} strokeColor="#94a3b8" className="w-12 h-12" />
+                        <TshirtIconSVG colorName="White" strokeColor="#94a3b8" className="w-12 h-12" />
                       )}
                     </div>
 
@@ -1529,10 +1256,6 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                 <div className="flex justify-between font-bold">
                   <span>Yêu cầu xóa:</span>
                   <span className="text-rose-650">{deletingProduct.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Phân loại màu:</span>
-                  <span className="font-bold text-slate-700">{deletingProduct.color}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Kích thước (Size):</span>
