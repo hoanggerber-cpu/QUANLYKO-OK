@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Customer, OrderType, Order, PaymentHistory } from '../types';
 import { formatCurrency, generateReconciliationPDF } from '../utils/pdfGenerator';
+import { exportCustomerProfile } from '../utils/customerExport';
 import { StorageManager } from '../lib/storage';
 import { 
   Search, 
@@ -51,6 +52,7 @@ export default function DebtManager({
   const [editCustPinCode, setEditCustPinCode] = useState('');
 
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
+  const [exportingCustomer, setExportingCustomer] = useState(false);
 
   // Edit Order modal states
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -552,6 +554,19 @@ export default function DebtManager({
       );
     };
 
+    const handleExportCustomerProfile = async () => {
+      setExportingCustomer(true);
+      try {
+        await exportCustomerProfile(currentCustomer, orders, StorageManager.getPaymentHistory());
+        showToast('Đã xuất toàn bộ hồ sơ, hình ảnh và công nợ khách hàng!', 'success');
+      } catch (error) {
+        console.error('Customer profile export failed:', error);
+        showToast('Không thể xuất hồ sơ khách hàng. Vui lòng thử lại!', 'error');
+      } finally {
+        setExportingCustomer(false);
+      }
+    };
+
     const handleCopyTrackingLink = () => {
       const slug = StorageManager.getTrackingSlugForCustomer(currentCustomer.name, currentCustomer.type);
       const link = `${window.location.origin}/c/${slug}`;
@@ -627,6 +642,15 @@ export default function DebtManager({
             </button>
 
             {/* Export Receipt */}
+            <button
+              onClick={handleExportCustomerProfile}
+              disabled={exportingCustomer}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all hover:shadow shadow-emerald-500/10 cursor-pointer disabled:cursor-wait uppercase tracking-wider"
+            >
+              <Download className="w-4.5 h-4.5" />
+              <span>{exportingCustomer ? 'Đang gom hình ảnh...' : 'Xuất toàn bộ hồ sơ'}</span>
+            </button>
+
             <button
               onClick={handleExportPDF}
               className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all hover:shadow shadow-blue-500/10 cursor-pointer uppercase tracking-wider"
