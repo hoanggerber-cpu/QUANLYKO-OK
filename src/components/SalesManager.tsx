@@ -26,10 +26,18 @@ const urlToFile = async (url: string, prefixName: string): Promise<File | null> 
   }
 };
 
+const withTimeout = <T,>(promise: PromiseLike<T>, timeoutMs: number): Promise<T> =>
+  Promise.race([
+    Promise.resolve(promise),
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error('Upload timed out')), timeoutMs);
+    })
+  ]);
+
 interface SalesManagerProps {
   orders: Order[];
   products: Product[];
-  onAddOrder: (order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }) => any;
+  onAddOrder: (order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }) => Promise<void>;
   onUpdateOrder: (id: string, updatedFields: Partial<Order>) => any;
   onDeleteOrder: (id: string) => any;
 }
@@ -262,6 +270,7 @@ export default function SalesManager({
   const [downloadingPNG, setDownloadingPNG] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToastMessage(message);
@@ -310,12 +319,15 @@ export default function SalesManager({
             const fileName = `paste_design_${randId}_${Date.now()}.${fileExt}`;
             const filePath = `originals/${fileName}`;
 
-            const { data, error } = await supabase.storage
-              .from('order-images')
-              .upload(filePath, file, {
-                cacheControl: '3600',
-                upsert: false
-              });
+            const { data, error } = await withTimeout(
+              supabase.storage
+                .from('order-images')
+                .upload(filePath, file, {
+                  cacheControl: '3600',
+                  upsert: false
+                }),
+              12000
+            );
 
             if (error) {
               console.warn('Cannot upload pasted image to Supabase:', error.message);
@@ -849,6 +861,7 @@ export default function SalesManager({
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingOrder) return;
     if (!customerName.trim()) return;
     if (cartItems.length === 0) {
       showToast('Vui lòng thêm ít nhất một sản phẩm vào Giỏ Hàng trước khi lưu hóa đơn!', 'error');
@@ -856,6 +869,8 @@ export default function SalesManager({
     }
 
     showToast('Đang xử lý dữ liệu và tải hình ảnh lên hệ thống...', 'info');
+
+    setIsSavingOrder(true);
 
     // 1. Process cart items to upload raw files or images to Supabase Storage and strip any tail-end descriptions
     const cleanCartItems = await Promise.all(
@@ -873,7 +888,7 @@ export default function SalesManager({
         }
 
         // Upload the file if present and get its public storage URL
-        if (fileToUpload) {
+        if (fileToUpload && (!imageUrl || !/^https?:\/\//i.test(imageUrl))) {
           try {
             const file = fileToUpload;
             const fileExt = file.name ? file.name.split('.').pop() || 'png' : 'png';
@@ -881,12 +896,15 @@ export default function SalesManager({
             const fileName = `item_${randId}_${Date.now()}.${fileExt}`;
             const filePath = `originals/${fileName}`;
 
-            const { data, error } = await supabase.storage
-              .from('order-images')
-              .upload(filePath, file, {
-                cacheControl: '3600',
-                upsert: false
-              });
+            const { data, error } = await withTimeout(
+              supabase.storage
+                .from('order-images')
+                .upload(filePath, file, {
+                  cacheControl: '3600',
+                  upsert: false
+                }),
+              12000
+            );
 
             if (error) {
               console.warn('Cannot upload file of cart item to Supabase:', error.message);
@@ -946,7 +964,7 @@ export default function SalesManager({
     const finalStatus: OrderStatus = finalPaid >= totalPrice ? 'completed' : 'pending';
 
     try {
-      onAddOrder({
+      await onAddOrder({
         customerName: customerName.trim(),
         type: finalType,
         productName: finalProductName,
@@ -984,6 +1002,8 @@ export default function SalesManager({
     } catch (err: any) {
       console.error('Lỗi khi ghi sổ hóa đơn:', err);
       showToast(`Lỗi ghi sổ hóa đơn: ${err?.message || 'Lỗi cơ sở dữ liệu'}`, 'error');
+    } finally {
+      setIsSavingOrder(false);
     }
   };
 
@@ -2639,6 +2659,7 @@ export default function SalesManager({
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
+                  disabled={isSavingOrder}
                   className="px-4 py-2 hover:bg-slate-100 border border-slate-200 text-slate-500 font-extrabold text-xs rounded-xl transition-colors cursor-pointer"
                 >
                   Hủy bỏ
@@ -2646,9 +2667,9 @@ export default function SalesManager({
                 <button
                   type="submit"
                   className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold text-xs text-center rounded-xl transition-colors shadow-lg shadow-blue-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider font-bold"
-                  disabled={cartItems.length === 0}
+                  disabled={cartItems.length === 0 || isSavingOrder}
                 >
-                  Lưu hóa đơn & Ghi sổ
+                  {isSavingOrder ? 'Đang lưu hóa đơn...' : 'Lưu hóa đơn & Ghi sổ'}
                 </button>
               </div>
             </form>
