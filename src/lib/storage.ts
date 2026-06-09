@@ -607,11 +607,17 @@ export class StorageManager {
   }
 
   static async updateProductStock(id: string, newStock: number): Promise<void> {
+    const products = this.getProducts();
+    const idx = products.findIndex(p => p.id === id);
+    if (idx !== -1) {
+      products[idx].stock = newStock;
+      localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
+    }
+
     if (this.isSupabaseActive) {
       try {
         const { data: existing } = await supabase.from('products').select('id').eq('id', id).maybeSingle();
         if (!existing) {
-          const products = this.getProducts();
           const localProd = products.find(p => p.id === id);
           if (localProd) {
             const fullPayload: any = {
@@ -638,15 +644,7 @@ export class StorageManager {
         }
       } catch (err) {
         console.error('Supabase stock update failed:', err);
-        throw err;
       }
-    }
-
-    const products = this.getProducts();
-    const idx = products.findIndex(p => p.id === id);
-    if (idx !== -1) {
-      products[idx].stock = newStock;
-      localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
     }
   }
 
@@ -786,8 +784,14 @@ export class StorageManager {
       createdAt: order.createdAt || new Date().toISOString()
     } as Order;
 
-    // Background sync to Supabase (await it to handle errors correctly)
+    // Persist locally first so slow or unavailable remote services never block invoicing.
+    const orders = this.getOrders();
+    orders.unshift(newOrder);
+    this.saveOrders(orders);
+
+    // Best-effort sync to Supabase.
     if (this.isSupabaseActive) {
+      void (async () => {
       const payload: any = {
         id: newOrder.id,
         order_code: newOrder.orderCode,
@@ -835,13 +839,9 @@ export class StorageManager {
         }
       } catch (err: any) {
         console.error('Supabase order initial sync failed:', err);
-        throw err;
       }
+      })();
     }
-
-    const orders = this.getOrders();
-    orders.unshift(newOrder);
-    this.saveOrders(orders);
 
     // Adjust product stock based on items in cart or single order
     if (order.items && order.items.length > 0) {
@@ -855,7 +855,7 @@ export class StorageManager {
             return nameMatches && colorMatches && sizeMatches;
           });
           if (prd) {
-            await this.updateProductStock(prd.id, Math.max(0, prd.stock - item.quantity));
+            void this.updateProductStock(prd.id, Math.max(0, prd.stock - item.quantity));
           }
         }
       }
@@ -871,7 +871,7 @@ export class StorageManager {
         item = products.find(p => p.name === order.productName || p.name + ' - ' + p.color === order.productName);
       }
       if (item) {
-        await this.updateProductStock(item.id, Math.max(0, item.stock - order.quantity));
+        void this.updateProductStock(item.id, Math.max(0, item.stock - order.quantity));
       }
     }
 
