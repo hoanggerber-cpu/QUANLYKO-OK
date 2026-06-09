@@ -772,6 +772,64 @@ export class StorageManager {
     localStorage.setItem(this.STORAGE_PREFIX + 'customer_pins', JSON.stringify(pins));
   }
 
+  private static getDtfPriceKey(customerName: string): string {
+    return customerName.trim().toLocaleLowerCase('vi-VN');
+  }
+
+  static getDtfPricesForCustomer(customerName: string): number[] {
+    if (!customerName.trim()) return [];
+
+    const raw = localStorage.getItem(this.STORAGE_PREFIX + 'dtf_customer_prices');
+    let savedPrices: Record<string, number[]> = {};
+    try {
+      savedPrices = raw ? JSON.parse(raw) : {};
+    } catch {
+      savedPrices = {};
+    }
+
+    const key = this.getDtfPriceKey(customerName);
+    const historicalPrices = this.getOrders()
+      .filter(order =>
+        order.customerName.trim().toLocaleLowerCase('vi-VN') === key &&
+        (order.type === 'dtf' || order.type === 'mixed')
+      )
+      .flatMap(order => {
+        const itemPrices = order.items
+          ?.filter(item => item.type === 'dtf')
+          .map(item => Number(item.unitPrice)) || [];
+        return itemPrices.length > 0 ? itemPrices : [Number(order.unitPrice)];
+      });
+
+    return Array.from(new Set([...(savedPrices[key] || []), ...historicalPrices]))
+      .filter(price => Number.isFinite(price) && price > 0)
+      .sort((a, b) => a - b);
+  }
+
+  static saveDtfPriceForCustomer(customerName: string, price: number): number[] {
+    const trimmedName = customerName.trim();
+    const normalizedPrice = Math.round(Number(price));
+    if (!trimmedName || !Number.isFinite(normalizedPrice) || normalizedPrice <= 0) {
+      throw new Error('Tên khách hàng và đơn giá PET phải hợp lệ.');
+    }
+
+    const storageKey = this.STORAGE_PREFIX + 'dtf_customer_prices';
+    let savedPrices: Record<string, number[]> = {};
+    try {
+      const raw = localStorage.getItem(storageKey);
+      savedPrices = raw ? JSON.parse(raw) : {};
+    } catch {
+      savedPrices = {};
+    }
+
+    const key = this.getDtfPriceKey(trimmedName);
+    savedPrices[key] = Array.from(new Set([...(savedPrices[key] || []), normalizedPrice]))
+      .filter(savedPrice => Number.isFinite(savedPrice) && savedPrice > 0)
+      .sort((a, b) => a - b);
+    localStorage.setItem(storageKey, JSON.stringify(savedPrices));
+
+    return this.getDtfPricesForCustomer(trimmedName);
+  }
+
   static async addOrder(order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }): Promise<Order> {
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const prefix = order.type === 'dtf' ? 'ORD-DTF-' : 'ORD-TS-';
