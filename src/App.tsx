@@ -223,6 +223,7 @@ export default function App() {
       setProducts(StorageManager.getProducts());
     } catch (error) {
       alert("Lỗi: Không thể tạo đơn hàng mới, vui lòng kiểm tra lại cấu hình hoặc dữ liệu kết nối!");
+      throw error;
     }
   };
 
