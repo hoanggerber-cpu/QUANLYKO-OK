@@ -273,6 +273,7 @@ export default function App() {
       setProducts(StorageManager.getProducts());
     } catch (error) {
       alert("Lỗi: Không thể xóa đơn hàng từ hệ thống!");
+      throw error;
     }
   };
 
@@ -457,7 +458,22 @@ export default function App() {
           ) : (
             <>
               {activeSection === 'overview' && stats && (
-                <Overview stats={stats} onNavigate={setActiveSection} />
+                <Overview
+                  stats={stats}
+                  onNavigate={setActiveSection}
+                  onBackup={() => StorageManager.downloadFullBackup()}
+                  onRestore={async (file) => {
+                    if (!window.confirm('Khôi phục sẽ thay dữ liệu hiện tại bằng bản sao lưu. Bạn có chắc chắn không?')) return;
+                    try {
+                      await StorageManager.restoreFullBackup(file);
+                      setProducts(StorageManager.getProducts());
+                      setOrders(StorageManager.getOrders());
+                      alert('Đã khôi phục dữ liệu thành công.');
+                    } catch (error: any) {
+                      alert(error?.message || 'Không thể khôi phục tệp sao lưu.');
+                    }
+                  }}
+                />
               )}
               {activeSection === 'sales' && (
                 <SalesManager 
