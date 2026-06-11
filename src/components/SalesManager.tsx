@@ -66,6 +66,7 @@ export default function SalesManager({
   });
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showOrderCelebration, setShowOrderCelebration] = useState(false);
 
   // Core Edit and Delete states for orders
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -1142,8 +1143,6 @@ export default function SalesManager({
         surcharge: appliedTshirtSurcharge
       });
 
-      showToast('Lưu hóa đơn và ghi sổ thành công!', 'success');
-
       // Reset Form
       setCustomerName('');
       setOrderNotes('');
@@ -1161,6 +1160,7 @@ export default function SalesManager({
       setDtfUnitPrice(55000);
       setOrderDate(new Date().toISOString().split('T')[0]);
       setShowModal(false);
+      setShowOrderCelebration(true);
     } catch (err: any) {
       console.error('Lỗi khi ghi sổ hóa đơn:', err);
       showToast(`Lỗi ghi sổ hóa đơn: ${err?.message || 'Lỗi cơ sở dữ liệu'}`, 'error');
@@ -3333,6 +3333,49 @@ export default function SalesManager({
           >
             &times;
           </button>
+        </div>
+      )}
+
+      {/* Celebration shown after successfully creating an invoice */}
+      {showOrderCelebration && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[250] flex items-center justify-center p-4 animate-fade-in">
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-pink-200 bg-gradient-to-br from-rose-50 via-white to-amber-50 p-7 text-center shadow-2xl animate-scale-in">
+            <div className="absolute -top-12 -left-12 w-32 h-32 rounded-full bg-pink-300/25 blur-2xl" />
+            <div className="absolute -bottom-12 -right-12 w-36 h-36 rounded-full bg-amber-300/30 blur-2xl" />
+            <div className="absolute top-5 left-7 text-pink-400 text-xl animate-bounce">♥</div>
+            <div className="absolute top-8 right-8 text-amber-400 text-xl animate-pulse">✦</div>
+            <div className="absolute bottom-16 left-10 text-amber-400 text-lg animate-pulse">✦</div>
+            <div className="absolute bottom-20 right-10 text-pink-400 text-xl animate-bounce">♥</div>
+
+            <div className="relative">
+              <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shadow-xl shadow-pink-300/50 ring-8 ring-pink-100">
+                <CheckCircle className="w-10 h-10" />
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider mb-3">
+                <Sparkles className="w-3.5 h-3.5" />
+                Hóa đơn đã được ghi sổ
+              </div>
+
+              <h3 className="text-2xl font-black text-rose-600 leading-tight">
+                Chúc mừng vợ yêu
+              </h3>
+              <p className="mt-1 text-lg font-extrabold text-slate-800">
+                siêng năng ghi sổ!
+              </p>
+              <p className="mt-3 text-sm font-medium text-slate-500">
+                Thêm một hóa đơn đã được lưu gọn gàng. Vợ yêu hôm nay thật chăm chỉ!
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setShowOrderCelebration(false)}
+                className="mt-6 w-full py-3 bg-gradient-to-r from-pink-500 to-rose-600 hover:brightness-105 active:scale-[0.98] text-white rounded-xl font-black text-sm shadow-lg shadow-pink-300/40 transition-all cursor-pointer"
+              >
+                Vợ yêu giỏi quá!
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
