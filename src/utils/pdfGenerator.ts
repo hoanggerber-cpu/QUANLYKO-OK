@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Order } from '../types';
+import { getOrderProductSummary } from './orderSummary';
 
 // Utility to remove Vietnamese accents for safe plain-text printing if needed
 export function removeVietnameseAccents(str: string): string {
@@ -162,6 +163,8 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
   }).join('');
 
   const typeText = order.type === 'dtf' ? 'In PET DTF gia công' : order.type === 'tshirt' ? 'Bán Sỉ Áo Thun phôi' : 'Đơn hàng tổng hợp gộp';
+  const surcharge = order.surcharge || 0;
+  const productSubtotal = Math.max(0, order.totalPrice - surcharge);
   const statusColor = order.status === 'completed' ? '#047857' : order.status === 'pending' ? '#b45309' : '#4b5563';
   const statusBg = order.status === 'completed' ? '#d1fae5' : order.status === 'pending' ? '#fef3c7' : '#f3f4f6';
   const statusText = order.status === 'completed' ? 'Đã thu đủ' : order.status === 'pending' ? 'Ghi nợ' : 'Đã hủy';
@@ -218,7 +221,16 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
     <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 15px; display: flex; justify-content: flex-end;">
       <div style="float: right; width: 280px; font-size: 12px; background-color: #f8fafc; padding: 12px 16px; border-radius: 12px; border: 1px solid #f1f5f9;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 500;">
-          <span style="color: #64748b;">Tổng cộng tiền hàng:</span>
+          <span style="color: #64748b;">Tiền hàng:</span>
+          <strong style="color: #0f172a; font-family: 'JetBrains Mono', monospace;">${productSubtotal.toLocaleString('vi-VN')} đ</strong>
+        </div>
+        ${surcharge > 0 ? `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 500;">
+          <span style="color: #b45309;">Phụ thu:</span>
+          <strong style="color: #b45309; font-family: 'JetBrains Mono', monospace;">${surcharge.toLocaleString('vi-VN')} đ</strong>
+        </div>` : ''}
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 700;">
+          <span style="color: #0f172a;">Tổng cộng:</span>
           <strong style="color: #0f172a; font-family: 'JetBrains Mono', monospace;">${order.totalPrice.toLocaleString('vi-VN')} đ</strong>
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 6px; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 6px; font-weight: 600;">
@@ -275,6 +287,7 @@ export async function generateReconciliationPDF(
   const typeText = type === 'tshirt' ? 'Bán sỉ Áo thun trơn' : type === 'dtf' ? 'In phim PET DTF gia công' : 'Giao dịch hỗn hợp gộp';
 
   const ordersHtml = ordersList.map((order, idx) => {
+    const productSummary = getOrderProductSummary(order);
     const isTshirt = order.type === 'tshirt' || order.productName.toLowerCase().includes('áo') || order.productName.toLowerCase().includes('t-shirt');
     const classification = order.color ? `Phân loại: ${order.color}` : 'Giao dịch gộp';
     
@@ -287,7 +300,7 @@ export async function generateReconciliationPDF(
     let sizeDetails = '';
     if (isTshirt) {
       if (order.items && order.items.length > 0) {
-        const parts = order.items.map(item => `Size ${item.size || 'N/A'}: ${item.quantity}`);
+        const parts = order.items.map(item => `${item.productName} - Size ${item.size || 'N/A'}: ${item.quantity}`);
         sizeDetails = `Chi tiết size: ${parts.join(', ')}`;
       } else if (order.color && order.color.includes('Size')) {
         sizeDetails = `Chi tiết: ${order.color}`;
@@ -301,7 +314,7 @@ export async function generateReconciliationPDF(
         <td style="padding: 10px 0; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #1e3a8a; width: 100px;">${order.notes || order.orderCode}</td>
         <td style="padding: 10px 10px 10px 0; text-align: center; width: 45px;">${thumbnailHtml}</td>
         <td style="padding: 10px 0; font-weight: 700; color: #0f172a;">
-          <div>${order.productName}</div>
+          <div>${productSummary}</div>
           <div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 1.5px;">${classification}</div>
           ${sizeDetails ? `<div style="font-size: 10px; color: #2563eb; font-weight: bold; margin-top: 3px; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block;">${sizeDetails}</div>` : ''}
         </td>
