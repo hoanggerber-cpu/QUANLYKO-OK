@@ -779,6 +779,12 @@ export default function DebtManager({
                               </>
                             )}
                           </div>
+                          {(order.surcharge || 0) > 0 && (
+                            <div className="inline-flex items-center gap-1.5 mt-1 px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-800">
+                              <span>Phụ thu riêng đơn này:</span>
+                              <strong className="font-mono">{formatCurrency(order.surcharge || 0)}</strong>
+                            </div>
+                          )}
                           {Array.isArray(order.orderImages) && order.orderImages.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1.5">
                               {order.orderImages.map((img, imIdx) => (
@@ -799,7 +805,13 @@ export default function DebtManager({
                         </div>
                       </td>
                       <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
-                        {formatCurrency(order.totalPrice)}
+                        {(order.surcharge || 0) > 0 ? (
+                          <div className="space-y-0.5 text-[10px]">
+                            <div className="text-slate-500 font-medium">Hàng: {formatCurrency(order.totalPrice - (order.surcharge || 0))}</div>
+                            <div className="text-amber-700">Phụ thu: +{formatCurrency(order.surcharge || 0)}</div>
+                            <div className="text-slate-800 text-xs border-t border-slate-200 pt-0.5">Tổng: {formatCurrency(order.totalPrice)}</div>
+                          </div>
+                        ) : formatCurrency(order.totalPrice)}
                       </td>
                       <td className="py-4 px-6 text-right font-mono text-emerald-600 font-medium">
                         {formatCurrency(order.paidAmount)}
