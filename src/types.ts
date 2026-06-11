@@ -25,6 +25,7 @@ export type OrderStatus = 'pending' | 'completed' | 'cancelled';
 
 export interface OrderItem {
   id: string;
+  productId?: string;
   type: 'dtf' | 'tshirt';
   productName: string;
   color: string;
@@ -54,6 +55,7 @@ export interface Order {
   orderImages?: string[];
   items?: OrderItem[];
   notes?: string;
+  surcharge?: number;
 }
 
 export interface Customer {
