@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory } from '../types';
+import { getOrderProductSummary } from '../utils/orderSummary';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://ykbsykqqdjqgnpslemsw.supabase.co';
 const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYnN5a3FxZGpxZ25wc2xlbXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTM0ODUsImV4cCI6MjA5NTA4OTQ4NX0.UY-W_jJYWcJrsT4_D-XQmVdfWy4UXWEXsfF-WBMjxwk';
@@ -1546,8 +1547,9 @@ export class StorageManager {
       }
 
       const client = customersMap.get(key)!;
-      if (!client.productsTaken.includes(order.productName)) {
-        client.productsTaken.push(order.productName);
+      const productSummary = getOrderProductSummary(order);
+      if (!client.productsTaken.includes(productSummary)) {
+        client.productsTaken.push(productSummary);
       }
       client.totalSpent += order.totalPrice;
       client.paidAmount += order.paidAmount;
