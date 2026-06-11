@@ -1296,6 +1296,10 @@ export class StorageManager {
   }
 
   static async deleteOrder(id: string): Promise<void> {
+    const orders = this.getOrders();
+    const orderToDelete = orders.find(order => order.id === id);
+    if (!orderToDelete) return;
+
     if (this.isSupabaseActive) {
       try {
         const { error: itemsError } = await supabase.from('order_items').delete().eq('order_id', id);
@@ -1308,7 +1312,57 @@ export class StorageManager {
       }
     }
 
-    const orders = this.getOrders();
+    // Return every T-shirt in the deleted invoice to its exact inventory variant.
+    const tshirtItems = orderToDelete.items?.filter(item => item.type === 'tshirt') || [];
+    if (tshirtItems.length > 0 || orderToDelete.type === 'tshirt') {
+      const products = this.getProducts();
+      const quantitiesToReturn = new Map<string, number>();
+      const findProduct = (item: OrderItem) => {
+        if (item.productId) {
+          const exactProduct = products.find(product => product.id === item.productId);
+          if (exactProduct) return exactProduct;
+        }
+        const itemSize = item.size || item.color.match(/Size\s+([^-]+)/i)?.[1]?.trim();
+        return products.find(product =>
+          product.name === item.productName &&
+          product.size === itemSize &&
+          (product.color === item.color || item.color.includes(product.color))
+        );
+      };
+
+      if (tshirtItems.length > 0) {
+        tshirtItems.forEach(item => {
+          const product = findProduct(item);
+          const quantity = Number(item.quantity) || 0;
+          if (product && quantity > 0) {
+            quantitiesToReturn.set(product.id, (quantitiesToReturn.get(product.id) || 0) + quantity);
+          }
+        });
+      } else {
+        const legacyItem: OrderItem = {
+          id: `legacy_${orderToDelete.id}`,
+          type: 'tshirt',
+          productName: orderToDelete.productName,
+          color: orderToDelete.color,
+          quantity: orderToDelete.quantity,
+          unitPrice: orderToDelete.unitPrice,
+          totalPrice: orderToDelete.totalPrice
+        };
+        const product = findProduct(legacyItem) || products.find(item =>
+          item.name === orderToDelete.productName ||
+          `${item.name} - ${item.color}` === orderToDelete.productName
+        );
+        if (product && orderToDelete.quantity > 0) {
+          quantitiesToReturn.set(product.id, orderToDelete.quantity);
+        }
+      }
+
+      for (const [productId, quantity] of quantitiesToReturn) {
+        const product = products.find(item => item.id === productId);
+        if (product) await this.updateProductStock(productId, product.stock + quantity);
+      }
+    }
+
     const filtered = orders.filter(o => o.id !== id);
     this.saveOrders(filtered);
   }
