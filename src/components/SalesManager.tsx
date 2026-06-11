@@ -307,11 +307,22 @@ export default function SalesManager({
     }
   };
 
-  const handleDeleteOrderConfirm = () => {
+  const handleDeleteOrderConfirm = async () => {
     if (!deletingOrder) return;
-    onDeleteOrder(deletingOrder.id);
-    setDeletingOrder(null);
-    showToast('Đã xóa đơn hàng thành công!', 'success');
+    const deletedOrder = deletingOrder;
+    try {
+      await onDeleteOrder(deletedOrder.id);
+      setDeletingOrder(null);
+      showToast(
+        deletedOrder.type === 'tshirt'
+          ? 'Đã xóa đơn áo thun và hoàn trả số lượng về kho!'
+          : 'Đã xóa đơn hàng thành công!',
+        'success'
+      );
+    } catch (error) {
+      console.error('Delete order failed:', error);
+      showToast('Không thể xóa đơn hàng. Vui lòng thử lại!', 'error');
+    }
   };
 
   // Form states - client name and date
@@ -3780,7 +3791,9 @@ export default function SalesManager({
                 </div>
               </div>
               <p className="text-[11px] text-slate-400 italic">
-                Lưu ý: Hành động này là vĩnh viễn và không thể khôi phục lại.
+                {deletingOrder.type === 'tshirt'
+                  ? 'Số lượng áo trong hóa đơn sẽ được hoàn trả về đúng mẫu, màu và size trong kho.'
+                  : 'Lưu ý: Hành động này là vĩnh viễn và không thể khôi phục lại.'}
               </p>
             </div>
 
