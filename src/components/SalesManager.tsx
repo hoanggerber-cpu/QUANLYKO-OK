@@ -233,6 +233,7 @@ export default function SalesManager({
   const [tshirtPrintFile, setTshirtPrintFile] = useState<File | undefined>(undefined);
   const [uploadingTshirtPrintImage, setUploadingTshirtPrintImage] = useState(false);
   const [customTshirtPrice, setCustomTshirtPrice] = useState<number>(100000);
+  const [tshirtSurcharge, setTshirtSurcharge] = useState<number>(0);
 
   // Synchronize customTshirtPrice when selectedTshirtGroup updates
   useEffect(() => {
@@ -655,12 +656,25 @@ export default function SalesManager({
 
   const activeGroupSizes = products.filter(p => `${p.name} - Màu: ${p.color}` === selectedTshirtGroup);
 
-  const getTshirtTotal = () => {
-    return activeGroupSizes.reduce((acc, p) => acc + ((tshirtSizesQty[p.id] || 0) * customTshirtPrice), 0);
+  const getReservedTshirtQuantity = (product: Product) => {
+    return cartItems
+      .filter(item =>
+        item.type === 'tshirt' &&
+        (item.productId === product.id || (
+          !item.productId &&
+          item.productName === product.name &&
+          item.size === product.size &&
+          item.color.includes(product.color)
+        ))
+      )
+      .reduce((sum, item) => sum + item.quantity, 0);
   };
 
   // Calculate total price reactively based on shopping cart
-  const totalPrice = cartItems.reduce((acc, item) => acc + item.totalPrice, 0);
+  const productSubtotal = cartItems.reduce((acc, item) => acc + item.totalPrice, 0);
+  const hasTshirtItems = cartItems.some(item => item.type === 'tshirt');
+  const appliedTshirtSurcharge = hasTshirtItems ? tshirtSurcharge : 0;
+  const totalPrice = productSubtotal + appliedTshirtSurcharge;
 
   const finalPaid = paymentType === 'full' 
     ? totalPrice 
@@ -729,10 +743,7 @@ export default function SalesManager({
 
     // Check stock limit
     for (const prod of nonZeroSizes) {
-      const alreadyInCart = cartItems
-        .filter(item => item.type === 'tshirt' && item.productName === prod.name && item.color.includes(`Size ${prod.size || 'N/A'}`))
-        .reduce((sum, item) => sum + item.quantity, 0);
-
+      const alreadyInCart = getReservedTshirtQuantity(prod);
       const orderQty = tshirtSizesQty[prod.id] || 0;
       if (orderQty + alreadyInCart > prod.stock) {
         showToast(`Số lượng đặt mua (${orderQty + alreadyInCart}) của dòng Size ${prod.size} vượt quá hàng tồn trong kho (${prod.stock})!`, 'error');
@@ -742,6 +753,7 @@ export default function SalesManager({
 
     const itemsToAdd: OrderItem[] = nonZeroSizes.map(prod => ({
       id: 'ci_' + Math.random().toString(36).substring(2, 11),
+      productId: prod.id,
       type: 'tshirt',
       productName: prod.name,
       color: `${prod.color} - Size ${prod.size || 'N/A'}`,
@@ -1007,7 +1019,8 @@ export default function SalesManager({
         createdAt: orderDate ? new Date(orderDate).toISOString() : new Date().toISOString(),
         orderImages: orderImagesUrl,
         items: cleanCartItems,
-        notes: orderNotes.trim()
+        notes: orderNotes.trim(),
+        surcharge: appliedTshirtSurcharge
       });
 
       showToast('Lưu hóa đơn và ghi sổ thành công!', 'success');
@@ -1019,6 +1032,7 @@ export default function SalesManager({
       setSelectedTshirtGroup('');
       setTshirtSizesQty({});
       setTshirtPrintImage(undefined);
+      setTshirtSurcharge(0);
       setIsManualDtf(false);
       setManualDtfMeters(1.0);
       setManualDtfImage(undefined);
@@ -1044,6 +1058,7 @@ export default function SalesManager({
       setTshirtSizesQty({});
     }
     setTshirtPrintImage(undefined);
+    setTshirtSurcharge(0);
     setIsManualDtf(false);
     setManualDtfMeters(1.0);
     setManualDtfImage(undefined);
@@ -2475,34 +2490,40 @@ export default function SalesManager({
                   {selectedTshirtGroup && (
                     <div className="bg-slate-50 p-4.5 rounded-xl border border-slate-200">
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                        Kiêm phân size & Nhập số lượng mua (Tồn kho thực tế)
+                        Kiểm phân size & Nhập số lượng mua (Tồn khả dụng sau khi giữ trong giỏ)
                       </label>
                       <div className="divide-y divide-slate-200/60 max-h-48 overflow-y-auto pr-1">
-                        {activeGroupSizes.map((prod) => (
-                          <div key={prod.id} className="grid grid-cols-12 gap-2 py-2 items-center text-xs">
+                        {activeGroupSizes.map((prod) => {
+                          const reservedQuantity = getReservedTshirtQuantity(prod);
+                          const availableStock = Math.max(0, prod.stock - reservedQuantity);
+                          return (
+                            <div key={prod.id} className="grid grid-cols-12 gap-2 py-2 items-center text-xs">
                             <div className="col-span-3 font-extrabold text-slate-800 text-sm">
                               Size {prod.size}
                             </div>
                             <div className="col-span-5 text-slate-500 font-medium">
-                              Tồn kho: <span className={`font-bold ${prod.stock <= 10 ? 'text-amber-600' : 'text-slate-700'}`}>{prod.stock} chiếc</span>
+                              Tồn khả dụng: <span className={`font-bold ${availableStock <= 10 ? 'text-amber-600' : 'text-slate-700'}`}>{availableStock} chiếc</span>
+                              {reservedQuantity > 0 && <span className="block text-[9px] text-blue-600">Đã giữ trong giỏ: {reservedQuantity}</span>}
                             </div>
                             <div className="col-span-4 flex justify-end">
                               <input
                                 type="number"
                                 min="0"
-                                max={prod.stock}
+                                max={availableStock}
                                 placeholder="0"
                                 value={tshirtSizesQty[prod.id] || ''}
                                 onChange={(e) => {
                                   let val = parseInt(e.target.value) || 0;
-                                  val = Math.min(prod.stock, Math.max(0, val));
+                                  val = Math.min(availableStock, Math.max(0, val));
                                   setTshirtSizesQty(prev => ({ ...prev, [prod.id]: val }));
                                 }}
+                                disabled={availableStock === 0}
                                 className="w-18 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                             </div>
-                          </div>
-                        ))}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -2547,6 +2568,21 @@ export default function SalesManager({
                     </div>
                   </div>
 
+                  <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200 space-y-1.5">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-amber-800">
+                      Phụ thu đơn áo thun (VND)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Ví dụ: tiền ship, đóng gói..."
+                      value={tshirtSurcharge || ''}
+                      onChange={(e) => setTshirtSurcharge(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-lg text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                    <p className="text-[10px] text-amber-700">Khoản này chỉ được tính khi giỏ đơn có áo thun.</p>
+                  </div>
+
                   {/* T-shirt Add to Cart trigger */}
                   <button
                     type="button"
@@ -2567,9 +2603,16 @@ export default function SalesManager({
                     <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Bước 2: Giỏ đơn hàng hiện tại ({cartItems.length} sản phẩm)</span>
                   </div>
                   {cartItems.length > 0 && (
-                    <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-150 shadow-sm animate-scale-in">
-                      Tổng tiền: {formatCurrency(totalPrice)}
-                    </span>
+                    <div className="text-right">
+                      {appliedTshirtSurcharge > 0 && (
+                        <span className="block text-[9px] font-mono font-bold text-amber-700">
+                          Hàng: {formatCurrency(productSubtotal)} + Phụ thu: {formatCurrency(appliedTshirtSurcharge)}
+                        </span>
+                      )}
+                      <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-150 shadow-sm animate-scale-in">
+                        Tổng tiền: {formatCurrency(totalPrice)}
+                      </span>
+                    </div>
                   )}
                 </div>
 
@@ -3075,6 +3118,18 @@ export default function SalesManager({
                 {/* Billing totals */}
                 <div className="space-y-2 pt-3 border-t border-dashed border-slate-300">
                   <div className="space-y-0.5 text-[11px]">
+                    {(previewOrder.surcharge || 0) > 0 && (
+                      <>
+                        <div className="flex justify-between items-center font-medium">
+                          <span className="text-slate-400">TIỀN HÀNG:</span>
+                          <span className="font-bold text-slate-700 font-mono">{formatCurrency(previewOrder.totalPrice - (previewOrder.surcharge || 0))}</span>
+                        </div>
+                        <div className="flex justify-between items-center font-medium text-amber-700">
+                          <span>PHỤ THU:</span>
+                          <span className="font-bold font-mono">{formatCurrency(previewOrder.surcharge || 0)}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-between items-center font-medium">
                       <span className="text-slate-400">TỔNG CỘNG:</span>
                       <span className="font-bold text-slate-700 font-mono">{formatCurrency(previewOrder.totalPrice)}</span>
