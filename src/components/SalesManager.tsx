@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import { Order, Product, OrderType, OrderStatus, OrderItem } from '../types';
 import { generateInvoicePDF, formatCurrency } from '../utils/pdfGenerator';
+import { buildCartProductSummary } from '../utils/orderSummary';
 import { Search, Plus, Filter, FileText, Download, CheckCircle, Clock, Ban, ArrowUpRight, DollarSign, Upload, Image as ImageIcon, Eye, Calendar, Trash2, ShoppingBag, ChevronDown, ChevronUp, List, Layers, ChevronLeft, ChevronRight, ExternalLink, RotateCw, Sparkles, X } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
 
@@ -219,7 +220,7 @@ export default function SalesManager({
     const finalPaid = Math.min(finalTotal, Math.max(0, Number(editPaidAmountStr) || 0));
     const finalDebt = Math.max(0, finalTotal - finalPaid);
     const quantity = cleanItems.reduce((sum, item) => sum + item.quantity, 0);
-    const productName = `Áo thun phôi (${quantity} chiếc)`;
+    const productName = buildCartProductSummary(cleanItems);
     const color = Array.from(new Set(cleanItems.map(item => item.color.split(' - ')[0]))).join(', ');
 
     try {
@@ -1113,13 +1114,7 @@ export default function SalesManager({
     const finalType: OrderType = isMixed ? 'mixed' : firstType;
 
     // Synthesize general name
-    const tshirtSum = cleanCartItems.filter(i => i.type === 'tshirt').reduce((sum, i) => sum + i.quantity, 0);
-    const dtfSum = cleanCartItems.filter(i => i.type === 'dtf').reduce((sum, i) => sum + i.quantity, 0);
-
-    const summaryParts: string[] = [];
-    if (tshirtSum > 0) summaryParts.push(`Áo thun phôi (${tshirtSum} chiếc)`);
-    if (dtfSum > 0) summaryParts.push(`In PET phim (${dtfSum.toFixed(1)}m)`);
-    const finalProductName = summaryParts.join(' & ') || 'Đơn gộp tổng hợp';
+    const finalProductName = buildCartProductSummary(cleanCartItems);
 
     const finalColor = cleanCartItems
       .map(i => (i.color || '').split(' - ')[0])
