@@ -215,6 +215,26 @@ export class StorageManager {
   private static STORAGE_PREFIX = 'petshirt_admin_';
   private static isSupabaseActive = false;
 
+  private static saveLocalBackup(key: string, value: unknown): void {
+    try {
+      localStorage.setItem(
+        this.STORAGE_PREFIX + 'backup_' + key,
+        JSON.stringify({ createdAt: new Date().toISOString(), data: value })
+      );
+    } catch (error) {
+      console.warn(`Unable to create local backup for ${key}:`, error);
+    }
+  }
+
+  private static mergeById<T extends { id: string }>(remote: T[], local: T[]): T[] {
+    const merged = new Map<string, T>();
+    remote.forEach(item => merged.set(item.id, item));
+    local.forEach(item => {
+      if (!merged.has(item.id)) merged.set(item.id, item);
+    });
+    return Array.from(merged.values());
+  }
+
   private static saveOrders(orders: Order[]): void {
     const key = this.STORAGE_PREFIX + 'orders';
     try {
@@ -226,6 +246,14 @@ export class StorageManager {
           return rest;
         })
       }));
+      const previous = localStorage.getItem(key);
+      if (previous) {
+        try {
+          this.saveLocalBackup('orders', JSON.parse(previous));
+        } catch {
+          this.saveLocalBackup('orders', previous);
+        }
+      }
       localStorage.setItem(key, JSON.stringify(sanitized));
     } catch (e: any) {
       const isQuotaError = 
@@ -277,17 +305,7 @@ export class StorageManager {
             }
           }
           
-          // If still fails, severe truncation keeping only latest 50 orders
-          if (pruned.length > 50) {
-            const cut = pruned.slice(0, 50);
-            try {
-              localStorage.setItem(key, JSON.stringify(cut));
-              console.log('Truncated orders list to 50 most recent due to severe browser storage limitations.');
-              return;
-            } catch (truncErr) {
-              console.error('Truncation failed to write:', truncErr);
-            }
-          }
+          console.error('Refusing to truncate accounting records because browser storage is full.');
         } catch (copyErr) {
           console.error('Failed to parse clean copy for pruning:', copyErr);
         }
@@ -316,6 +334,56 @@ export class StorageManager {
 
   static getIsSupabaseActive(): boolean {
     return this.isSupabaseActive;
+  }
+
+  static downloadFullBackup(): void {
+    const backup = {
+      format: 'petshirt-backup-v1',
+      createdAt: new Date().toISOString(),
+      products: this.getProducts(),
+      orders: this.getOrders(),
+      paymentHistory: this.getPaymentHistory(),
+      customerPins: this.getCustomerPins(),
+      dtfCustomerPrices: (() => {
+        try {
+          return JSON.parse(localStorage.getItem(this.STORAGE_PREFIX + 'dtf_customer_prices') || '{}');
+        } catch {
+          return {};
+        }
+      })()
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `sao-luu-du-lieu-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  static async restoreFullBackup(file: File): Promise<void> {
+    const parsed = JSON.parse(await file.text());
+    if (
+      parsed?.format !== 'petshirt-backup-v1' ||
+      !Array.isArray(parsed.products) ||
+      !Array.isArray(parsed.orders) ||
+      !Array.isArray(parsed.paymentHistory)
+    ) {
+      throw new Error('Tệp sao lưu không đúng định dạng hoặc đã bị hỏng.');
+    }
+
+    this.saveLocalBackup('products_before_restore', this.getProducts());
+    this.saveLocalBackup('orders_before_restore', this.getOrders());
+    this.saveLocalBackup('payment_history_before_restore', this.getPaymentHistory());
+
+    localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(parsed.products));
+    this.saveOrders(parsed.orders);
+    this.savePaymentHistory(parsed.paymentHistory);
+    this.saveCustomerPins(parsed.customerPins || {});
+    localStorage.setItem(this.STORAGE_PREFIX + 'dtf_customer_prices', JSON.stringify(parsed.dtfCustomerPrices || {}));
   }
 
   static extractLengthFromOrder(order: { type: string; color?: string; product_name?: string; productName?: string; quantity?: any; totalPrice?: any; unitPrice?: any; items?: any[] }): number {
@@ -402,6 +470,18 @@ export class StorageManager {
     return '';
   }
 
+  static parseOrderSurcharge(val: any): number {
+    if (!val || typeof val !== 'string') return 0;
+    const trimmed = val.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const surcharge = Number(JSON.parse(trimmed)?.surcharge);
+        return Number.isFinite(surcharge) && surcharge > 0 ? surcharge : 0;
+      } catch (e) {}
+    }
+    return 0;
+  }
+
   static async syncAllDataFromSupabase(): Promise<boolean> {
     try {
       const isOnline = await this.checkSupabaseConnection();
@@ -427,7 +507,9 @@ export class StorageManager {
           source: p.source || 'self_produced',
           createdAt: p.created_at || new Date().toISOString()
         }));
-        localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(mappedProducts));
+        const mergedProducts = this.mergeById(mappedProducts, this.getProducts());
+        this.saveLocalBackup('products', this.getProducts());
+        localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(mergedProducts));
       }
 
       // Fetch orders from Supabase
@@ -491,10 +573,26 @@ export class StorageManager {
             createdAt: o.created_at || new Date().toISOString(),
             orderImages: this.parseOrderImagesArray(o.order_images || o.orderImages),
             items,
-            notes: this.parseOrderNotes(o.order_images || o.orderImages) || o.notes || o.note || ''
+            notes: this.parseOrderNotes(o.order_images || o.orderImages) || o.notes || o.note || '',
+            surcharge: this.parseOrderSurcharge(o.order_images || o.orderImages)
           };
         });
-        localStorage.setItem(this.STORAGE_PREFIX + 'orders', JSON.stringify(mappedOrders));
+        const localOrders = this.getOrders();
+        const localOrdersById = new Map(localOrders.map(order => [order.id, order]));
+        const protectedRemoteOrders = mappedOrders.map(order => {
+          const localOrder = localOrdersById.get(order.id);
+          if (!localOrder) return order;
+          return {
+            ...order,
+            items: order.items?.length ? order.items : localOrder.items,
+            orderImages: order.orderImages?.length ? order.orderImages : localOrder.orderImages,
+            notes: order.notes || localOrder.notes,
+            surcharge: order.surcharge || localOrder.surcharge
+          };
+        });
+        const mergedOrders = this.mergeById(protectedRemoteOrders, localOrders)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        this.saveOrders(mergedOrders);
       }
 
       // Fetch payment_history from Supabase
@@ -514,7 +612,9 @@ export class StorageManager {
           paymentMethod: p.payment_method || '',
           createdAt: p.created_at || new Date().toISOString()
         }));
-        localStorage.setItem(this.STORAGE_PREFIX + 'payment_history', JSON.stringify(mappedPayments));
+        const mergedPayments = this.mergeById(mappedPayments, this.getPaymentHistory())
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        this.savePaymentHistory(mergedPayments);
       }
 
       // Fetch customers to sync PIN codes from Supabase
@@ -525,7 +625,7 @@ export class StorageManager {
         if (custError) {
           console.warn('Cannot fetch customers from Supabase:', custError.message);
         } else if (dbCustomers) {
-          const pinsRecord: Record<string, string> = {};
+          const pinsRecord: Record<string, string> = { ...this.getCustomerPins() };
           dbCustomers.forEach(c => {
             const name = c.name || c.customer_name;
             const type = c.type;
@@ -534,7 +634,7 @@ export class StorageManager {
               pinsRecord[`${name}_${type}`] = pinCode;
             }
           });
-          localStorage.setItem(this.STORAGE_PREFIX + 'customer_pins', JSON.stringify(pinsRecord));
+          this.saveCustomerPins(pinsRecord);
         }
       } catch (e) {
         console.warn('Failed to sync customers table from Supabase:', e);
@@ -755,6 +855,14 @@ export class StorageManager {
   }
 
   private static savePaymentHistory(payments: PaymentHistory[]): void {
+    const previous = localStorage.getItem(this.STORAGE_PREFIX + 'payment_history');
+    if (previous) {
+      try {
+        this.saveLocalBackup('payment_history', JSON.parse(previous));
+      } catch {
+        this.saveLocalBackup('payment_history', previous);
+      }
+    }
     localStorage.setItem(this.STORAGE_PREFIX + 'payment_history', JSON.stringify(payments));
   }
 
@@ -769,6 +877,14 @@ export class StorageManager {
   }
 
   static saveCustomerPins(pins: Record<string, string>): void {
+    const previous = localStorage.getItem(this.STORAGE_PREFIX + 'customer_pins');
+    if (previous) {
+      try {
+        this.saveLocalBackup('customer_pins', JSON.parse(previous));
+      } catch {
+        this.saveLocalBackup('customer_pins', previous);
+      }
+    }
     localStorage.setItem(this.STORAGE_PREFIX + 'customer_pins', JSON.stringify(pins));
   }
 
@@ -869,7 +985,8 @@ export class StorageManager {
       // Embed both notes and orderImages under order_images column to avoid schema limitations
       payload.order_images = JSON.stringify({
         images: newOrder.orderImages || [],
-        notes: newOrder.notes || ''
+        notes: newOrder.notes || '',
+        surcharge: newOrder.surcharge || 0
       });
 
       try {
@@ -907,6 +1024,7 @@ export class StorageManager {
       for (const item of order.items) {
         if (item.type === 'tshirt') {
           const prd = products.find(p => {
+            if (item.productId) return p.id === item.productId;
             const sizeMatches = p.size === item.size;
             const nameMatches = p.name === item.productName || `${p.name} - Màu: ${p.color}` === item.productName;
             const colorMatches = p.color === item.color || item.color.includes(p.color);
@@ -1043,7 +1161,8 @@ export class StorageManager {
 
     payload.order_images = JSON.stringify({
       images: Array.isArray(imagesToSave) ? imagesToSave : [imagesToSave],
-      notes: notesToSave
+      notes: notesToSave,
+      surcharge: updatedFields.surcharge !== undefined ? updatedFields.surcharge : (existingOrder.surcharge || 0)
     });
 
     if (this.isSupabaseActive) {
