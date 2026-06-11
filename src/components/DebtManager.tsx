@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Customer, OrderType, Order, PaymentHistory } from '../types';
 import { formatCurrency, generateReconciliationPDF } from '../utils/pdfGenerator';
+import { getOrderProductSummary } from '../utils/orderSummary';
 import { exportCustomerProfile } from '../utils/customerExport';
 import { StorageManager } from '../lib/storage';
 import { 
@@ -139,11 +140,7 @@ export default function DebtManager({
         finalColor = `Độ dài ${finalQuantity.toFixed(2)}m`;
       }
     } else if (editingOrder.type === 'tshirt') {
-      if (/\(\d+\s*chiếc\)/i.test(finalProductName)) {
-        finalProductName = finalProductName.replace(/\(\d+\s*chiếc\)/i, `(${Math.round(finalQuantity)} chiếc)`);
-      } else {
-        finalProductName = `${finalProductName.replace(/\s*\(\d+\s*chiếc\)/gi, '')} (${Math.round(finalQuantity)} chiếc)`;
-      }
+      finalProductName = getOrderProductSummary(editingOrder);
     }
 
     const updatedFields: Partial<Order> = {
@@ -770,7 +767,7 @@ export default function DebtManager({
                       </td>
                       <td className="py-4 px-6">
                         <div className="space-y-1">
-                          <span className="block font-bold text-slate-850 leading-tight">{order.productName}</span>
+                          <span className="block font-bold text-slate-850 leading-tight">{getOrderProductSummary(order)}</span>
                           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-medium select-none">
                             <span>S.Lượng: <strong className="text-slate-600">{order.quantity}</strong></span>
                             <span>•</span>
