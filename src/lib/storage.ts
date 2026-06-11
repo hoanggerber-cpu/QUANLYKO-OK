@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Product, Order, Customer, DashboardStats, OrderType, PaymentHistory } from '../types';
+import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory } from '../types';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://ykbsykqqdjqgnpslemsw.supabase.co';
 const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYnN5a3FxZGpxZ25wc2xlbXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTM0ODUsImV4cCI6MjA5NTA4OTQ4NX0.UY-W_jJYWcJrsT4_D-XQmVdfWy4UXWEXsfF-WBMjxwk';
@@ -1156,6 +1156,47 @@ export class StorageManager {
     if (updatedFields.createdAt !== undefined) payload.created_at = updatedFields.createdAt;
 
     const existingOrder = orders[idx];
+    if (existingOrder.type === 'tshirt' && updatedFields.items) {
+      const products = this.getProducts();
+      const findProductId = (item: OrderItem) => {
+        if (item.productId && products.some(product => product.id === item.productId)) return item.productId;
+        const itemSize = item.size || item.color.match(/Size\s+([^-]+)/i)?.[1]?.trim();
+        return products.find(product =>
+          product.name === item.productName &&
+          product.size === itemSize &&
+          (product.color === item.color || item.color.includes(product.color))
+        )?.id;
+      };
+      const oldQuantities = new Map<string, number>();
+      const newQuantities = new Map<string, number>();
+      const oldItems = existingOrder.items?.length ? existingOrder.items : [{
+        id: `legacy_${existingOrder.id}`,
+        type: 'tshirt' as const,
+        productName: existingOrder.productName,
+        color: existingOrder.color,
+        quantity: existingOrder.quantity,
+        unitPrice: existingOrder.unitPrice,
+        totalPrice: existingOrder.totalPrice
+      }];
+      oldItems.forEach(item => {
+        const productId = findProductId(item);
+        if (productId) oldQuantities.set(productId, (oldQuantities.get(productId) || 0) + item.quantity);
+      });
+      updatedFields.items.forEach(item => {
+        const productId = findProductId(item);
+        if (productId) {
+          item.productId = productId;
+          newQuantities.set(productId, (newQuantities.get(productId) || 0) + item.quantity);
+        }
+      });
+      for (const productId of new Set([...oldQuantities.keys(), ...newQuantities.keys()])) {
+        const product = products.find(item => item.id === productId);
+        if (!product) continue;
+        const nextStock = product.stock + (oldQuantities.get(productId) || 0) - (newQuantities.get(productId) || 0);
+        if (nextStock < 0) throw new Error(`Số lượng cập nhật vượt tồn kho của ${product.name} - Size ${product.size}.`);
+        await this.updateProductStock(productId, nextStock);
+      }
+    }
     const notesToSave = updatedFields.notes !== undefined ? updatedFields.notes : (existingOrder.notes || '');
     const imagesToSave = updatedFields.orderImages !== undefined ? updatedFields.orderImages : (existingOrder.orderImages || []);
 
@@ -1193,7 +1234,10 @@ export class StorageManager {
         }
 
         // 2. Re-sync order_items table representation
-        if (updatedFields.unitPrice !== undefined || updatedFields.quantity !== undefined || updatedFields.productName !== undefined || updatedFields.color !== undefined) {
+        if (updatedFields.items !== undefined) {
+          await supabase.from('order_items').delete().eq('order_id', id);
+          if (updatedFields.items.length > 0) await this.syncOrderItems(id, updatedFields.items);
+        } else if (updatedFields.unitPrice !== undefined || updatedFields.quantity !== undefined || updatedFields.productName !== undefined || updatedFields.color !== undefined) {
           // Delete old items
           await supabase.from('order_items').delete().eq('order_id', id);
 
@@ -1236,7 +1280,9 @@ export class StorageManager {
     }
 
     const existingItems = orders[idx].items || [];
-    if (existingItems.length > 0) {
+    if (updatedFields.items !== undefined) {
+      orders[idx].items = updatedFields.items;
+    } else if (existingItems.length > 0) {
       existingItems[0].unitPrice = updatedFields.unitPrice !== undefined ? updatedFields.unitPrice : existingItems[0].unitPrice;
       existingItems[0].quantity = updatedFields.quantity !== undefined ? updatedFields.quantity : existingItems[0].quantity;
       existingItems[0].totalPrice = updatedFields.totalPrice !== undefined ? updatedFields.totalPrice : Number((existingItems[0].quantity * existingItems[0].unitPrice).toFixed(0));
