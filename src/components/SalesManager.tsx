@@ -81,6 +81,8 @@ export default function SalesManager({
   const [editUnitPrice, setEditUnitPrice] = useState(0);
   const [editUnitPriceStr, setEditUnitPriceStr] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editTshirtItems, setEditTshirtItems] = useState<OrderItem[]>([]);
+  const [editTshirtSurcharge, setEditTshirtSurcharge] = useState(0);
 
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
 
@@ -124,6 +126,123 @@ export default function SalesManager({
     setEditUnitPrice(order.unitPrice || 0);
     setEditUnitPriceStr(String(order.unitPrice || 0));
     setEditNotes(order.notes || '');
+    if (order.type === 'tshirt') {
+      const sourceItems = order.items?.length ? order.items : [{
+        id: 'legacy_' + order.id,
+        type: 'tshirt' as const,
+        productName: order.productName,
+        color: order.color,
+        quantity: order.quantity,
+        unitPrice: order.unitPrice,
+        totalPrice: Math.max(0, order.totalPrice - (order.surcharge || 0)),
+        image: order.orderImages?.[0]
+      }];
+      setEditTshirtItems(sourceItems.map(item => {
+        const itemSize = item.size || item.color.match(/Size\s+([^-]+)/i)?.[1]?.trim();
+        const matchedProduct = products.find(product =>
+          (item.productId ? product.id === item.productId : false) || (
+            product.name === item.productName &&
+            product.size === itemSize &&
+            item.color.includes(product.color)
+          )
+        );
+        return { ...item, productId: matchedProduct?.id || item.productId, size: matchedProduct?.size || itemSize };
+      }));
+      setEditTshirtSurcharge(order.surcharge || 0);
+    }
+  };
+
+  const updateEditTshirtItem = (index: number, fields: Partial<OrderItem>) => {
+    setEditTshirtItems(prev => prev.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const next = { ...item, ...fields };
+      next.totalPrice = Math.max(0, Number(next.quantity) || 0) * Math.max(0, Number(next.unitPrice) || 0);
+      return next;
+    }));
+  };
+
+  const handleEditTshirtImage = (index: number, file?: File) => {
+    if (!file) return;
+    updateEditTshirtItem(index, { image: URL.createObjectURL(file), rawFile: file });
+  };
+
+  const handleEditTshirtSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder || editingOrder.type !== 'tshirt' || editTshirtItems.length === 0) return;
+
+    const desiredByProduct = new Map<string, number>();
+    const previousByProduct = new Map<string, number>();
+    (editingOrder.items || []).forEach(item => {
+      const productId = item.productId || products.find(product =>
+        product.name === item.productName &&
+        product.size === item.size &&
+        item.color.includes(product.color)
+      )?.id;
+      if (productId) previousByProduct.set(productId, (previousByProduct.get(productId) || 0) + item.quantity);
+    });
+    for (const item of editTshirtItems) {
+      if (!item.productId || item.quantity <= 0 || item.unitPrice < 0) {
+        showToast('Vui lòng chọn đúng mẫu áo, size, số lượng và đơn giá cho từng dòng.', 'error');
+        return;
+      }
+      desiredByProduct.set(item.productId, (desiredByProduct.get(item.productId) || 0) + item.quantity);
+    }
+    for (const [productId, desiredQty] of desiredByProduct) {
+      const product = products.find(p => p.id === productId);
+      if (!product) continue;
+      const availableIncludingOldOrder = product.stock + (previousByProduct.get(productId) || 0);
+      if (desiredQty > availableIncludingOldOrder) {
+        showToast(`Size ${product.size} chỉ còn tối đa ${availableIncludingOldOrder} chiếc để cập nhật.`, 'error');
+        return;
+      }
+    }
+
+    const cleanItems = await Promise.all(editTshirtItems.map(async item => {
+      let imageUrl = item.image;
+      if (item.rawFile && (!imageUrl || !/^https?:\/\//i.test(imageUrl))) {
+        try {
+          const fileExt = item.rawFile.name.split('.').pop() || 'png';
+          const filePath = `originals/edit_tshirt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+          const { data, error } = await supabase.storage.from('order-images').upload(filePath, item.rawFile, { cacheControl: '3600', upsert: false });
+          if (!error && data) imageUrl = supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl;
+        } catch (error) {
+          console.error('Uploading edited T-shirt image failed:', error);
+        }
+      }
+      const { rawFile, ...cleanItem } = item;
+      return { ...cleanItem, image: imageUrl };
+    }));
+
+    const productSubtotal = cleanItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const finalTotal = productSubtotal + editTshirtSurcharge;
+    const finalPaid = Math.min(finalTotal, Math.max(0, Number(editPaidAmountStr) || 0));
+    const finalDebt = Math.max(0, finalTotal - finalPaid);
+    const quantity = cleanItems.reduce((sum, item) => sum + item.quantity, 0);
+    const productName = `Áo thun phôi (${quantity} chiếc)`;
+    const color = Array.from(new Set(cleanItems.map(item => item.color.split(' - ')[0]))).join(', ');
+
+    try {
+      await onUpdateOrder(editingOrder.id, {
+        customerName: editCustomerName.trim(),
+        productName,
+        color,
+        quantity,
+        unitPrice: cleanItems[0]?.unitPrice || 0,
+        totalPrice: finalTotal,
+        paidAmount: finalPaid,
+        debtAmount: finalDebt,
+        status: editStatus === 'cancelled' ? 'cancelled' : finalDebt === 0 ? 'completed' : 'pending',
+        createdAt: editCreatedAt ? new Date(editCreatedAt + 'T12:00:00.000Z').toISOString() : editingOrder.createdAt,
+        orderImages: cleanItems.map(item => item.image).filter(Boolean) as string[],
+        items: cleanItems,
+        surcharge: editTshirtSurcharge,
+        notes: editNotes.trim()
+      });
+      setEditingOrder(null);
+      showToast('Đã cập nhật chi tiết đơn áo thun thành công!', 'success');
+    } catch (error) {
+      console.error('Update T-shirt order failed:', error);
+    }
   };
 
   const handleEditOrderSubmit = async (e: React.FormEvent) => {
@@ -2570,17 +2689,21 @@ export default function SalesManager({
 
                   <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200 space-y-1.5">
                     <label className="block text-xs font-bold uppercase tracking-wider text-amber-800">
-                      Phụ thu đơn áo thun (VND)
+                      Số tiền phụ thu đơn áo thun (VND)
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Ví dụ: tiền ship, đóng gói..."
-                      value={tshirtSurcharge || ''}
-                      onChange={(e) => setTshirtSurcharge(Math.max(0, Number(e.target.value) || 0))}
-                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-lg text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                    />
-                    <p className="text-[10px] text-amber-700">Khoản này chỉ được tính khi giỏ đơn có áo thun.</p>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        placeholder="Nhập số tiền, ví dụ: 30000"
+                        value={tshirtSurcharge || ''}
+                        onChange={(e) => setTshirtSurcharge(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-full px-3 py-2 pr-12 bg-white border border-amber-300 rounded-lg text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-700">VND</span>
+                    </div>
+                    <p className="text-[10px] text-amber-700">Đang cộng vào đơn: <strong>{formatCurrency(tshirtSurcharge)}</strong>. Chỉ áp dụng khi giỏ có áo thun.</p>
                   </div>
 
                   {/* T-shirt Add to Cart trigger */}
@@ -3213,8 +3336,153 @@ export default function SalesManager({
         </div>
       )}
 
-      {/* Edit Order Modal */}
-      {editingOrder && (
+      {/* Dedicated T-shirt Edit Order Modal */}
+      {editingOrder?.type === 'tshirt' && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in text-slate-700">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl overflow-hidden animate-scale-in max-h-[94vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-blue-900 text-white">
+              <div>
+                <h3 className="font-bold text-lg">Chỉnh Sửa Chi Tiết Đơn Áo Thun</h3>
+                <p className="text-[10px] text-blue-200 font-mono">{editingOrder.orderCode}</p>
+              </div>
+              <button onClick={() => setEditingOrder(null)} className="text-white/80 hover:text-white cursor-pointer text-xl">&times;</button>
+            </div>
+
+            <form onSubmit={handleEditTshirtSubmit} className="p-6 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Tên khách hàng</label>
+                  <input required value={editCustomerName} onChange={e => setEditCustomerName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Ngày ghi sổ</label>
+                  <input type="date" required value={editCreatedAt} onChange={e => setEditCreatedAt(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold" />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase text-slate-600">Chi tiết mẫu áo, size, số lượng, đơn giá và hình ảnh</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const product = products.find(p => p.stock > 0);
+                      if (!product) return;
+                      setEditTshirtItems(prev => [...prev, {
+                        id: 'edit_' + Math.random().toString(36).substring(2, 10),
+                        productId: product.id,
+                        type: 'tshirt',
+                        productName: product.name,
+                        color: `${product.color} - Size ${product.size || 'N/A'}`,
+                        size: product.size,
+                        quantity: 1,
+                        unitPrice: product.salePrice,
+                        totalPrice: product.salePrice
+                      }]);
+                    }}
+                    className="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    + Thêm dòng áo
+                  </button>
+                </div>
+
+                {editTshirtItems.map((item, index) => (
+                  <div key={item.id || index} className="p-3 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-12 gap-3 items-end">
+                    <div className="col-span-12 sm:col-span-5">
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Mẫu áo / Màu / Size</label>
+                      <select
+                        value={item.productId || ''}
+                        onChange={e => {
+                          const product = products.find(p => p.id === e.target.value);
+                          if (!product) return;
+                          updateEditTshirtItem(index, {
+                            productId: product.id,
+                            productName: product.name,
+                            color: `${product.color} - Size ${product.size || 'N/A'}`,
+                            size: product.size
+                          });
+                        }}
+                        className="w-full px-2 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                      >
+                        <option value="" disabled>Chọn mẫu áo và size</option>
+                        {products.map(product => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} - {product.color} - Size {product.size} (Kho: {product.stock})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-span-4 sm:col-span-2">
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Số lượng</label>
+                      <input type="number" min="1" value={item.quantity} onChange={e => updateEditTshirtItem(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} className="w-full px-2 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold" />
+                    </div>
+                    <div className="col-span-4 sm:col-span-2">
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Đơn giá</label>
+                      <input type="number" min="0" value={item.unitPrice} onChange={e => updateEditTshirtItem(index, { unitPrice: Math.max(0, Number(e.target.value) || 0) })} className="w-full px-2 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold" />
+                    </div>
+                    <div className="col-span-4 sm:col-span-2">
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Thành tiền</label>
+                      <div className="px-2 py-2 bg-blue-50 border border-blue-100 rounded-lg text-xs font-mono font-bold text-blue-700">{formatCurrency(item.totalPrice)}</div>
+                    </div>
+                    <button type="button" disabled={editTshirtItems.length === 1} onClick={() => setEditTshirtItems(prev => prev.filter((_, i) => i !== index))} className="col-span-12 sm:col-span-1 py-2 text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-30 cursor-pointer"><Trash2 className="w-4 h-4 mx-auto" /></button>
+
+                    <div className="col-span-12 flex items-center gap-3 border-t border-slate-200 pt-2">
+                      {item.image ? <img src={item.image} alt="Hình in áo" className="w-12 h-12 rounded-lg object-cover border border-slate-200 cursor-zoom-in" onClick={() => setActivePreviewImage(item.image!)} /> : <div className="w-12 h-12 rounded-lg border border-dashed border-slate-300 flex items-center justify-center"><ImageIcon className="w-5 h-5 text-slate-300" /></div>}
+                      <label className="px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg text-xs font-bold cursor-pointer">
+                        {item.image ? 'Đổi hình ảnh post kèm' : 'Thêm hình ảnh post kèm'}
+                        <input type="file" accept="image/*" className="hidden" onChange={e => handleEditTshirtImage(index, e.target.files?.[0])} />
+                      </label>
+                      {item.image && <button type="button" onClick={() => updateEditTshirtItem(index, { image: undefined, rawFile: undefined })} className="text-xs font-bold text-rose-600 cursor-pointer">Xóa hình</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-amber-800 mb-1">Phụ thu (VND)</label>
+                  <input type="number" min="0" value={editTshirtSurcharge || ''} placeholder="Nhập số tiền phụ thu" onChange={e => setEditTshirtSurcharge(Math.max(0, Number(e.target.value) || 0))} className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg font-mono font-bold" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Đã thanh toán (VND)</label>
+                  <input type="number" min="0" value={editPaidAmountStr} onChange={e => setEditPaidAmountStr(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-mono font-bold text-emerald-700" />
+                </div>
+                <div className="flex flex-col justify-end text-right">
+                  <span className="text-[10px] font-bold uppercase text-slate-500">Tổng đơn hàng</span>
+                  <span className="font-mono font-black text-blue-700">{formatCurrency(editTshirtItems.reduce((sum, item) => sum + item.totalPrice, 0) + editTshirtSurcharge)}</span>
+                  <span className="text-[10px] font-bold uppercase text-rose-500 mt-1">Còn nợ</span>
+                  <span className="font-mono font-black text-rose-600">
+                    {formatCurrency(Math.max(0, editTshirtItems.reduce((sum, item) => sum + item.totalPrice, 0) + editTshirtSurcharge - (Number(editPaidAmountStr) || 0)))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Trạng thái</label>
+                  <select value={editStatus} onChange={e => setEditStatus(e.target.value as OrderStatus)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold">
+                    <option value="pending">Còn nợ (Chưa thu đủ)</option>
+                    <option value="completed">Đã thu đủ</option>
+                    <option value="cancelled">Đã hủy đơn</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Ghi chú đơn hàng</label>
+                  <textarea rows={2} value={editNotes} onChange={e => setEditNotes(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button type="button" onClick={() => setEditingOrder(null)} className="px-4 py-2 hover:bg-slate-100 text-slate-500 font-semibold text-sm rounded-xl cursor-pointer">Hủy bỏ</button>
+                <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl cursor-pointer">Cập nhật đơn áo thun</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit DTF Order Modal */}
+      {editingOrder && editingOrder.type !== 'tshirt' && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in text-slate-700">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
             <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-blue-900 text-white">
