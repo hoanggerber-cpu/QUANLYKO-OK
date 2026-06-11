@@ -301,9 +301,13 @@ export async function generateReconciliationPDF(
 
   const periodText = `Kỳ đối soát: ${month === 'all' ? 'Cả năm thống kê' : 'Tháng ' + month} / Năm ${year === 'all' ? 'Tất cả niên độ' : year}`;
   const typeText = type === 'tshirt' ? 'Bán sỉ Áo thun trơn' : type === 'dtf' ? 'In phim PET DTF gia công' : 'Giao dịch hỗn hợp gộp';
+  const totalSurcharge = ordersList.reduce((sum, order) => sum + Math.max(0, order.surcharge || 0), 0);
+  const totalProductAmount = Math.max(0, stats.totalAmount - totalSurcharge);
 
   const ordersHtml = ordersList.map((order, idx) => {
     const productSummary = getOrderProductSummary(order);
+    const surcharge = Math.max(0, order.surcharge || 0);
+    const productSubtotal = Math.max(0, order.totalPrice - surcharge);
     const isTshirt = order.type === 'tshirt' || order.productName.toLowerCase().includes('áo') || order.productName.toLowerCase().includes('t-shirt');
     const classification = order.color ? `Phân loại: ${order.color}` : 'Giao dịch gộp';
     
@@ -333,10 +337,17 @@ export async function generateReconciliationPDF(
           <div>${productSummary}</div>
           <div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 1.5px;">${classification}</div>
           ${sizeDetails ? `<div style="font-size: 10px; color: #2563eb; font-weight: bold; margin-top: 3px; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block;">${sizeDetails}</div>` : ''}
+          ${surcharge > 0 ? `<div style="font-size: 10px; color: #b45309; font-weight: 800; margin-top: 4px; background: #fffbeb; border: 1px solid #fcd34d; padding: 3px 6px; border-radius: 4px; display: inline-block;">PHỤ THU RIÊNG CỦA ĐƠN NÀY: ${surcharge.toLocaleString('vi-VN')} đ</div>` : ''}
         </td>
         <td style="padding: 10px 0; text-align: center; font-weight: 700; color: #0f172a; width: 45px;">${order.quantity}</td>
         <td style="padding: 10px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #475569; width: 90px;">${order.unitPrice.toLocaleString('vi-VN')}</td>
-        <td style="padding: 10px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #0f172a; width: 110px;">${order.totalPrice.toLocaleString('vi-VN')}</td>
+        <td style="padding: 10px 0; text-align: right; font-family: 'JetBrains Mono', monospace; width: 110px;">
+          ${surcharge > 0 ? `
+            <div style="font-size: 9px; color: #64748b;">Hàng: ${productSubtotal.toLocaleString('vi-VN')}</div>
+            <div style="font-size: 9px; color: #b45309; font-weight: 700;">Phụ thu: +${surcharge.toLocaleString('vi-VN')}</div>
+            <div style="font-size: 10.5px; color: #0f172a; font-weight: 800; border-top: 1px solid #e2e8f0; margin-top: 2px; padding-top: 2px;">Tổng: ${order.totalPrice.toLocaleString('vi-VN')}</div>
+          ` : `<div style="font-weight: 700; color: #0f172a;">${order.totalPrice.toLocaleString('vi-VN')}</div>`}
+        </td>
       </tr>
     `;
   }).join('');
@@ -401,7 +412,9 @@ export async function generateReconciliationPDF(
       <div style="width: 100%; margin-bottom: 20px; border-top: 1.5px solid #cbd5e1; padding-top: 15px;">
         <h3 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 850; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;">TỔNG HỢP GIAO DỊCH CHỐT LŨY KẾ:</h3>
         <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; padding-left: 2px;">
-          <div>• Tổng doanh số hàng phát sinh trong kỳ: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
+          <div>• Tổng tiền hàng trong kỳ: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${totalProductAmount.toLocaleString('vi-VN')} đ</strong></div>
+          ${totalSurcharge > 0 ? `<div>• Tổng phụ thu của các đơn: <strong style="color: #b45309; font-family: 'JetBrains Mono', monospace; font-size: 12px;">${totalSurcharge.toLocaleString('vi-VN')} đ</strong></div>` : ''}
+          <div>• Tổng doanh số gồm phụ thu: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
           <div>• Tổng cộng số tiền bên Khách đã nộp: <strong style="color: #059669; font-family: 'JetBrains Mono', monospace; font-size: 12px;">${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
         </div>
       </div>
