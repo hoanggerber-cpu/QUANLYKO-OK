@@ -22,7 +22,12 @@ export function formatCurrencyText(value: number): string {
 }
 
 // Global offscreen PDF renderer helper using html2canvas & jsPDF for 100% vector rendering
-async function renderHtmlToPdf(element: HTMLElement, fileName: string, isA5: boolean = false): Promise<void> {
+async function renderHtmlToPdf(
+  element: HTMLElement,
+  fileName: string,
+  isA5: boolean = false,
+  singleLongPage: boolean = false
+): Promise<void> {
   // Ensure Google Fonts is loaded for perfect render
   if (!document.getElementById('pdf-google-fonts')) {
     const link = document.createElement('link');
@@ -72,6 +77,17 @@ async function renderHtmlToPdf(element: HTMLElement, fileName: string, isA5: boo
         format: 'a5'
       });
       pdf.addImage(imgData, 'PNG', 0, 0, 148, 210);
+      pdf.save(fileName);
+    } else if (singleLongPage) {
+      // Use one continuous custom-height page so ledger rows are never cut between A4 pages.
+      const imgWidth = 210;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pdf = new jsPDF({
+        orientation: imgHeight > imgWidth ? 'portrait' : 'landscape',
+        unit: 'mm',
+        format: [imgWidth, imgHeight]
+      });
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
       pdf.save(fileName);
     } else {
       // Standard A4 page: 210mm x 297mm
@@ -416,5 +432,5 @@ export async function generateReconciliationPDF(
   `;
 
   const safeCustomerName = customerName.replace(/\s+/g, '_');
-  await renderHtmlToPdf(container, `Doi_Soat_Cong_No_${safeCustomerName}_${month}_${year}.pdf`, false);
+  await renderHtmlToPdf(container, `Doi_Soat_Cong_No_${safeCustomerName}_${month}_${year}.pdf`, false, true);
 }
