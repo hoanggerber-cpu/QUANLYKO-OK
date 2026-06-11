@@ -707,7 +707,7 @@ export class StorageManager {
     return newProduct;
   }
 
-  static async updateProductStock(id: string, newStock: number): Promise<void> {
+  static async updateProductStock(id: string, newStock: number, throwOnRemoteError: boolean = false): Promise<void> {
     const products = this.getProducts();
     const idx = products.findIndex(p => p.id === id);
     if (idx !== -1) {
@@ -745,6 +745,7 @@ export class StorageManager {
         }
       } catch (err) {
         console.error('Supabase stock update failed:', err);
+        if (throwOnRemoteError) throw err;
       }
     }
   }
@@ -1301,43 +1302,59 @@ export class StorageManager {
     const orderToDelete = orders.find(order => order.id === id);
     if (!orderToDelete) return;
 
-    if (this.isSupabaseActive) {
-      try {
-        const { error: itemsError } = await supabase.from('order_items').delete().eq('order_id', id);
-        if (itemsError) throw itemsError;
-        const { error: orderError } = await supabase.from('orders').delete().eq('id', id);
-        if (orderError) throw orderError;
-      } catch (err) {
-        console.error('Supabase order delete failed:', err);
-        throw err;
-      }
-    }
-
     // Return every T-shirt in the deleted invoice to its exact inventory variant.
     const tshirtItems = orderToDelete.items?.filter(item => item.type === 'tshirt') || [];
+    const stockBeforeRestore = new Map<string, number>();
     if (tshirtItems.length > 0 || orderToDelete.type === 'tshirt') {
       const products = this.getProducts();
       const quantitiesToReturn = new Map<string, number>();
+      const normalize = (value: string | undefined) => (value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
       const findProduct = (item: OrderItem) => {
         if (item.productId) {
           const exactProduct = products.find(product => product.id === item.productId);
           if (exactProduct) return exactProduct;
         }
         const itemSize = item.size || item.color.match(/Size\s+([^-]+)/i)?.[1]?.trim();
-        return products.find(product =>
-          product.name === item.productName &&
-          product.size === itemSize &&
-          (product.color === item.color || item.color.includes(product.color))
+        const normalizedItemName = normalize(item.productName);
+        const normalizedItemColor = normalize(item.color.split(/\s*-\s*Size/i)[0]);
+        const exactMatches = products.filter(product =>
+          normalize(product.name) === normalizedItemName &&
+          normalize(product.size) === normalize(itemSize) &&
+          normalize(product.color) === normalizedItemColor
         );
+        if (exactMatches.length === 1) return exactMatches[0];
+
+        const compatibleMatches = products.filter(product =>
+          normalize(product.name) === normalizedItemName &&
+          (!itemSize || normalize(product.size) === normalize(itemSize)) &&
+          (!normalizedItemColor || normalize(product.color) === normalizedItemColor)
+        );
+        if (compatibleMatches.length === 1) return compatibleMatches[0];
+
+        // Older order items may contain a generic product name, but color + size still identify the variant.
+        const uniqueVariantMatches = products.filter(product =>
+          Boolean(itemSize) &&
+          normalize(product.size) === normalize(itemSize) &&
+          Boolean(normalizedItemColor) &&
+          normalize(product.color) === normalizedItemColor
+        );
+        return uniqueVariantMatches.length === 1 ? uniqueVariantMatches[0] : undefined;
       };
 
       if (tshirtItems.length > 0) {
         tshirtItems.forEach(item => {
           const product = findProduct(item);
           const quantity = Number(item.quantity) || 0;
-          if (product && quantity > 0) {
-            quantitiesToReturn.set(product.id, (quantitiesToReturn.get(product.id) || 0) + quantity);
-          }
+          if (quantity <= 0) return;
+          if (!product) throw new Error(`Không tìm thấy mẫu áo trong kho để hoàn trả: ${item.productName} - ${item.color}. Hóa đơn chưa bị xóa.`);
+          quantitiesToReturn.set(product.id, (quantitiesToReturn.get(product.id) || 0) + quantity);
         });
       } else {
         const legacyItem: OrderItem = {
@@ -1355,12 +1372,38 @@ export class StorageManager {
         );
         if (product && orderToDelete.quantity > 0) {
           quantitiesToReturn.set(product.id, orderToDelete.quantity);
+        } else {
+          throw new Error(`Không tìm thấy mẫu áo trong kho để hoàn trả cho hóa đơn ${orderToDelete.orderCode}. Hóa đơn chưa bị xóa.`);
         }
       }
 
-      for (const [productId, quantity] of quantitiesToReturn) {
-        const product = products.find(item => item.id === productId);
-        if (product) await this.updateProductStock(productId, product.stock + quantity);
+      try {
+        for (const [productId, quantity] of quantitiesToReturn) {
+          const product = products.find(item => item.id === productId);
+          if (!product) throw new Error(`Không tìm thấy mã kho ${productId}. Hóa đơn chưa bị xóa.`);
+          stockBeforeRestore.set(productId, product.stock);
+          await this.updateProductStock(productId, product.stock + quantity, true);
+        }
+      } catch (error) {
+        for (const [productId, previousStock] of stockBeforeRestore) {
+          await this.updateProductStock(productId, previousStock);
+        }
+        throw error;
+      }
+    }
+
+    if (this.isSupabaseActive) {
+      try {
+        const { error: itemsError } = await supabase.from('order_items').delete().eq('order_id', id);
+        if (itemsError) throw itemsError;
+        const { error: orderError } = await supabase.from('orders').delete().eq('id', id);
+        if (orderError) throw orderError;
+      } catch (err) {
+        console.error('Supabase order delete failed:', err);
+        for (const [productId, previousStock] of stockBeforeRestore) {
+          await this.updateProductStock(productId, previousStock);
+        }
+        throw err;
       }
     }
 
