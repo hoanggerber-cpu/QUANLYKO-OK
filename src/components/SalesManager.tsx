@@ -322,7 +322,7 @@ export default function SalesManager({
       );
     } catch (error) {
       console.error('Delete order failed:', error);
-      showToast('Không thể xóa đơn hàng. Vui lòng thử lại!', 'error');
+      showToast(error instanceof Error ? error.message : 'Không thể xóa đơn hàng. Vui lòng thử lại!', 'error');
     }
   };
 
