@@ -272,7 +272,6 @@ export default function App() {
       setOrders(StorageManager.getOrders());
       setProducts(StorageManager.getProducts());
     } catch (error) {
-      alert("Lỗi: Không thể xóa đơn hàng từ hệ thống!");
       throw error;
     }
   };
