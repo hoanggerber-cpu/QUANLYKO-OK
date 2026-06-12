@@ -337,13 +337,38 @@ export class StorageManager {
     return this.isSupabaseActive;
   }
 
+  static isRestoreProtectionActive(): boolean {
+    const protectedUntil = Number(localStorage.getItem(this.STORAGE_PREFIX + 'restore_protected_until') || 0);
+    return protectedUntil > Date.now();
+  }
+
   static downloadFullBackup(): void {
+    const products = this.getProducts();
+    const orders = this.getOrders();
+    const paymentHistory = this.getPaymentHistory();
+    const allLocalData: Record<string, unknown> = {};
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(this.STORAGE_PREFIX) || key.includes('backup_') || key.endsWith('restore_protected_until')) continue;
+      try {
+        allLocalData[key] = JSON.parse(localStorage.getItem(key) || 'null');
+      } catch {
+        allLocalData[key] = localStorage.getItem(key);
+      }
+    }
+
     const backup = {
-      format: 'petshirt-backup-v1',
+      format: 'petshirt-backup-v2',
       createdAt: new Date().toISOString(),
-      products: this.getProducts(),
-      orders: this.getOrders(),
-      paymentHistory: this.getPaymentHistory(),
+      summary: {
+        products: products.length,
+        orders: orders.length,
+        paymentHistory: paymentHistory.length,
+        totalStock: products.reduce((sum, product) => sum + product.stock, 0)
+      },
+      products,
+      orders,
+      paymentHistory,
       customerPins: this.getCustomerPins(),
       dtfCustomerPrices: (() => {
         try {
@@ -351,24 +376,25 @@ export class StorageManager {
         } catch {
           return {};
         }
-      })()
+      })(),
+      allLocalData
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `sao-luu-du-lieu-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `sao-luu-toan-bo-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
   }
 
-  static async restoreFullBackup(file: File): Promise<void> {
+  static async restoreFullBackup(file: File): Promise<{ products: number; orders: number; paymentHistory: number }> {
     const parsed = JSON.parse(await file.text());
     if (
-      parsed?.format !== 'petshirt-backup-v1' ||
+      !['petshirt-backup-v1', 'petshirt-backup-v2'].includes(parsed?.format) ||
       !Array.isArray(parsed.products) ||
       !Array.isArray(parsed.orders) ||
       !Array.isArray(parsed.paymentHistory)
@@ -385,6 +411,22 @@ export class StorageManager {
     this.savePaymentHistory(parsed.paymentHistory);
     this.saveCustomerPins(parsed.customerPins || {});
     localStorage.setItem(this.STORAGE_PREFIX + 'dtf_customer_prices', JSON.stringify(parsed.dtfCustomerPrices || {}));
+    if (parsed.allLocalData && typeof parsed.allLocalData === 'object') {
+      Object.entries(parsed.allLocalData).forEach(([key, value]) => {
+        if (!key.startsWith(this.STORAGE_PREFIX) || key.includes('backup_') || key.endsWith('restore_protected_until')) return;
+        localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+      });
+    }
+
+    // Prevent a damaged/stale Supabase instance from immediately overwriting restored local data.
+    localStorage.setItem(this.STORAGE_PREFIX + 'restore_protected_until', String(Date.now() + 60 * 60 * 1000));
+    this.isSupabaseActive = false;
+
+    return {
+      products: parsed.products.length,
+      orders: parsed.orders.length,
+      paymentHistory: parsed.paymentHistory.length
+    };
   }
 
   static extractLengthFromOrder(order: { type: string; color?: string; product_name?: string; productName?: string; quantity?: any; totalPrice?: any; unitPrice?: any; items?: any[] }): number {
@@ -484,6 +526,10 @@ export class StorageManager {
   }
 
   static async syncAllDataFromSupabase(): Promise<boolean> {
+    if (this.isRestoreProtectionActive()) {
+      console.warn('Supabase sync skipped because restored data is temporarily protected.');
+      return false;
+    }
     try {
       const isOnline = await this.checkSupabaseConnection();
       if (!isOnline) return false;
