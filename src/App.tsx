@@ -115,6 +115,7 @@ export default function App() {
   useEffect(() => {
     async function initData() {
       try {
+        await StorageManager.initializeBackupAssets();
         if (StorageManager.isRestoreProtectionActive()) {
           setIsSupabaseOnline(false);
           setProducts(StorageManager.getProducts());
@@ -466,15 +467,41 @@ export default function App() {
                 <Overview
                   stats={stats}
                   onNavigate={setActiveSection}
-                  onBackup={() => StorageManager.downloadFullBackup()}
-                  onRestore={async (file) => {
-                    if (!window.confirm('Khôi phục sẽ thay dữ liệu hiện tại bằng bản sao lưu. Bạn có chắc chắn không?')) return;
+                  onBackup={async () => {
                     try {
+                      const result = await StorageManager.downloadFullBackup();
+                      alert(
+                        result.failedImages.length === 0
+                          ? `Đã tạo gói backup portable hoàn chỉnh, nhúng ${result.embeddedImages} hình ảnh thật. Gói này sẵn sàng restore trên web hoặc bản setup Windows/macOS.`
+                          : `Đã tạo backup với ${result.embeddedImages} hình ảnh thật. Có ${result.failedImages.length} ảnh không tải được; danh sách lỗi đã được ghi trong tệp backup.`
+                      );
+                    } catch (error: any) {
+                      alert(error?.message || 'Không thể tạo bản backup đầy đủ.');
+                    }
+                  }}
+                  onRestore={async (file) => {
+                    try {
+                      const inspection = await StorageManager.inspectFullBackup(file);
+                      if (!inspection.integrityValid) {
+                        alert('Tệp backup không vượt qua kiểm tra toàn vẹn. Không thể restore.');
+                        return;
+                      }
+                      const confirmation = [
+                        'Restore sẽ thay thế TOÀN BỘ dữ liệu hiện tại bằng danh mục gốc trong backup.',
+                        `Kho áo: ${inspection.products} sản phẩm`,
+                        `Hóa đơn: ${inspection.orders}`,
+                        `Thanh toán: ${inspection.paymentHistory}`,
+                        `Ảnh nhúng thật: ${inspection.embeddedImages}`,
+                        inspection.failedImages > 0 ? `Cảnh báo: ${inspection.failedImages} ảnh bị thiếu trong lúc tạo backup.` : 'Ảnh: đầy đủ, không có lỗi được ghi nhận.',
+                        '',
+                        'Bạn có chắc chắn muốn tiếp tục?'
+                      ].join('\n');
+                      if (!window.confirm(confirmation)) return;
                       const restored = await StorageManager.restoreFullBackup(file);
                       setProducts(StorageManager.getProducts());
                       setOrders(StorageManager.getOrders());
                       setIsSupabaseOnline(false);
-                      alert(`Đã khôi phục thành công: ${restored.products} sản phẩm kho, ${restored.orders} hóa đơn và ${restored.paymentHistory} giao dịch thanh toán. Dữ liệu đang được bảo vệ ở chế độ Local Backup trong 1 giờ.`);
+                      alert(`Đã khôi phục thành công: ${restored.products} sản phẩm kho, ${restored.orders} hóa đơn, ${restored.paymentHistory} giao dịch thanh toán và ${restored.embeddedImages} hình ảnh nhúng. Dữ liệu đang được bảo vệ ở chế độ Local Backup trong 1 giờ.`);
                     } catch (error: any) {
                       alert(error?.message || 'Không thể khôi phục tệp sao lưu.');
                     }
