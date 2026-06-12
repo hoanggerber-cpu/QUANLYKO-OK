@@ -1,12 +1,14 @@
 import { DashboardStats } from '../types';
-import { TrendingUp, CreditCard, AlertCircle, ShoppingBag, Layers, Activity, Percent } from 'lucide-react';
+import { TrendingUp, CreditCard, AlertCircle, ShoppingBag, Layers, Activity, Percent, Download, Upload, ShieldCheck, HardDrive } from 'lucide-react';
 
 interface OverviewProps {
   stats: DashboardStats;
   onNavigate: (section: string) => void;
+  onBackup: () => void;
+  onRestore: (file: File) => void;
 }
 
-export default function Overview({ stats, onNavigate }: OverviewProps) {
+export default function Overview({ stats, onNavigate, onBackup, onRestore }: OverviewProps) {
   const formatVND = (num: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
   };
@@ -26,6 +28,31 @@ export default function Overview({ stats, onNavigate }: OverviewProps) {
           </p>
         </div>
         <div className="flex items-center gap-2 relative z-10">
+          <label
+            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer inline-flex items-center gap-2"
+            title="Khôi phục dữ liệu từ tệp sao lưu JSON"
+          >
+            <Upload className="w-4 h-4" />
+            Khôi phục
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onRestore(file);
+                event.target.value = '';
+              }}
+            />
+          </label>
+          <button
+            onClick={onBackup}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer inline-flex items-center gap-2"
+            title="Tải toàn bộ dữ liệu về máy để phòng mất dữ liệu"
+          >
+            <Download className="w-4 h-4" />
+            Sao lưu dữ liệu
+          </button>
           <button
             onClick={() => onNavigate('sales')}
             className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-blue-500/20 cursor-pointer"
@@ -38,6 +65,43 @@ export default function Overview({ stats, onNavigate }: OverviewProps) {
           >
             Nhập sản phẩm kho
           </button>
+        </div>
+      </div>
+
+      <div className="bg-gradient-to-r from-blue-50 to-emerald-50 border border-blue-200 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md flex-shrink-0">
+            <ShieldCheck className="w-5.5 h-5.5" />
+          </div>
+          <div>
+            <h2 className="font-black text-slate-800">An toàn dữ liệu khi Supabase gặp lỗi</h2>
+            <p className="text-xs text-slate-600 mt-1 max-w-2xl">
+              Tải bản sao lưu JSON chứa kho áo, hóa đơn, công nợ, lịch sử thanh toán và cấu hình khách hàng. Khi khôi phục, dữ liệu được giữ ở chế độ Local Backup trong 1 giờ để tránh Supabase lỗi ghi đè.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={onBackup}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-2 cursor-pointer shadow-sm"
+          >
+            <HardDrive className="w-4 h-4" />
+            Tải backup toàn bộ
+          </button>
+          <label className="px-4 py-2.5 bg-white hover:bg-blue-50 border border-blue-300 text-blue-700 rounded-xl text-xs font-black inline-flex items-center gap-2 cursor-pointer shadow-sm">
+            <Upload className="w-4 h-4" />
+            Restore từ tệp backup
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onRestore(file);
+                event.target.value = '';
+              }}
+            />
+          </label>
         </div>
       </div>
 
