@@ -501,4 +501,19 @@ export default function App() {
               {activeSection === 'debts' && (
                 <DebtManager 
                   customers={customers} 
-                  orders={order
+                  orders={orders} 
+                  onRecordPayment={handleRecordPayment} 
+                  onUndoPayment={handleUndoPayment}
+                  onRecordOrderPayment={handleRecordOrderPayment}
+                  onUpdateCustomer={handleUpdateCustomer}
+                  onDeleteCustomer={handleDeleteCustomer}
+                  onUpdateOrder={handleUpdateOrder}
+                />
+              )}
+            </>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
