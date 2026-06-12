@@ -215,6 +215,79 @@ const MOCK_ORDERS: Order[] = [
 export class StorageManager {
   private static STORAGE_PREFIX = 'petshirt_admin_';
   private static isSupabaseActive = false;
+  private static backupAssetUrls = new Map<string, string>();
+
+  private static openBackupAssetDb(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('petshirt-backup-assets', 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('assets')) {
+          request.result.createObjectStore('assets');
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private static async saveEmbeddedAssets(assets: Record<string, string>): Promise<void> {
+    const db = await this.openBackupAssetDb();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('assets', 'readwrite');
+      const store = transaction.objectStore('assets');
+      store.clear();
+      Object.entries(assets).forEach(([id, dataUrl]) => store.put(dataUrl, id));
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+    db.close();
+    await this.initializeBackupAssets();
+  }
+
+  static async initializeBackupAssets(): Promise<void> {
+    this.backupAssetUrls.forEach(url => URL.revokeObjectURL(url));
+    this.backupAssetUrls.clear();
+    try {
+      const db = await this.openBackupAssetDb();
+      const records = await new Promise<Array<[string, string]>>((resolve, reject) => {
+        const transaction = db.transaction('assets', 'readonly');
+        const store = transaction.objectStore('assets');
+        const keysRequest = store.getAllKeys();
+        const valuesRequest = store.getAll();
+        transaction.oncomplete = () => resolve(keysRequest.result.map((key, index) => [String(key), valuesRequest.result[index]]));
+        transaction.onerror = () => reject(transaction.error);
+      });
+      db.close();
+      records.forEach(([id, dataUrl]) => {
+        const [header, base64] = dataUrl.split(',');
+        const mime = header.match(/data:([^;]+)/)?.[1] || 'application/octet-stream';
+        const bytes = Uint8Array.from(atob(base64 || ''), char => char.charCodeAt(0));
+        this.backupAssetUrls.set(id, URL.createObjectURL(new Blob([bytes], { type: mime })));
+      });
+    } catch (error) {
+      console.warn('Unable to initialize embedded backup images:', error);
+    }
+  }
+
+  private static resolveBackupAsset(url?: string): string | undefined {
+    if (!url?.startsWith('backup-asset://')) return url;
+    return this.backupAssetUrls.get(url.slice('backup-asset://'.length)) || url;
+  }
+
+  private static serializeBackupAsset(url?: string): string | undefined {
+    if (!url) return url;
+    for (const [id, objectUrl] of this.backupAssetUrls) {
+      if (objectUrl === url) return `backup-asset://${id}`;
+    }
+    return url;
+  }
+
+  private static saveProducts(products: Product[]): void {
+    localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products.map(product => ({
+      ...product,
+      image: this.serializeBackupAsset(product.image) || ''
+    }))));
+  }
 
   private static saveLocalBackup(key: string, value: unknown): void {
     try {
@@ -242,9 +315,10 @@ export class StorageManager {
       // Omit rawFile references from local state to ensure localStorage doesn't serialize empty objects
       const sanitized = orders.map(o => ({
         ...o,
+        orderImages: o.orderImages?.map(image => this.serializeBackupAsset(image) || ''),
         items: o.items?.map(it => {
           const { rawFile, ...rest } = it as any;
-          return rest;
+          return { ...rest, image: this.serializeBackupAsset(rest.image) };
         })
       }));
       const previous = localStorage.getItem(key);
@@ -342,10 +416,92 @@ export class StorageManager {
     return protectedUntil > Date.now();
   }
 
-  static downloadFullBackup(): void {
-    const products = this.getProducts();
-    const orders = this.getOrders();
+  private static async sha256(value: string): Promise<string> {
+    const bytes = new TextEncoder().encode(value);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  static async inspectFullBackup(file: File): Promise<{
+    format: string;
+    createdAt: string;
+    products: number;
+    orders: number;
+    paymentHistory: number;
+    embeddedImages: number;
+    failedImages: number;
+    portableComplete: boolean;
+    integrityValid: boolean;
+  }> {
+    const parsed = JSON.parse(await file.text());
+    if (
+      !['petshirt-backup-v1', 'petshirt-backup-v2', 'petshirt-backup-v3', 'petshirt-portable-v4'].includes(parsed?.format) ||
+      !Array.isArray(parsed.products) ||
+      !Array.isArray(parsed.orders) ||
+      !Array.isArray(parsed.paymentHistory)
+    ) {
+      throw new Error('Tệp sao lưu không đúng định dạng hoặc đã bị hỏng.');
+    }
+    const { integrity, ...payload } = parsed;
+    const integrityValid = !integrity?.sha256 || integrity.sha256 === await this.sha256(JSON.stringify(payload));
+    return {
+      format: parsed.format,
+      createdAt: parsed.createdAt || '',
+      products: parsed.products.length,
+      orders: parsed.orders.length,
+      paymentHistory: parsed.paymentHistory.length,
+      embeddedImages: Object.keys(parsed.embeddedAssets || {}).length,
+      failedImages: Array.isArray(parsed.failedImages) ? parsed.failedImages.length : 0,
+      portableComplete: parsed.portable?.complete === true,
+      integrityValid
+    };
+  }
+
+  static async downloadFullBackup(): Promise<{ embeddedImages: number; failedImages: string[]; portableComplete: boolean }> {
+    const products = this.getProducts().map(product => ({ ...product }));
+    const orders = this.getOrders().map(order => ({
+      ...order,
+      orderImages: [...(order.orderImages || [])],
+      items: order.items?.map(item => ({ ...item }))
+    }));
     const paymentHistory = this.getPaymentHistory();
+    const embeddedAssets: Record<string, string> = {};
+    const sourceToRef = new Map<string, string>();
+    const failedImages: string[] = [];
+
+    const embedImage = async (source?: string): Promise<string | undefined> => {
+      if (!source) return source;
+      const existing = sourceToRef.get(source);
+      if (existing) return existing;
+      try {
+        const response = await fetch(this.resolveBackupAsset(source) || source);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        const id = `asset_${Object.keys(embeddedAssets).length + 1}`;
+        const ref = `backup-asset://${id}`;
+        embeddedAssets[id] = dataUrl;
+        sourceToRef.set(source, ref);
+        return ref;
+      } catch (error) {
+        console.warn('Unable to embed backup image:', source, error);
+        failedImages.push(source);
+        return source;
+      }
+    };
+
+    for (const product of products) product.image = (await embedImage(product.image)) || '';
+    for (const order of orders) {
+      order.orderImages = (await Promise.all((order.orderImages || []).map(image => embedImage(image)))).filter(Boolean) as string[];
+      if (order.items) {
+        for (const item of order.items) item.image = await embedImage(item.image);
+      }
+    }
     const allLocalData: Record<string, unknown> = {};
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
@@ -357,14 +513,23 @@ export class StorageManager {
       }
     }
 
-    const backup = {
-      format: 'petshirt-backup-v2',
+    const payload = {
+      format: 'petshirt-portable-v4',
+      schemaVersion: 4,
       createdAt: new Date().toISOString(),
+      portable: {
+        complete: failedImages.length === 0,
+        compatibleTargets: ['web', 'windows-desktop', 'macos-desktop'],
+        restoreMode: 'replace-entire-application-data',
+        imageStorage: 'embedded-assets'
+      },
       summary: {
         products: products.length,
         orders: orders.length,
         paymentHistory: paymentHistory.length,
-        totalStock: products.reduce((sum, product) => sum + product.stock, 0)
+        totalStock: products.reduce((sum, product) => sum + product.stock, 0),
+        embeddedImages: Object.keys(embeddedAssets).length,
+        failedImages: failedImages.length
       },
       products,
       orders,
@@ -377,7 +542,16 @@ export class StorageManager {
           return {};
         }
       })(),
-      allLocalData
+      allLocalData,
+      embeddedAssets,
+      failedImages
+    };
+    const backup = {
+      ...payload,
+      integrity: {
+        algorithm: 'SHA-256',
+        sha256: await this.sha256(JSON.stringify(payload))
+      }
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -389,31 +563,57 @@ export class StorageManager {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    return { embeddedImages: Object.keys(embeddedAssets).length, failedImages, portableComplete: failedImages.length === 0 };
   }
 
-  static async restoreFullBackup(file: File): Promise<{ products: number; orders: number; paymentHistory: number }> {
+  static async restoreFullBackup(file: File): Promise<{ products: number; orders: number; paymentHistory: number; embeddedImages: number; failedImages: number }> {
     const parsed = JSON.parse(await file.text());
     if (
-      !['petshirt-backup-v1', 'petshirt-backup-v2'].includes(parsed?.format) ||
+      !['petshirt-backup-v1', 'petshirt-backup-v2', 'petshirt-backup-v3', 'petshirt-portable-v4'].includes(parsed?.format) ||
       !Array.isArray(parsed.products) ||
       !Array.isArray(parsed.orders) ||
       !Array.isArray(parsed.paymentHistory)
     ) {
       throw new Error('Tệp sao lưu không đúng định dạng hoặc đã bị hỏng.');
     }
+    const { integrity, ...payload } = parsed;
+    if (integrity?.sha256 && integrity.sha256 !== await this.sha256(JSON.stringify(payload))) {
+      throw new Error('Tệp backup không vượt qua kiểm tra toàn vẹn SHA-256. Restore đã bị dừng để tránh nhập dữ liệu hỏng.');
+    }
 
     this.saveLocalBackup('products_before_restore', this.getProducts());
     this.saveLocalBackup('orders_before_restore', this.getOrders());
     this.saveLocalBackup('payment_history_before_restore', this.getPaymentHistory());
 
-    localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(parsed.products));
+    if (['petshirt-backup-v3', 'petshirt-portable-v4'].includes(parsed.format)) {
+      await this.saveEmbeddedAssets(parsed.embeddedAssets || {});
+    }
+
+    // Portable restore is a full replacement, so stale categories/settings from this device cannot leak in.
+    if (parsed.format === 'petshirt-portable-v4') {
+      const keysToRemove: string[] = [];
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key?.startsWith(this.STORAGE_PREFIX) && !key.includes('backup_')) keysToRemove.push(key);
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    }
+
+    this.saveProducts(parsed.products);
     this.saveOrders(parsed.orders);
     this.savePaymentHistory(parsed.paymentHistory);
     this.saveCustomerPins(parsed.customerPins || {});
     localStorage.setItem(this.STORAGE_PREFIX + 'dtf_customer_prices', JSON.stringify(parsed.dtfCustomerPrices || {}));
     if (parsed.allLocalData && typeof parsed.allLocalData === 'object') {
+      const protectedCoreKeys = new Set([
+        this.STORAGE_PREFIX + 'products',
+        this.STORAGE_PREFIX + 'orders',
+        this.STORAGE_PREFIX + 'payment_history',
+        this.STORAGE_PREFIX + 'customer_pins',
+        this.STORAGE_PREFIX + 'dtf_customer_prices'
+      ]);
       Object.entries(parsed.allLocalData).forEach(([key, value]) => {
-        if (!key.startsWith(this.STORAGE_PREFIX) || key.includes('backup_') || key.endsWith('restore_protected_until')) return;
+        if (!key.startsWith(this.STORAGE_PREFIX) || key.includes('backup_') || key.endsWith('restore_protected_until') || protectedCoreKeys.has(key)) return;
         localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
       });
     }
@@ -425,7 +625,9 @@ export class StorageManager {
     return {
       products: parsed.products.length,
       orders: parsed.orders.length,
-      paymentHistory: parsed.paymentHistory.length
+      paymentHistory: parsed.paymentHistory.length,
+      embeddedImages: Object.keys(parsed.embeddedAssets || {}).length,
+      failedImages: Array.isArray(parsed.failedImages) ? parsed.failedImages.length : 0
     };
   }
 
@@ -556,7 +758,7 @@ export class StorageManager {
         }));
         const mergedProducts = this.mergeById(mappedProducts, this.getProducts());
         this.saveLocalBackup('products', this.getProducts());
-        localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(mergedProducts));
+        this.saveProducts(mergedProducts);
       }
 
       // Fetch orders from Supabase
@@ -698,10 +900,13 @@ export class StorageManager {
   static getProducts(): Product[] {
     const raw = localStorage.getItem(this.STORAGE_PREFIX + 'products');
     if (!raw) {
-      localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(MOCK_PRODUCTS));
+      this.saveProducts(MOCK_PRODUCTS);
       return MOCK_PRODUCTS;
     }
-    return JSON.parse(raw);
+    return (JSON.parse(raw) as Product[]).map(product => ({
+      ...product,
+      image: this.resolveBackupAsset(product.image) || ''
+    }));
   }
 
   static async addProduct(product: Omit<Product, 'id' | 'createdAt'>): Promise<Product> {
@@ -748,7 +953,7 @@ export class StorageManager {
 
     const products = this.getProducts();
     products.unshift(newProduct);
-    localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
+    this.saveProducts(products);
 
     return newProduct;
   }
@@ -758,7 +963,7 @@ export class StorageManager {
     const idx = products.findIndex(p => p.id === id);
     if (idx !== -1) {
       products[idx].stock = newStock;
-      localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
+      this.saveProducts(products);
     }
 
     if (this.isSupabaseActive) {
@@ -846,7 +1051,7 @@ export class StorageManager {
     const idx = products.findIndex(p => p.id === id);
     if (idx !== -1) {
       products[idx] = { ...products[idx], ...updatedFields };
-      localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products));
+      this.saveProducts(products);
     }
   }
 
@@ -863,7 +1068,7 @@ export class StorageManager {
 
     const products = this.getProducts();
     const filtered = products.filter(p => p.id !== id);
-    localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(filtered));
+    this.saveProducts(filtered);
   }
 
   // --- ORDERS MANAGEMENT ---
@@ -880,7 +1085,8 @@ export class StorageManager {
         return {
           ...o,
           quantity: qty,
-          orderImages: this.parseOrderImagesArray(o.orderImages)
+          orderImages: this.parseOrderImagesArray(o.orderImages).map(image => this.resolveBackupAsset(image) || image),
+          items: o.items?.map(item => ({ ...item, image: this.resolveBackupAsset(item.image) }))
         };
       });
     } catch (e) {
