@@ -115,6 +115,12 @@ export default function App() {
   useEffect(() => {
     async function initData() {
       try {
+        if (StorageManager.isRestoreProtectionActive()) {
+          setIsSupabaseOnline(false);
+          setProducts(StorageManager.getProducts());
+          setOrders(StorageManager.getOrders());
+          return;
+        }
         const isOnline = await StorageManager.checkSupabaseConnection();
         setIsSupabaseOnline(isOnline);
 
@@ -464,10 +470,11 @@ export default function App() {
                   onRestore={async (file) => {
                     if (!window.confirm('Khôi phục sẽ thay dữ liệu hiện tại bằng bản sao lưu. Bạn có chắc chắn không?')) return;
                     try {
-                      await StorageManager.restoreFullBackup(file);
+                      const restored = await StorageManager.restoreFullBackup(file);
                       setProducts(StorageManager.getProducts());
                       setOrders(StorageManager.getOrders());
-                      alert('Đã khôi phục dữ liệu thành công.');
+                      setIsSupabaseOnline(false);
+                      alert(`Đã khôi phục thành công: ${restored.products} sản phẩm kho, ${restored.orders} hóa đơn và ${restored.paymentHistory} giao dịch thanh toán. Dữ liệu đang được bảo vệ ở chế độ Local Backup trong 1 giờ.`);
                     } catch (error: any) {
                       alert(error?.message || 'Không thể khôi phục tệp sao lưu.');
                     }
@@ -494,19 +501,4 @@ export default function App() {
               {activeSection === 'debts' && (
                 <DebtManager 
                   customers={customers} 
-                  orders={orders} 
-                  onRecordPayment={handleRecordPayment} 
-                  onUndoPayment={handleUndoPayment}
-                  onRecordOrderPayment={handleRecordOrderPayment}
-                  onUpdateCustomer={handleUpdateCustomer}
-                  onDeleteCustomer={handleDeleteCustomer}
-                  onUpdateOrder={handleUpdateOrder}
-                />
-              )}
-            </>
-          )}
-        </main>
-      </div>
-    </div>
-  );
-}
+                  orders={order
