@@ -1,14 +1,16 @@
+import { useState } from 'react';
 import { DashboardStats } from '../types';
 import { TrendingUp, CreditCard, AlertCircle, ShoppingBag, Layers, Activity, Percent, Download, Upload, ShieldCheck, HardDrive } from 'lucide-react';
 
 interface OverviewProps {
   stats: DashboardStats;
   onNavigate: (section: string) => void;
-  onBackup: () => void;
+  onBackup: () => void | Promise<void>;
   onRestore: (file: File) => void;
 }
 
 export default function Overview({ stats, onNavigate, onBackup, onRestore }: OverviewProps) {
+  const [isBackingUp, setIsBackingUp] = useState(false);
   const formatVND = (num: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
   };
@@ -76,17 +78,25 @@ export default function Overview({ stats, onNavigate, onBackup, onRestore }: Ove
           <div>
             <h2 className="font-black text-slate-800">An toàn dữ liệu khi Supabase gặp lỗi</h2>
             <p className="text-xs text-slate-600 mt-1 max-w-2xl">
-              Tải bản sao lưu JSON chứa kho áo, hóa đơn, công nợ, lịch sử thanh toán và cấu hình khách hàng. Khi khôi phục, dữ liệu được giữ ở chế độ Local Backup trong 1 giờ để tránh Supabase lỗi ghi đè.
+              Tải bản sao lưu JSON chứa kho áo, hóa đơn, ghi chú, công nợ, lịch sử thanh toán và toàn bộ hình ảnh thật đã đăng. Khi khôi phục, ảnh không còn phụ thuộc vào Supabase Storage.
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={onBackup}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-2 cursor-pointer shadow-sm"
+            onClick={async () => {
+              setIsBackingUp(true);
+              try {
+                await onBackup();
+              } finally {
+                setIsBackingUp(false);
+              }
+            }}
+            disabled={isBackingUp}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-2 cursor-pointer shadow-sm disabled:opacity-60 disabled:cursor-wait"
           >
             <HardDrive className="w-4 h-4" />
-            Tải backup toàn bộ
+            {isBackingUp ? 'Đang tải và nhúng hình ảnh...' : 'Tải backup toàn bộ'}
           </button>
           <label className="px-4 py-2.5 bg-white hover:bg-blue-50 border border-blue-300 text-blue-700 rounded-xl text-xs font-black inline-flex items-center gap-2 cursor-pointer shadow-sm">
             <Upload className="w-4 h-4" />
