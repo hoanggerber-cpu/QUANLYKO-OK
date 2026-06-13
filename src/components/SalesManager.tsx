@@ -14,6 +14,11 @@ interface DtfItem {
   rawFile?: File;
 }
 
+interface DtfAttachment {
+  image: string;
+  rawFile?: File;
+}
+
 const urlToFile = async (url: string, prefixName: string): Promise<File | null> => {
   try {
     const res = await fetch(url);
@@ -85,6 +90,8 @@ export default function SalesManager({
   const [editNotes, setEditNotes] = useState('');
   const [editTshirtItems, setEditTshirtItems] = useState<OrderItem[]>([]);
   const [editTshirtSurcharge, setEditTshirtSurcharge] = useState(0);
+  const [editDtfImages, setEditDtfImages] = useState<DtfAttachment[]>([]);
+  const [uploadingEditDtfImages, setUploadingEditDtfImages] = useState(false);
 
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
 
@@ -128,6 +135,13 @@ export default function SalesManager({
     setEditUnitPrice(order.unitPrice || 0);
     setEditUnitPriceStr(String(order.unitPrice || 0));
     setEditNotes(order.notes || '');
+    if (order.type === 'dtf') {
+      const images = Array.from(new Set([
+        ...(order.orderImages || []),
+        ...(order.items || []).map(item => item.image).filter(Boolean) as string[]
+      ]));
+      setEditDtfImages(images.map(image => ({ image })));
+    }
     if (order.type === 'tshirt') {
       const sourceItems = order.items?.length ? order.items : [{
         id: 'legacy_' + order.id,
@@ -166,6 +180,37 @@ export default function SalesManager({
   const handleEditTshirtImage = (index: number, file?: File) => {
     if (!file) return;
     updateEditTshirtItem(index, { image: URL.createObjectURL(file), rawFile: file });
+  };
+
+  const handleAddEditDtfImages = (files?: FileList | null) => {
+    if (!files?.length) return;
+    setEditDtfImages(prev => [
+      ...prev,
+      ...Array.from(files).map(file => ({ image: URL.createObjectURL(file), rawFile: file }))
+    ]);
+  };
+
+  const uploadDtfAttachments = async (attachments: DtfAttachment[], prefix: string): Promise<string[]> => {
+    setUploadingEditDtfImages(true);
+    try {
+      return (await Promise.all(attachments.map(async attachment => {
+        if (!attachment.rawFile || /^https?:\/\//i.test(attachment.image)) return attachment.image;
+        try {
+          const fileExt = attachment.rawFile.name.split('.').pop() || 'png';
+          const filePath = `originals/${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+          const { data, error } = await withTimeout(
+            supabase.storage.from('order-images').upload(filePath, attachment.rawFile, { cacheControl: '3600', upsert: false }),
+            12000
+          );
+          if (!error && data) return supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl;
+        } catch (error) {
+          console.error('Uploading DTF attachment failed:', error);
+        }
+        return attachment.image;
+      }))).filter(Boolean);
+    } finally {
+      setUploadingEditDtfImages(false);
+    }
   };
 
   const handleEditTshirtSubmit = async (e: React.FormEvent) => {
@@ -300,6 +345,16 @@ export default function SalesManager({
     }
 
     try {
+      if (editingOrder.type === 'dtf') {
+        const uploadedImages = await uploadDtfAttachments(editDtfImages, 'edit_dtf');
+        updatedFields.orderImages = uploadedImages;
+        if (editingOrder.items) {
+          updatedFields.items = editingOrder.items.map((item, index) => ({
+            ...item,
+            image: uploadedImages[index]
+          }));
+        }
+      }
       await onUpdateOrder(editingOrder.id, updatedFields);
       setEditingOrder(null);
       showToast('Đã cập nhật đơn hàng thành công!', 'success');
@@ -357,6 +412,7 @@ export default function SalesManager({
   const [manualDtfImage, setManualDtfImage] = useState<string | undefined>(undefined);
   const [manualDtfFile, setManualDtfFile] = useState<File | undefined>(undefined);
   const [uploadingManualDtfImage, setUploadingManualDtfImage] = useState(false);
+  const [dtfOrderAttachments, setDtfOrderAttachments] = useState<DtfAttachment[]>([]);
 
   // New T-shirt group selection and size-matrix state variables
   const [selectedTshirtGroup, setSelectedTshirtGroup] = useState<string>('');
@@ -662,6 +718,14 @@ export default function SalesManager({
         console.error('Uploading manual design failed:', err);
       }
     }
+  };
+
+  const handleAddDtfOrderAttachments = (files?: FileList | null) => {
+    if (!files?.length) return;
+    setDtfOrderAttachments(prev => [
+      ...prev,
+      ...Array.from(files).map(file => ({ image: URL.createObjectURL(file), rawFile: file }))
+    ]);
   };
 
   // Custom addition of DTF items
@@ -1127,7 +1191,13 @@ export default function SalesManager({
     const finalQuantity = cleanCartItems.reduce((acc, item) => acc + item.quantity, 0);
     const finalUnitPrice = cleanCartItems[0]?.unitPrice || 0;
 
-    const orderImagesUrl = cleanCartItems.map(item => item.image).filter(Boolean) as string[];
+    const uploadedDtfAttachments = cleanCartItems.some(item => item.type === 'dtf')
+      ? await uploadDtfAttachments(dtfOrderAttachments, 'new_dtf')
+      : [];
+    const orderImagesUrl = Array.from(new Set([
+      ...cleanCartItems.map(item => item.image).filter(Boolean) as string[],
+      ...uploadedDtfAttachments
+    ]));
     const finalStatus: OrderStatus = finalPaid >= totalPrice ? 'completed' : 'pending';
 
     try {
@@ -1160,6 +1230,8 @@ export default function SalesManager({
       setIsManualDtf(false);
       setManualDtfMeters(1.0);
       setManualDtfImage(undefined);
+      setManualDtfFile(undefined);
+      setDtfOrderAttachments([]);
       setPaymentType('unpaid');
       setPaidAmount(0);
       setDtfItems([{ name: 'Mẫu 1', length: 0.15, quantity: 1 }]);
@@ -1187,6 +1259,8 @@ export default function SalesManager({
     setIsManualDtf(false);
     setManualDtfMeters(1.0);
     setManualDtfImage(undefined);
+    setManualDtfFile(undefined);
+    setDtfOrderAttachments([]);
     setSelectedProductType(activeTab);
     
     // Default mode to unpaid
@@ -2553,6 +2627,51 @@ export default function SalesManager({
                   </div>
                   )}
                   
+                  <div className="bg-sky-50/60 p-4 rounded-xl border border-sky-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-sky-900">Ảnh bổ sung của toàn đơn PET DTF</div>
+                        <div className="text-[10px] text-sky-700 mt-0.5">Có thể chọn nhiều ảnh cùng lúc. Các ảnh này không làm thay đổi số mét hoặc thành tiền.</div>
+                      </div>
+                      <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-lg cursor-pointer border border-sky-300">
+                        <Upload className="w-3.5 h-3.5" />
+                        Thêm nhiều ảnh
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={e => {
+                            handleAddDtfOrderAttachments(e.target.files);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {dtfOrderAttachments.length > 0 && (
+                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                        {dtfOrderAttachments.map((attachment, index) => (
+                          <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-sky-200 bg-white">
+                            <img
+                              src={attachment.image}
+                              alt={`Ảnh PET bổ sung ${index + 1}`}
+                              className="w-full h-full object-cover cursor-zoom-in"
+                              onClick={() => setActivePreviewImage(attachment.image)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setDtfOrderAttachments(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
+                              title="Xóa ảnh"
+                            >
+                              &times;
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Universal DTF Add to Cart trigger */}
                   <button
                     type="button"
@@ -3533,7 +3652,7 @@ export default function SalesManager({
       {/* Edit DTF Order Modal */}
       {editingOrder && editingOrder.type !== 'tshirt' && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in text-slate-700">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in max-h-[94vh] flex flex-col">
             <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-blue-900 text-white">
               <h3 className="font-bold text-lg">Chỉnh Sửa Chi Tiết Đơn Hàng</h3>
               <button
@@ -3544,7 +3663,7 @@ export default function SalesManager({
               </button>
             </div>
 
-            <form onSubmit={handleEditOrderSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleEditOrderSubmit} className="p-6 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Tên Khách Hàng</label>
                 <input
@@ -3712,6 +3831,56 @@ export default function SalesManager({
                   <option value="completed">Đã thu đủ</option>
                   <option value="cancelled">Đã hủy đơn</option>
                 </select>
+              </div>
+
+              <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-sky-900">Hình ảnh đơn PET DTF</label>
+                    <p className="text-[10px] text-sky-700 mt-0.5">Xóa ảnh cũ, thay ảnh hoặc thêm nhiều ảnh mới cho đơn này.</p>
+                  </div>
+                  <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-lg cursor-pointer border border-sky-300">
+                    <Upload className="w-3.5 h-3.5" />
+                    Thêm / thay ảnh
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={e => {
+                        handleAddEditDtfImages(e.target.files);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
+                {editDtfImages.length > 0 ? (
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                    {editDtfImages.map((attachment, index) => (
+                      <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-sky-200 bg-white">
+                        <img
+                          src={attachment.image}
+                          alt={`Ảnh đơn PET ${index + 1}`}
+                          className="w-full h-full object-cover cursor-zoom-in"
+                          onClick={() => setActivePreviewImage(attachment.image)}
+                          referrerPolicy="no-referrer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEditDtfImages(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
+                          title="Xóa ảnh khỏi đơn"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-xs font-semibold text-sky-700 border border-dashed border-sky-300 rounded-lg">
+                    Đơn này chưa có hình ảnh.
+                  </div>
+                )}
               </div>
 
               <div>
