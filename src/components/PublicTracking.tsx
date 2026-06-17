@@ -440,7 +440,10 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
                       {order.items && order.items.length > 0 ? (
                         <div className="space-y-2">
                           {order.items.map((item, idx) => {
-                            const imgArray = getOrderImagesArray(item.image);
+                            const imgArray = Array.from(new Set([
+                              ...getOrderImagesArray(item.image),
+                              ...(item.extraImages || [])
+                            ]));
                             const displayImg = imgArray.length > 0 ? imgArray[0] : null;
 
                             return (
@@ -578,7 +581,10 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
 
                       {/* If the order itself has extra images, render clickable tags/thumbnails */}
                       {(() => {
-                        const extraImgs = getOrderImagesArray(order.orderImages);
+                        const extraImgs = Array.from(new Set([
+                          ...getOrderImagesArray(order.orderImages),
+                          ...(order.items?.flatMap(item => item.extraImages || []) || [])
+                        ]));
                         if (extraImgs.length > 0) {
                           return (
                             <div className="flex flex-wrap gap-2 pt-1 font-sans">
