@@ -43,7 +43,8 @@ export async function exportCustomerProfile(
 
   const imageUrls = Array.from(new Set(customerOrders.flatMap(order => [
     ...(order.orderImages || []),
-    ...(order.items?.map(item => item.image).filter(Boolean) as string[] || [])
+    ...(order.items?.map(item => item.image).filter(Boolean) as string[] || []),
+    ...(order.items?.flatMap(item => item.extraImages || []) || [])
   ]).filter(Boolean)));
   const embeddedImages = new Map<string, string>();
   await Promise.all(imageUrls.map(async url => embeddedImages.set(url, await imageToDataUrl(url))));
@@ -56,7 +57,8 @@ export async function exportCustomerProfile(
   const orderRows = customerOrders.map(order => {
     const images = Array.from(new Set([
       ...(order.orderImages || []),
-      ...(order.items?.map(item => item.image).filter(Boolean) as string[] || [])
+      ...(order.items?.map(item => item.image).filter(Boolean) as string[] || []),
+      ...(order.items?.flatMap(item => item.extraImages || []) || [])
     ]));
     const items = order.items?.length
       ? `<table class="items"><thead><tr><th>Sản phẩm</th><th>Màu/Size</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${order.items.map(item =>
