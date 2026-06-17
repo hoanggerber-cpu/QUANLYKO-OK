@@ -99,7 +99,7 @@ export default function SalesManager({
     let initialQuantity = order.quantity;
     if (order.type === 'dtf') {
       if (order.color) {
-        const match = order.color.match(/(?:Độ dài|Đoạn)\s*([\d.]+)\s*m/i);
+        const match = order.color.match(/(?:Äá»™ dÃ i|Äoáº¡n)\s*([\d.]+)\s*m/i);
         if (match) {
           const parsedMeters = parseFloat(match[1]);
           if (!isNaN(parsedMeters) && parsedMeters > 0) {
@@ -229,7 +229,7 @@ export default function SalesManager({
     });
     for (const item of editTshirtItems) {
       if (!item.productId || item.quantity <= 0 || item.unitPrice < 0) {
-        showToast('Vui lòng chọn đúng mẫu áo, size, số lượng và đơn giá cho từng dòng.', 'error');
+        showToast('Vui lÃ²ng chá»n Ä‘Ãºng máº«u Ã¡o, size, sá»‘ lÆ°á»£ng vÃ  Ä‘Æ¡n giÃ¡ cho tá»«ng dÃ²ng.', 'error');
         return;
       }
       desiredByProduct.set(item.productId, (desiredByProduct.get(item.productId) || 0) + item.quantity);
@@ -239,7 +239,7 @@ export default function SalesManager({
       if (!product) continue;
       const availableIncludingOldOrder = product.stock + (previousByProduct.get(productId) || 0);
       if (desiredQty > availableIncludingOldOrder) {
-        showToast(`Size ${product.size} chỉ còn tối đa ${availableIncludingOldOrder} chiếc để cập nhật.`, 'error');
+        showToast(`Size ${product.size} chá»‰ cÃ²n tá»‘i Ä‘a ${availableIncludingOldOrder} chiáº¿c Ä‘á»ƒ cáº­p nháº­t.`, 'error');
         return;
       }
     }
@@ -286,7 +286,7 @@ export default function SalesManager({
         notes: editNotes.trim()
       });
       setEditingOrder(null);
-      showToast('Đã cập nhật chi tiết đơn áo thun thành công!', 'success');
+      showToast('ÄÃ£ cáº­p nháº­t chi tiáº¿t Ä‘Æ¡n Ã¡o thun thÃ nh cÃ´ng!', 'success');
     } catch (error) {
       console.error('Update T-shirt order failed:', error);
     }
@@ -312,18 +312,18 @@ export default function SalesManager({
     let finalColor = editingOrder.color || '';
     if (editingOrder.type === 'dtf') {
       finalProductName = `In PET phim (${finalQuantity.toFixed(1)}m)`;
-      if (finalColor.includes('Độ dài')) {
-        finalColor = `Độ dài ${finalQuantity.toFixed(2)}m`;
-      } else if (finalColor.includes('Đoạn')) {
-        finalColor = `Đoạn ${finalQuantity.toFixed(2)}m (SL:1)`;
+      if (finalColor.includes('Äá»™ dÃ i')) {
+        finalColor = `Äá»™ dÃ i ${finalQuantity.toFixed(2)}m`;
+      } else if (finalColor.includes('Äoáº¡n')) {
+        finalColor = `Äoáº¡n ${finalQuantity.toFixed(2)}m (SL:1)`;
       } else {
-        finalColor = `Độ dài ${finalQuantity.toFixed(2)}m`;
+        finalColor = `Äá»™ dÃ i ${finalQuantity.toFixed(2)}m`;
       }
     } else if (editingOrder.type === 'tshirt') {
-      if (/\(\d+\s*chiếc\)/i.test(finalProductName)) {
-        finalProductName = finalProductName.replace(/\(\d+\s*chiếc\)/i, `(${Math.round(finalQuantity)} chiếc)`);
+      if (/\(\d+\s*chiáº¿c\)/i.test(finalProductName)) {
+        finalProductName = finalProductName.replace(/\(\d+\s*chiáº¿c\)/i, `(${Math.round(finalQuantity)} chiáº¿c)`);
       } else {
-        finalProductName = `${finalProductName.replace(/\s*\(\d+\s*chiếc\)/gi, '')} (${Math.round(finalQuantity)} chiếc)`;
+        finalProductName = `${finalProductName.replace(/\s*\(\d+\s*chiáº¿c\)/gi, '')} (${Math.round(finalQuantity)} chiáº¿c)`;
       }
     }
 
@@ -357,7 +357,7 @@ export default function SalesManager({
       }
       await onUpdateOrder(editingOrder.id, updatedFields);
       setEditingOrder(null);
-      showToast('Đã cập nhật đơn hàng thành công!', 'success');
+      showToast('ÄÃ£ cáº­p nháº­t Ä‘Æ¡n hÃ ng thÃ nh cÃ´ng!', 'success');
     } catch (err) {
       console.error('Update order submit failed:', err);
     }
@@ -371,13 +371,13 @@ export default function SalesManager({
       setDeletingOrder(null);
       showToast(
         deletedOrder.type === 'tshirt'
-          ? 'Đã xóa đơn áo thun và hoàn trả số lượng về kho!'
-          : 'Đã xóa đơn hàng thành công!',
+          ? 'ÄÃ£ xÃ³a Ä‘Æ¡n Ã¡o thun vÃ  hoÃ n tráº£ sá»‘ lÆ°á»£ng vá» kho!'
+          : 'ÄÃ£ xÃ³a Ä‘Æ¡n hÃ ng thÃ nh cÃ´ng!',
         'success'
       );
     } catch (error) {
       console.error('Delete order failed:', error);
-      showToast(error instanceof Error ? error.message : 'Không thể xóa đơn hàng. Vui lòng thử lại!', 'error');
+      showToast(error instanceof Error ? error.message : 'KhÃ´ng thá»ƒ xÃ³a Ä‘Æ¡n hÃ ng. Vui lÃ²ng thá»­ láº¡i!', 'error');
     }
   };
 
@@ -426,7 +426,7 @@ export default function SalesManager({
   // Synchronize customTshirtPrice when selectedTshirtGroup updates
   useEffect(() => {
     if (selectedTshirtGroup) {
-      const groupItems = products.filter(p => `${p.name} - Màu: ${p.color}` === selectedTshirtGroup);
+      const groupItems = products.filter(p => `${p.name} - MÃ u: ${p.color}` === selectedTshirtGroup);
       if (groupItems.length > 0) {
         setCustomTshirtPrice(groupItems[0].salePrice || 100000);
       }
@@ -440,11 +440,11 @@ export default function SalesManager({
   
   // For Custom DTF ordering
   const [dtfItems, setDtfItems] = useState<DtfItem[]>([
-    { name: 'Mẫu 1', length: 0.15, quantity: 1 }
+    { name: 'Máº«u 1', length: 0.15, quantity: 1 }
   ]);
   const [dtfUnitPrice, setDtfUnitPrice] = useState<number>(55000); // suggest default 55000
   const [savedDtfPrices, setSavedDtfPrices] = useState<number[]>([]);
-  const [customDtfColor, setCustomDtfColor] = useState('Đa sắc (Full color)');
+  const [customDtfColor, setCustomDtfColor] = useState('Äa sáº¯c (Full color)');
 
   // Payment states - defaulting to 'unpaid'
   const [paymentType, setPaymentType] = useState<'unpaid' | 'partial' | 'full'>('unpaid');
@@ -470,6 +470,33 @@ export default function SalesManager({
     }, 4500);
   };
 
+  const addManualDtfImages = (files: File[]) => {
+    if (files.length === 0) return;
+    if (!manualDtfImage) {
+      const [primaryFile, ...extraFiles] = files;
+      setManualDtfImage(URL.createObjectURL(primaryFile));
+      setManualDtfFile(primaryFile);
+      if (extraFiles.length > 0) {
+        setDtfOrderAttachments(prev => [
+          ...prev,
+          ...extraFiles.map(extraFile => ({
+            image: URL.createObjectURL(extraFile),
+            rawFile: extraFile
+          }))
+        ]);
+      }
+      return;
+    }
+
+    setDtfOrderAttachments(prev => [
+      ...prev,
+      ...files.map(extraFile => ({
+        image: URL.createObjectURL(extraFile),
+        rawFile: extraFile
+      }))
+    ]);
+  };
+
   useEffect(() => {
     const prices = StorageManager.getDtfPricesForCustomer(customerName);
     setSavedDtfPrices(prices);
@@ -481,20 +508,20 @@ export default function SalesManager({
 
   const handleSaveDtfPrice = () => {
     if (!customerName.trim()) {
-      showToast('Vui lòng chọn hoặc nhập tên khách hàng trước khi lưu đơn giá!', 'error');
+      showToast('Vui lÃ²ng chá»n hoáº·c nháº­p tÃªn khÃ¡ch hÃ ng trÆ°á»›c khi lÆ°u Ä‘Æ¡n giÃ¡!', 'error');
       return;
     }
     if (dtfUnitPrice <= 0) {
-      showToast('Đơn giá PET phải lớn hơn 0!', 'error');
+      showToast('ÄÆ¡n giÃ¡ PET pháº£i lá»›n hÆ¡n 0!', 'error');
       return;
     }
 
     try {
       const prices = StorageManager.saveDtfPriceForCustomer(customerName, dtfUnitPrice);
       setSavedDtfPrices(prices);
-      showToast(`Đã lưu đơn giá ${formatCurrency(dtfUnitPrice)}/m cho ${customerName.trim()}.`, 'success');
+      showToast(`ÄÃ£ lÆ°u Ä‘Æ¡n giÃ¡ ${formatCurrency(dtfUnitPrice)}/m cho ${customerName.trim()}.`, 'success');
     } catch (error: any) {
-      showToast(error?.message || 'Không thể lưu đơn giá cho khách hàng.', 'error');
+      showToast(error?.message || 'KhÃ´ng thá»ƒ lÆ°u Ä‘Æ¡n giÃ¡ cho khÃ¡ch hÃ ng.', 'error');
     }
   };
 
@@ -505,23 +532,21 @@ export default function SalesManager({
       const items = e.clipboardData?.items;
       if (!items) return;
 
-      let fileItem = null;
+      const pastedImageFiles: File[] = [];
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
-          fileItem = items[i];
-          break;
+          const pastedFile = items[i].getAsFile();
+          if (pastedFile) pastedImageFiles.push(pastedFile);
         }
       }
 
-      if (!fileItem) return;
-
-      const file = fileItem.getAsFile();
-      if (!file) return;
+      if (pastedImageFiles.length === 0) return;
+      const file = pastedImageFiles[0];
 
       // Prevent default browser paste behaviors
       e.preventDefault();
 
-      showToast('Đang nhận hình ảnh từ clipboard...', 'info');
+      showToast('Äang nháº­n hÃ¬nh áº£nh tá»« clipboard...', 'info');
 
       if (selectedProductType === 'tshirt') {
         const objectUrl = URL.createObjectURL(file);
@@ -556,22 +581,25 @@ export default function SalesManager({
               
               if (publicUrlData?.publicUrl) {
                 setTshirtPrintImage(publicUrlData.publicUrl);
-                showToast('Dán và tải lên ảnh in áo thun thành công!', 'success');
+                showToast('DÃ¡n vÃ  táº£i lÃªn áº£nh in Ã¡o thun thÃ nh cÃ´ng!', 'success');
               }
             }
           } catch (err) {
             console.error('Uploading pasted design failed:', err);
-            showToast('Tải lên ảnh dán thất bại!', 'error');
+            showToast('Táº£i lÃªn áº£nh dÃ¡n tháº¥t báº¡i!', 'error');
           }
         } else {
-          showToast('Đã dán ảnh (Lưu trữ tạm thời offline)', 'success');
+          showToast('ÄÃ£ dÃ¡n áº£nh (LÆ°u trá»¯ táº¡m thá»i offline)', 'success');
         }
 
       } else if (selectedProductType === 'dtf') {
         if (isManualDtf) {
-          const objectUrl = URL.createObjectURL(file);
-          setManualDtfImage(objectUrl);
-          setManualDtfFile(file);
+          const shouldUploadPrimary = !manualDtfImage;
+          addManualDtfImages(pastedImageFiles);
+          if (!shouldUploadPrimary) {
+            showToast(`Đã dán thêm ${pastedImageFiles.length} ảnh PET DTF vào hóa đơn.`, 'success');
+            return;
+          }
 
           const isOnline = StorageManager.getIsSupabaseActive();
           if (isOnline) {
@@ -597,15 +625,15 @@ export default function SalesManager({
                 
                 if (publicUrlData?.publicUrl) {
                   setManualDtfImage(publicUrlData.publicUrl);
-                  showToast('Dán và tải lên ảnh DTF thủ công thành công!', 'success');
+                  showToast('DÃ¡n vÃ  táº£i lÃªn áº£nh DTF thá»§ cÃ´ng thÃ nh cÃ´ng!', 'success');
                 }
               }
             } catch (err) {
               console.error('Uploading pasted manual design failed:', err);
-              showToast('Tải lên ảnh dán thất bại!', 'error');
+              showToast('Táº£i lÃªn áº£nh dÃ¡n tháº¥t báº¡i!', 'error');
             }
           } else {
-            showToast('Đã dán ảnh (Lưu trữ tạm thời offline)', 'success');
+            showToast('ÄÃ£ dÃ¡n áº£nh (LÆ°u trá»¯ táº¡m thá»i offline)', 'success');
           }
 
         } else {
@@ -613,7 +641,7 @@ export default function SalesManager({
           let targetIndex = dtfItems.length - 1;
           const lastItem = dtfItems[targetIndex];
 
-          const designName = file.name ? file.name.replace(/\.[^/.]+$/, "") : `Mẫu ${dtfItems.length + 1}`;
+          const designName = file.name ? file.name.replace(/\.[^/.]+$/, "") : `Máº«u ${dtfItems.length + 1}`;
 
           if (lastItem && !lastItem.image) {
             // Update last item
@@ -658,15 +686,15 @@ export default function SalesManager({
                     }
                     return item;
                   }));
-                  showToast(`Dán và tải lên mẫu in #${targetIndex + 1} thành công!`, 'success');
+                  showToast(`DÃ¡n vÃ  táº£i lÃªn máº«u in #${targetIndex + 1} thÃ nh cÃ´ng!`, 'success');
                 }
               }
             } catch (err) {
               console.error('Uploading pasted pattern failed:', err);
-              showToast('Tải lên ảnh mẫu dán thất bại!', 'error');
+              showToast('Táº£i lÃªn áº£nh máº«u dÃ¡n tháº¥t báº¡i!', 'error');
             }
           } else {
-            showToast(`Đã dán ảnh cho mẫu in #${targetIndex + 1} (Offline)`, 'success');
+            showToast(`ÄÃ£ dÃ¡n áº£nh cho máº«u in #${targetIndex + 1} (Offline)`, 'success');
           }
         }
       }
@@ -676,28 +704,23 @@ export default function SalesManager({
     return () => {
       document.removeEventListener('paste', handlePaste);
     };
-  }, [showModal, selectedProductType, isManualDtf, dtfItems]);
+  }, [showModal, selectedProductType, isManualDtf, dtfItems, manualDtfImage]);
 
   const handleManualDtfImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles: File[] = e.target.files ? Array.from(e.target.files) : [];
     const file = selectedFiles[0];
     if (!file) return;
 
-    if (selectedFiles.length > 1) {
-      setDtfOrderAttachments(prev => [
-        ...prev,
-        ...selectedFiles.slice(1).map(extraFile => ({
-          image: URL.createObjectURL(extraFile),
-          rawFile: extraFile
-        }))
-      ]);
-      showToast(`Đã thêm ${selectedFiles.length} ảnh PET DTF. Ảnh đầu tiên làm ảnh đại diện, các ảnh còn lại lưu kèm hóa đơn.`, 'success');
+    const shouldUploadPrimary = !manualDtfImage;
+    addManualDtfImages(selectedFiles);
+    e.target.value = '';
+
+    if (!shouldUploadPrimary) {
+      showToast(`Đã thêm ${selectedFiles.length} ảnh PET DTF vào hóa đơn.`, 'success');
+      return;
     }
 
     setUploadingManualDtfImage(true);
-    const objectUrl = URL.createObjectURL(file);
-    setManualDtfImage(objectUrl);
-    setManualDtfFile(file);
     setUploadingManualDtfImage(false);
 
     const isOnline = StorageManager.getIsSupabaseActive();
@@ -732,17 +755,9 @@ export default function SalesManager({
     }
   };
 
-  const handleAddDtfOrderAttachments = (files?: FileList | null) => {
-    if (!files?.length) return;
-    setDtfOrderAttachments(prev => [
-      ...prev,
-      ...Array.from(files).map(file => ({ image: URL.createObjectURL(file), rawFile: file }))
-    ]);
-  };
-
   // Custom addition of DTF items
   const handleAddDtfItem = () => {
-    setDtfItems(prev => [...prev, { name: `Mẫu ${prev.length + 1}`, length: 0.15, quantity: 1 }]);
+    setDtfItems(prev => [...prev, { name: `Máº«u ${prev.length + 1}`, length: 0.15, quantity: 1 }]);
   };
 
   const handleTshirtPrintImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -850,9 +865,9 @@ export default function SalesManager({
 
   // Derived T-shirt grouped properties
   const tshirtGroups = Array.from(
-    new Set(products.map(p => `${p.name} - Màu: ${p.color}`))
+    new Set(products.map(p => `${p.name} - MÃ u: ${p.color}`))
   ).map(groupKey => {
-    const groupItems = products.filter(p => `${p.name} - Màu: ${p.color}` === groupKey);
+    const groupItems = products.filter(p => `${p.name} - MÃ u: ${p.color}` === groupKey);
     return {
       key: groupKey,
       name: groupItems[0].name,
@@ -862,7 +877,7 @@ export default function SalesManager({
     };
   });
 
-  const activeGroupSizes = products.filter(p => `${p.name} - Màu: ${p.color}` === selectedTshirtGroup);
+  const activeGroupSizes = products.filter(p => `${p.name} - MÃ u: ${p.color}` === selectedTshirtGroup);
 
   const getReservedTshirtQuantity = (product: Product) => {
     return cartItems
@@ -895,14 +910,14 @@ export default function SalesManager({
   const handleAddDtfToCart = () => {
     if (isManualDtf) {
       if (manualDtfMeters <= 0) {
-        showToast('Vui lòng nhập chiều dài mét lớn hơn 0!', 'error');
+        showToast('Vui lÃ²ng nháº­p chiá»u dÃ i mÃ©t lá»›n hÆ¡n 0!', 'error');
         return;
       }
       const newItem: OrderItem = {
         id: 'ci_' + Math.random().toString(36).substring(2, 11),
         type: 'dtf',
-        productName: 'In Phim PET DTF (Nhập mét tay)',
-        color: `Độ dài ${manualDtfMeters.toFixed(2)}m`,
+        productName: 'In Phim PET DTF (Nháº­p mÃ©t tay)',
+        color: `Äá»™ dÃ i ${manualDtfMeters.toFixed(2)}m`,
         quantity: manualDtfMeters,
         unitPrice: dtfUnitPrice,
         totalPrice: Number((manualDtfMeters * dtfUnitPrice).toFixed(0)),
@@ -920,14 +935,14 @@ export default function SalesManager({
       const itemsToAdd: OrderItem[] = [];
       for (const item of dtfItems) {
         if (item.length <= 0 || item.quantity <= 0) {
-          showToast('Vui lòng nhập kích cỡ và số lượng mẫu in hợp lý!', 'error');
+          showToast('Vui lÃ²ng nháº­p kÃ­ch cá»¡ vÃ  sá»‘ lÆ°á»£ng máº«u in há»£p lÃ½!', 'error');
           return;
         }
         itemsToAdd.push({
           id: 'ci_' + Math.random().toString(36).substring(2, 11),
           type: 'dtf',
-          productName: `In PET - ${item.name.trim() || 'Thiết kế mẫu'}`,
-          color: `Đoạn ${item.length}m (SL:${item.quantity})`,
+          productName: `In PET - ${item.name.trim() || 'Thiáº¿t káº¿ máº«u'}`,
+          color: `Äoáº¡n ${item.length}m (SL:${item.quantity})`,
           quantity: Number((item.length * item.quantity).toFixed(2)),
           unitPrice: dtfUnitPrice,
           totalPrice: Number((item.length * item.quantity * dtfUnitPrice).toFixed(0)),
@@ -938,14 +953,14 @@ export default function SalesManager({
       setCartItems(prev => [...prev, ...itemsToAdd]);
       
       // Reset list
-      setDtfItems([{ name: 'Mẫu 1', length: 0.15, quantity: 1 }]);
+      setDtfItems([{ name: 'Máº«u 1', length: 0.15, quantity: 1 }]);
     }
   };
 
   const handleAddTshirtsToCart = () => {
     const nonZeroSizes = activeGroupSizes.filter(p => (tshirtSizesQty[p.id] || 0) > 0);
     if (nonZeroSizes.length === 0) {
-      showToast('Vui lòng nhập số lượng đặt mua cho ít nhất một Size!', 'error');
+      showToast('Vui lÃ²ng nháº­p sá»‘ lÆ°á»£ng Ä‘áº·t mua cho Ã­t nháº¥t má»™t Size!', 'error');
       return;
     }
 
@@ -954,7 +969,7 @@ export default function SalesManager({
       const alreadyInCart = getReservedTshirtQuantity(prod);
       const orderQty = tshirtSizesQty[prod.id] || 0;
       if (orderQty + alreadyInCart > prod.stock) {
-        showToast(`Số lượng đặt mua (${orderQty + alreadyInCart}) của dòng Size ${prod.size} vượt quá hàng tồn trong kho (${prod.stock})!`, 'error');
+        showToast(`Sá»‘ lÆ°á»£ng Ä‘áº·t mua (${orderQty + alreadyInCart}) cá»§a dÃ²ng Size ${prod.size} vÆ°á»£t quÃ¡ hÃ ng tá»“n trong kho (${prod.stock})!`, 'error');
         return;
       }
     }
@@ -1001,8 +1016,8 @@ export default function SalesManager({
       link.href = canvas.toDataURL('image/png');
       link.click();
     } catch (err) {
-      console.error('Lỗi khi xuất ảnh hóa đơn:', err);
-      showToast('Không thể tạo file ảnh, vui lòng chụp màn hình hoặc dùng bản PDF!', 'error');
+      console.error('Lá»—i khi xuáº¥t áº£nh hÃ³a Ä‘Æ¡n:', err);
+      showToast('KhÃ´ng thá»ƒ táº¡o file áº£nh, vui lÃ²ng chá»¥p mÃ n hÃ¬nh hoáº·c dÃ¹ng báº£n PDF!', 'error');
     } finally {
       setDownloadingPNG(false);
     }
@@ -1113,11 +1128,11 @@ export default function SalesManager({
     if (isSavingOrder) return;
     if (!customerName.trim()) return;
     if (cartItems.length === 0) {
-      showToast('Vui lòng thêm ít nhất một sản phẩm vào Giỏ Hàng trước khi lưu hóa đơn!', 'error');
+      showToast('Vui lÃ²ng thÃªm Ã­t nháº¥t má»™t sáº£n pháº©m vÃ o Giá» HÃ ng trÆ°á»›c khi lÆ°u hÃ³a Ä‘Æ¡n!', 'error');
       return;
     }
 
-    showToast('Đang xử lý dữ liệu và tải hình ảnh lên hệ thống...', 'info');
+    showToast('Äang xá»­ lÃ½ dá»¯ liá»‡u vÃ  táº£i hÃ¬nh áº£nh lÃªn há»‡ thá»‘ng...', 'info');
 
     setIsSavingOrder(true);
 
@@ -1172,8 +1187,8 @@ export default function SalesManager({
         }
 
         // Clean up text in color and product name
-        const cleanColor = (item.color || '').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim();
-        const cleanProductName = (item.productName || '').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim();
+        const cleanColor = (item.color || '').replace(/\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '').trim();
+        const cleanProductName = (item.productName || '').replace(/\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '').trim();
 
         return {
           ...item,
@@ -1197,7 +1212,7 @@ export default function SalesManager({
       .filter(Boolean)
       .filter((v, i, a) => a.indexOf(v) === i)
       .join(', ')
-      .replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')
+      .replace(/\s*\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '')
       .trim();
 
     const finalQuantity = cleanCartItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -1246,14 +1261,14 @@ export default function SalesManager({
       setDtfOrderAttachments([]);
       setPaymentType('unpaid');
       setPaidAmount(0);
-      setDtfItems([{ name: 'Mẫu 1', length: 0.15, quantity: 1 }]);
+      setDtfItems([{ name: 'Máº«u 1', length: 0.15, quantity: 1 }]);
       setDtfUnitPrice(55000);
       setOrderDate(new Date().toISOString().split('T')[0]);
       setShowModal(false);
       setShowOrderCelebration(true);
     } catch (err: any) {
-      console.error('Lỗi khi ghi sổ hóa đơn:', err);
-      showToast(`Lỗi ghi sổ hóa đơn: ${err?.message || 'Lỗi cơ sở dữ liệu'}`, 'error');
+      console.error('Lá»—i khi ghi sá»• hÃ³a Ä‘Æ¡n:', err);
+      showToast(`Lá»—i ghi sá»• hÃ³a Ä‘Æ¡n: ${err?.message || 'Lá»—i cÆ¡ sá»Ÿ dá»¯ liá»‡u'}`, 'error');
     } finally {
       setIsSavingOrder(false);
     }
@@ -1280,7 +1295,7 @@ export default function SalesManager({
     setPaidAmount(0);
     
     // Reset to defaults
-    setDtfItems([{ name: 'Mẫu 1', length: 0.15, quantity: 1 }]);
+    setDtfItems([{ name: 'Máº«u 1', length: 0.15, quantity: 1 }]);
     setDtfUnitPrice(55000);
     setOrderDate(new Date().toISOString().split('T')[0]);
     setShowModal(true);
@@ -1292,13 +1307,13 @@ export default function SalesManager({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
         <div>
           <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-            Hệ thống quản lý bán hàng
+            Há»‡ thá»‘ng quáº£n lÃ½ bÃ¡n hÃ ng
           </span>
           <h2 className="text-xl font-black text-slate-850 tracking-tight mt-1.5 flex items-center gap-2">
-            <span>Danh Sách Đơn Giao Nhận & In Ấn</span>
+            <span>Danh SÃ¡ch ÄÆ¡n Giao Nháº­n & In áº¤n</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Tổng cộng: <strong>{tabOrders.length}</strong> đơn hàng | Đang hiển thị bộ lọc: <strong>{statusFilter === 'all' ? 'Tất cả' : statusFilter === 'pending' ? 'Công nợ' : statusFilter === 'completed' ? 'Đã thu đủ' : 'Đã hủy'} ({filteredOrders.length})</strong>
+            Tá»•ng cá»™ng: <strong>{tabOrders.length}</strong> Ä‘Æ¡n hÃ ng | Äang hiá»ƒn thá»‹ bá»™ lá»c: <strong>{statusFilter === 'all' ? 'Táº¥t cáº£' : statusFilter === 'pending' ? 'CÃ´ng ná»£' : statusFilter === 'completed' ? 'ÄÃ£ thu Ä‘á»§' : 'ÄÃ£ há»§y'} ({filteredOrders.length})</strong>
           </p>
         </div>
         
@@ -1307,7 +1322,7 @@ export default function SalesManager({
           className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/15 cursor-pointer uppercase tracking-wider"
         >
           <Plus className="w-4.5 h-4.5" />
-          <span>Tạo Đơn Hàng Mới</span>
+          <span>Táº¡o ÄÆ¡n HÃ ng Má»›i</span>
         </button>
       </div>
 
@@ -1324,7 +1339,7 @@ export default function SalesManager({
           }`}
         >
           <span className="w-1.5 h-1.5 bg-blue-650 rounded-full"></span>
-          Đơn hàng In Pet DTF ({orders.filter(o => o.type === 'dtf').length})
+          ÄÆ¡n hÃ ng In Pet DTF ({orders.filter(o => o.type === 'dtf').length})
         </button>
         <button
           onClick={() => {
@@ -1337,29 +1352,29 @@ export default function SalesManager({
           }`}
         >
           <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
-          Đơn hàng Áo thun ({orders.filter(o => o.type === 'tshirt').length})
+          ÄÆ¡n hÃ ng Ão thun ({orders.filter(o => o.type === 'tshirt').length})
         </button>
       </div>
 
       {/* Real-time statistics summaries */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-4.5 rounded-2xl border border-slate-150/80 shadow-sm flex flex-col justify-between">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Tổng Tiền Phát Sinh</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Tá»•ng Tiá»n PhÃ¡t Sinh</span>
           <span className="text-xl font-black mt-2 font-mono text-slate-800">{formatCurrency(activeStats.totalRev)}</span>
-          <span className="text-[9px] text-slate-400 block mt-1">Từ {filteredOrders.length} hóa đơn đang chọn</span>
+          <span className="text-[9px] text-slate-400 block mt-1">Tá»« {filteredOrders.length} hÃ³a Ä‘Æ¡n Ä‘ang chá»n</span>
         </div>
 
         <div className="bg-white p-4.5 rounded-2xl border border-slate-150/80 shadow-sm flex flex-col justify-between">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Thống Kê Thực Thu</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Thá»‘ng KÃª Thá»±c Thu</span>
           <span className="text-xl font-black mt-2 font-mono text-emerald-600">{formatCurrency(activeStats.totalPd)}</span>
-          <span className="text-[9px] text-emerald-500 font-semibold block mt-1">Đã gạch nợ thành công</span>
+          <span className="text-[9px] text-emerald-500 font-semibold block mt-1">ÄÃ£ gáº¡ch ná»£ thÃ nh cÃ´ng</span>
         </div>
 
         <div className="bg-rose-50 border border-rose-100 p-4.5 rounded-2xl shadow-inner flex flex-col justify-between">
-          <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest block">Tổng Dư Nợ Chưa Thu</span>
+          <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest block">Tá»•ng DÆ° Ná»£ ChÆ°a Thu</span>
           <span className="text-xl font-black mt-2 font-mono text-rose-600">{formatCurrency(activeStats.totalDt)}</span>
           <span className="text-[9px] text-rose-450 block mt-1">
-            {activeStats.totalDt > 0 ? '⚠️ Cần đôn đốc khách trả nợ' : '✅ Đã thu đủ sạch sẽ'}
+            {activeStats.totalDt > 0 ? 'âš ï¸ Cáº§n Ä‘Ã´n Ä‘á»‘c khÃ¡ch tráº£ ná»£' : 'âœ… ÄÃ£ thu Ä‘á»§ sáº¡ch sáº½'}
           </span>
         </div>
       </div>
@@ -1378,7 +1393,7 @@ export default function SalesManager({
                   : 'bg-slate-50 hover:bg-slate-100/80 text-slate-600'
               }`}
             >
-              <span>Tất cả</span>
+              <span>Táº¥t cáº£</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${statusFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>
                 {statusCounts.all}
               </span>
@@ -1393,7 +1408,7 @@ export default function SalesManager({
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>Chưa thu hết (Còn Nợ)</span>
+              <span>ChÆ°a thu háº¿t (CÃ²n Ná»£)</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${statusFilter === 'pending' ? 'bg-white/25 text-white' : 'bg-amber-200'}`}>
                 {statusCounts.pending}
               </span>
@@ -1408,7 +1423,7 @@ export default function SalesManager({
               }`}
             >
               <CheckCircle className="w-3.5 h-3.5" />
-              <span>Đã thanh toán (Thu đủ)</span>
+              <span>ÄÃ£ thanh toÃ¡n (Thu Ä‘á»§)</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${statusFilter === 'completed' ? 'bg-white/25 text-white' : 'bg-emerald-200'}`}>
                 {statusCounts.completed}
               </span>
@@ -1423,7 +1438,7 @@ export default function SalesManager({
               }`}
             >
               <Ban className="w-3.5 h-3.5" />
-              <span>Hóa đơn đã Hủy</span>
+              <span>HÃ³a Ä‘Æ¡n Ä‘Ã£ Há»§y</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${statusFilter === 'cancelled' ? 'bg-white/25 text-white' : 'bg-slate-200'}`}>
                 {statusCounts.cancelled}
               </span>
@@ -1442,7 +1457,7 @@ export default function SalesManager({
               }`}
             >
               <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              <span>Giao Diện Ô Lịch</span>
+              <span>Giao Diá»‡n Ã” Lá»‹ch</span>
             </button>
             <button
               type="button"
@@ -1454,7 +1469,7 @@ export default function SalesManager({
               }`}
             >
               <List className="w-3.5 h-3.5" />
-              <span>Xem Dạng Bảng (Dễ Tìm)</span>
+              <span>Xem Dáº¡ng Báº£ng (Dá»… TÃ¬m)</span>
             </button>
             <button
               type="button"
@@ -1466,7 +1481,7 @@ export default function SalesManager({
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
-              <span>Gộp Nhóm Ngày</span>
+              <span>Gá»™p NhÃ³m NgÃ y</span>
             </button>
           </div>
 
@@ -1479,7 +1494,7 @@ export default function SalesManager({
           </span>
           <input
             type="text"
-            placeholder={`Gõ để tìm nhanh tên khách, mã hóa đơn (Vd: ORD-DTF-...) hoặc tên tóm tắt thiết kế mặt hàng ${activeTab === 'dtf' ? 'In Pet' : 'Áo thun'}...`}
+            placeholder={`GÃµ Ä‘á»ƒ tÃ¬m nhanh tÃªn khÃ¡ch, mÃ£ hÃ³a Ä‘Æ¡n (Vd: ORD-DTF-...) hoáº·c tÃªn tÃ³m táº¯t thiáº¿t káº¿ máº·t hÃ ng ${activeTab === 'dtf' ? 'In Pet' : 'Ão thun'}...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/15 focus:border-blue-500 transition-all text-sm font-semibold text-slate-800"
@@ -1556,8 +1571,8 @@ export default function SalesManager({
                     <Calendar className="w-5 h-5 text-blue-500" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-slate-800 text-base">Xem Theo Lịch Ngày Trong Tháng</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Mỗi ô đại diện cho một ngày. Bấm chọn ngày để hiển thị chi tiết các đơn hàng phía dưới.</p>
+                    <h3 className="font-extrabold text-slate-800 text-base">Xem Theo Lá»‹ch NgÃ y Trong ThÃ¡ng</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Má»—i Ã´ Ä‘áº¡i diá»‡n cho má»™t ngÃ y. Báº¥m chá»n ngÃ y Ä‘á»ƒ hiá»ƒn thá»‹ chi tiáº¿t cÃ¡c Ä‘Æ¡n hÃ ng phÃ­a dÆ°á»›i.</p>
                   </div>
                 </div>
 
@@ -1573,13 +1588,13 @@ export default function SalesManager({
                       });
                     }}
                     className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl cursor-pointer transition-colors"
-                    title="Tháng trước"
+                    title="ThÃ¡ng trÆ°á»›c"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   
                   <div className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-850 select-none whitespace-nowrap min-w-[120px] text-center">
-                    Tháng {String(month + 1).padStart(2, '0')} / {year}
+                    ThÃ¡ng {String(month + 1).padStart(2, '0')} / {year}
                   </div>
 
                   <button
@@ -1592,7 +1607,7 @@ export default function SalesManager({
                       });
                     }}
                     className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl cursor-pointer transition-colors"
-                    title="Tháng sau"
+                    title="ThÃ¡ng sau"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>
@@ -1601,13 +1616,13 @@ export default function SalesManager({
 
               {/* Weekday headers: Monday to Sunday */}
               <div className="grid grid-cols-7 gap-2 text-center text-xs font-black text-slate-500 uppercase tracking-wider py-2 bg-slate-100 rounded-2xl select-none border border-slate-200/60 shadow-sm">
-                <div>Thứ 2</div>
-                <div>Thứ 3</div>
-                <div>Thứ 4</div>
-                <div>Thứ 5</div>
-                <div>Thứ 6</div>
-                <div>Thứ 7</div>
-                <div className="text-rose-600">Chủ Nhật</div>
+                <div>Thá»© 2</div>
+                <div>Thá»© 3</div>
+                <div>Thá»© 4</div>
+                <div>Thá»© 5</div>
+                <div>Thá»© 6</div>
+                <div>Thá»© 7</div>
+                <div className="text-rose-600">Chá»§ Nháº­t</div>
               </div>
 
               {/* Days Grid */}
@@ -1687,10 +1702,10 @@ export default function SalesManager({
                             {cell.hasPendingDebt ? (
                               <>
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-3 w-3 bg-white border border-rose-500 shadow-xs" title="Còn nợ" />
+                                <span className="relative inline-flex rounded-full h-3 w-3 bg-white border border-rose-500 shadow-xs" title="CÃ²n ná»£" />
                               </>
                             ) : (
-                              <span className="relative inline-flex rounded-full h-3 w-3 bg-white border border-emerald-500 shadow-xs" title="Đã thu đủ" />
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-white border border-emerald-500 shadow-xs" title="ÄÃ£ thu Ä‘á»§" />
                             )}
                           </span>
                         )}
@@ -1700,15 +1715,15 @@ export default function SalesManager({
                       {cell.hasOrders ? (
                         <div className="mt-3.5 space-y-1.5 pointer-events-none">
                           <span className={badgeClasses}>
-                            {cell.ordersCount} đơn
+                            {cell.ordersCount} Ä‘Æ¡n
                           </span>
                           <div className={priceClasses}>
-                            {formatCurrency(cell.totalRevenue).replace(/\s*đ/gi, '')}đ
+                            {formatCurrency(cell.totalRevenue).replace(/\s*Ä‘/gi, '')}Ä‘
                           </div>
                         </div>
                       ) : (
                         <div className="mt-5 pointer-events-none">
-                          <span className="text-[9px] text-slate-350 font-semibold uppercase tracking-wider block">Trống</span>
+                          <span className="text-[9px] text-slate-350 font-semibold uppercase tracking-wider block">Trá»‘ng</span>
                         </div>
                       )}
                     </button>
@@ -1720,15 +1735,15 @@ export default function SalesManager({
               <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-5 border-t border-slate-100 text-xs font-bold text-slate-600">
                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-2xl shadow-xs">
                   <div className="w-5 h-5 rounded-[7px] bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-md shadow-orange-550/20" />
-                  <span>CÔNG NỢ (Chưa thu đủ)</span>
+                  <span>CÃ”NG Ná»¢ (ChÆ°a thu Ä‘á»§)</span>
                 </div>
                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-2xl shadow-xs">
                   <div className="w-5 h-5 rounded-[7px] bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 shadow-md shadow-emerald-550/20" />
-                  <span>THU ĐỦ (Đã sạch nợ)</span>
+                  <span>THU Äá»¦ (ÄÃ£ sáº¡ch ná»£)</span>
                 </div>
                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-2xl shadow-xs">
                   <div className="w-5 h-5 rounded-[7px] bg-white border border-slate-300 shadow-xs" />
-                  <span>Không phát sinh đơn</span>
+                  <span>KhÃ´ng phÃ¡t sinh Ä‘Æ¡n</span>
                 </div>
               </div>
             </div>
@@ -1740,21 +1755,21 @@ export default function SalesManager({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4.5 rounded-2xl border border-slate-150 shadow-sm mt-2">
                     <div>
                       <h4 className="text-sm font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
-                        <span>📅 Danh sách đơn ngày:</span>
+                        <span>ðŸ“… Danh sÃ¡ch Ä‘Æ¡n ngÃ y:</span>
                         <span className="text-blue-600 font-mono tracking-tight underline decoration-2">{selectedDateKey}</span>
                       </h4>
                       <p className="text-xs text-slate-400 mt-1">
-                        Hiển thị các hóa đơn in ấn và may mặc và thông tin công nợ tương ứng của ngày {selectedDateKey}.
+                        Hiá»ƒn thá»‹ cÃ¡c hÃ³a Ä‘Æ¡n in áº¥n vÃ  may máº·c vÃ  thÃ´ng tin cÃ´ng ná»£ tÆ°Æ¡ng á»©ng cá»§a ngÃ y {selectedDateKey}.
                       </p>
                     </div>
                     <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-3 py-1 rounded-full uppercase tracking-wider w-fit">
-                      Đang hiển thị
+                      Äang hiá»ƒn thá»‹
                     </span>
                   </div>
 
                   {!ordersGroupedByDate[selectedDateKey] || ordersGroupedByDate[selectedDateKey].length === 0 ? (
                     <div className="p-12 text-center bg-white rounded-2xl text-sm text-slate-400 font-bold border border-slate-200 shadow-sm">
-                      Không tìm thấy đơn hàng nào khớp với bộ lọc trong ngày này.
+                      KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng nÃ o khá»›p vá»›i bá»™ lá»c trong ngÃ y nÃ y.
                     </div>
                   ) : (
                     <div className="bg-white rounded-2xl border border-slate-150 shadow-sm overflow-hidden">
@@ -1762,15 +1777,15 @@ export default function SalesManager({
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-50/70 border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                              <th className="py-4 px-5">Ghi chú / Mã đơn</th>
-                              <th className="py-4 px-5">Tên Khách Hàng</th>
-                              <th className="py-4 px-5">Chi Tiết Thiết Kế / Kích Thước</th>
-                              <th className="py-4 px-3 text-center">S.Lượng</th>
-                              <th className="py-4 px-3 text-right">Tổng Tiền</th>
-                              <th className="py-4 px-3 text-right">Thực Thu</th>
-                              <th className="py-4 px-3 text-right">Số Nợ</th>
-                              <th className="py-4 px-4 text-center">Trạng Thái</th>
-                              <th className="py-4 px-5 text-center">Hành Động</th>
+                              <th className="py-4 px-5">Ghi chÃº / MÃ£ Ä‘Æ¡n</th>
+                              <th className="py-4 px-5">TÃªn KhÃ¡ch HÃ ng</th>
+                              <th className="py-4 px-5">Chi Tiáº¿t Thiáº¿t Káº¿ / KÃ­ch ThÆ°á»›c</th>
+                              <th className="py-4 px-3 text-center">S.LÆ°á»£ng</th>
+                              <th className="py-4 px-3 text-right">Tá»•ng Tiá»n</th>
+                              <th className="py-4 px-3 text-right">Thá»±c Thu</th>
+                              <th className="py-4 px-3 text-right">Sá»‘ Ná»£</th>
+                              <th className="py-4 px-4 text-center">Tráº¡ng ThÃ¡i</th>
+                              <th className="py-4 px-5 text-center">HÃ nh Äá»™ng</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-sm">
@@ -1793,7 +1808,7 @@ export default function SalesManager({
                                     <span className="text-slate-800 font-bold block leading-tight">{order.productName}</span>
                                     {order.color && (
                                       <span className="text-[11px] text-slate-400 font-semibold block">
-                                        Màu sắc: {order.color.replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')}
+                                        MÃ u sáº¯c: {order.color.replace(/\s*\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '')}
                                       </span>
                                     )}
                                     {Array.isArray(order.orderImages) && order.orderImages.length > 0 && (
@@ -1802,7 +1817,7 @@ export default function SalesManager({
                                           <img
                                             key={imIdx}
                                             src={img}
-                                            alt="Thiết kế"
+                                            alt="Thiáº¿t káº¿"
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               setActivePreviewImage(img);
@@ -1831,17 +1846,17 @@ export default function SalesManager({
                                   {order.status === 'completed' ? (
                                     <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full text-xs font-bold shadow-xs">
                                       <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                      <span>Đã thu đủ</span>
+                                      <span>ÄÃ£ thu Ä‘á»§</span>
                                     </span>
                                   ) : order.status === 'pending' ? (
                                     <span className="inline-flex items-center gap-1 text-amber-805 bg-amber-100 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-200/40">
                                       <Clock className="w-3.5 h-3.5 text-amber-600" />
-                                      <span>Còn nợ</span>
+                                      <span>CÃ²n ná»£</span>
                                     </span>
                                   ) : (
                                     <span className="inline-flex items-center gap-1 text-slate-550 bg-slate-105 px-2.5 py-1 rounded-full text-xs font-bold">
                                       <Ban className="w-3.5 h-3.5 text-slate-400" />
-                                      <span>Đã hủy</span>
+                                      <span>ÄÃ£ há»§y</span>
                                     </span>
                                   )}
                                 </td>
@@ -1851,7 +1866,7 @@ export default function SalesManager({
                                       type="button"
                                       onClick={() => setPreviewOrder(order)}
                                       className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-805 border border-amber-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold"
-                                      title="Hiển thị hóa đơn ảnh chia sẻ nhanh lên Zalo"
+                                      title="Hiá»ƒn thá»‹ hÃ³a Ä‘Æ¡n áº£nh chia sáº» nhanh lÃªn Zalo"
                                     >
                                       <Eye className="w-3.5 h-3.5" />
                                       <span>Xem 9:16</span>
@@ -1860,23 +1875,23 @@ export default function SalesManager({
                                       type="button"
                                       onClick={() => generateInvoicePDF(order)}
                                       className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold"
-                                      title="Tải tệp hóa đơn khách lẻ PDF khổ A5"
+                                      title="Táº£i tá»‡p hÃ³a Ä‘Æ¡n khÃ¡ch láº» PDF khá»• A5"
                                     >
                                       <Download className="w-3.5 h-3.5" />
-                                      <span>Tải PDF</span>
+                                      <span>Táº£i PDF</span>
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => openEditOrder(order)}
                                       className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-850 border border-sky-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold"
                                     >
-                                      <span>Sửa</span>
+                                      <span>Sá»­a</span>
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setDeletingOrder(order)}
                                       className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-650 border border-rose-250 rounded-lg transition-colors cursor-pointer"
-                                      title="Xóa vĩnh viễn hóa đơn"
+                                      title="XÃ³a vÄ©nh viá»…n hÃ³a Ä‘Æ¡n"
                                     >
                                       <Trash2 className="w-4 h-4" />
                                     </button>
@@ -1892,7 +1907,7 @@ export default function SalesManager({
                 </div>
               ) : (
                 <div className="p-12 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-slate-400 font-semibold text-sm">
-                  💡 Nhấp chuột chọn một ngày có đơn hàng trên lịch ở trên để xem chi tiết danh sách đơn và chỉnh sửa.
+                  ðŸ’¡ Nháº¥p chuá»™t chá»n má»™t ngÃ y cÃ³ Ä‘Æ¡n hÃ ng trÃªn lá»‹ch á»Ÿ trÃªn Ä‘á»ƒ xem chi tiáº¿t danh sÃ¡ch Ä‘Æ¡n vÃ  chá»‰nh sá»­a.
                 </div>
               )}
             </div>
@@ -1900,7 +1915,7 @@ export default function SalesManager({
         );
       })() : filteredOrders.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center text-slate-400 font-semibold font-sans">
-          Chưa tìm thấy đơn hàng nào khớp với điều kiện lọc đang chọn
+          ChÆ°a tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng nÃ o khá»›p vá»›i Ä‘iá»u kiá»‡n lá»c Ä‘ang chá»n
         </div>
       ) : viewMode === 'flat' ? (
         /* Flat Sequential List Mode */
@@ -1908,25 +1923,25 @@ export default function SalesManager({
           <div className="px-6 py-4.5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
               <List className="w-4 h-4 text-blue-500" />
-              <span>Danh Sách Đơn Hàng ({filteredOrders.length} hóa đơn)</span>
+              <span>Danh SÃ¡ch ÄÆ¡n HÃ ng ({filteredOrders.length} hÃ³a Ä‘Æ¡n)</span>
             </h3>
-            <span className="text-[10px] bg-blue-55 text-blue-700 font-bold px-2 py-0.5 rounded uppercase tracking-wider">Mới nhất hiển thị ở đầu</span>
+            <span className="text-[10px] bg-blue-55 text-blue-700 font-bold px-2 py-0.5 rounded uppercase tracking-wider">Má»›i nháº¥t hiá»ƒn thá»‹ á»Ÿ Ä‘áº§u</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/55 border-b border-slate-100 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="py-4 px-6">Ngày tạo</th>
-                  <th className="py-4 px-6">Ghi chú / Mã đơn</th>
-                  <th className="py-4 px-6">Tên Khách Hàng</th>
-                  <th className="py-4 px-6">Chi Tiết Thiết Kế / Kích Thước</th>
-                  <th className="py-4 px-3 text-center">S.Lượng</th>
-                  <th className="py-4 px-3 text-right">Tổng Tiền</th>
-                  <th className="py-4 px-3 text-right">Đã Thanh Toán</th>
-                  <th className="py-4 px-3 text-right">Số Nợ</th>
-                  <th className="py-4 px-4 text-center">Trạng Thái</th>
-                  <th className="py-4 px-6 text-center">Hành Động</th>
+                  <th className="py-4 px-6">NgÃ y táº¡o</th>
+                  <th className="py-4 px-6">Ghi chÃº / MÃ£ Ä‘Æ¡n</th>
+                  <th className="py-4 px-6">TÃªn KhÃ¡ch HÃ ng</th>
+                  <th className="py-4 px-6">Chi Tiáº¿t Thiáº¿t Káº¿ / KÃ­ch ThÆ°á»›c</th>
+                  <th className="py-4 px-3 text-center">S.LÆ°á»£ng</th>
+                  <th className="py-4 px-3 text-right">Tá»•ng Tiá»n</th>
+                  <th className="py-4 px-3 text-right">ÄÃ£ Thanh ToÃ¡n</th>
+                  <th className="py-4 px-3 text-right">Sá»‘ Ná»£</th>
+                  <th className="py-4 px-4 text-center">Tráº¡ng ThÃ¡i</th>
+                  <th className="py-4 px-6 text-center">HÃ nh Äá»™ng</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
@@ -1952,7 +1967,7 @@ export default function SalesManager({
                         <span className="text-slate-850 font-bold block leading-tight">{order.productName}</span>
                         {order.color && (
                           <span className="text-[11px] text-slate-400 font-semibold block">
-                            Màu sắc: {order.color.replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')}
+                            MÃ u sáº¯c: {order.color.replace(/\s*\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '')}
                           </span>
                         )}
                         {Array.isArray(order.orderImages) && order.orderImages.length > 0 && (
@@ -1961,7 +1976,7 @@ export default function SalesManager({
                               <img
                                 key={imIdx}
                                 src={img}
-                                alt="Thiết kế"
+                                alt="Thiáº¿t káº¿"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActivePreviewImage(img);
@@ -1990,17 +2005,17 @@ export default function SalesManager({
                       {order.status === 'completed' ? (
                         <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full text-xs font-bold shadow-xs">
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Đã thu đủ</span>
+                          <span>ÄÃ£ thu Ä‘á»§</span>
                         </span>
                       ) : order.status === 'pending' ? (
                         <span className="inline-flex items-center gap-1 text-amber-805 bg-amber-100 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-200/45">
                           <Clock className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Còn nợ</span>
+                          <span>CÃ²n ná»£</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-slate-550 bg-slate-105 px-2.5 py-1 rounded-full text-xs font-bold">
                           <Ban className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Đã hủy</span>
+                          <span>ÄÃ£ há»§y</span>
                         </span>
                       )}
                     </td>
@@ -2010,7 +2025,7 @@ export default function SalesManager({
                           type="button"
                           onClick={() => setPreviewOrder(order)}
                           className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-805 border border-amber-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold"
-                          title="Hiển thị hóa đơn ảnh chia sẻ nhanh lên Zalo"
+                          title="Hiá»ƒn thá»‹ hÃ³a Ä‘Æ¡n áº£nh chia sáº» nhanh lÃªn Zalo"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>Xem 9:16</span>
@@ -2019,23 +2034,23 @@ export default function SalesManager({
                           type="button"
                           onClick={() => generateInvoicePDF(order)}
                           className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold"
-                          title="Tải tệp hóa đơn khách lẻ PDF khổ A5"
+                          title="Táº£i tá»‡p hÃ³a Ä‘Æ¡n khÃ¡ch láº» PDF khá»• A5"
                         >
                           <Download className="w-3.5 h-3.5" />
-                          <span>Tải PDF</span>
+                          <span>Táº£i PDF</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => openEditOrder(order)}
                           className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold"
                         >
-                          <span>Sửa</span>
+                          <span>Sá»­a</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setDeletingOrder(order)}
                           className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-650 border border-rose-200 rounded-lg transition-colors cursor-pointer"
-                          title="Xóa vĩnh viễn hóa đơn"
+                          title="XÃ³a vÄ©nh viá»…n hÃ³a Ä‘Æ¡n"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -2070,17 +2085,17 @@ export default function SalesManager({
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-slate-800 tracking-tight group-hover:text-blue-700 transition-colors">
-                        Ngày {dateKey}
+                        NgÃ y {dateKey}
                       </h3>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Tổng cộng: <strong className="text-slate-600">{dailyOrders.length}</strong> đơn hàng | <strong className="text-slate-600">{totalDailyQuantity}</strong> sản phẩm giao nhận
+                        Tá»•ng cá»™ng: <strong className="text-slate-600">{dailyOrders.length}</strong> Ä‘Æ¡n hÃ ng | <strong className="text-slate-600">{totalDailyQuantity}</strong> sáº£n pháº©m giao nháº­n
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-4 self-end sm:self-auto">
                     <div className="text-right">
-                      <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Chốt doanh thu</span>
+                      <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">Chá»‘t doanh thu</span>
                       <strong className="text-sm text-blue-600 font-mono font-extrabold block leading-none mt-1">
                         {formatCurrency(totalDailyRevenue)}
                       </strong>
@@ -2097,15 +2112,15 @@ export default function SalesManager({
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-t border-slate-100">
-                          <th className="py-3 px-6">Ghi chú / Mã đơn</th>
-                          <th className="py-3 px-6">Tên khách hàng</th>
-                          <th className="py-3 px-6">Chi tiết mặt hàng</th>
+                          <th className="py-3 px-6">Ghi chÃº / MÃ£ Ä‘Æ¡n</th>
+                          <th className="py-3 px-6">TÃªn khÃ¡ch hÃ ng</th>
+                          <th className="py-3 px-6">Chi tiáº¿t máº·t hÃ ng</th>
                           <th className="py-3 px-6 text-center">SL</th>
-                          <th className="py-3 px-6 text-right">Tổng tiền</th>
-                          <th className="py-3 px-6 text-right">Đã trả</th>
-                          <th className="py-3 px-6 text-right">Còn nợ</th>
-                          <th className="py-3 px-6 text-center">Trạng thái</th>
-                          <th className="py-3 px-6 text-center">Hành động</th>
+                          <th className="py-3 px-6 text-right">Tá»•ng tiá»n</th>
+                          <th className="py-3 px-6 text-right">ÄÃ£ tráº£</th>
+                          <th className="py-3 px-6 text-right">CÃ²n ná»£</th>
+                          <th className="py-3 px-6 text-center">Tráº¡ng thÃ¡i</th>
+                          <th className="py-3 px-6 text-center">HÃ nh Ä‘á»™ng</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-sm">
@@ -2123,14 +2138,14 @@ export default function SalesManager({
                             <td className="py-3.5 px-6 font-extrabold text-slate-800">{order.customerName}</td>
                             <td className="py-3.5 px-6 max-w-xs whitespace-normal" title={order.productName}>
                               <span className="text-slate-700 font-bold block leading-tight">{order.productName}</span>
-                              <span className="text-[11px] text-slate-400 block mt-0.5">{(order.color || 'Mặc định').replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')}</span>
+                              <span className="text-[11px] text-slate-400 block mt-0.5">{(order.color || 'Máº·c Ä‘á»‹nh').replace(/\s*\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '')}</span>
                               {Array.isArray(order.orderImages) && order.orderImages.length > 0 && (
                                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                                   {order.orderImages.map((img, imIdx) => (
                                     <img
                                       key={imIdx}
                                       src={img}
-                                      alt="Thiết kế"
+                                      alt="Thiáº¿t káº¿"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setActivePreviewImage(img);
@@ -2157,17 +2172,17 @@ export default function SalesManager({
                                 {order.status === 'completed' ? (
                                   <span className="text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                                     <CheckCircle className="w-3 h-3" />
-                                    <span>Đã thu đủ</span>
+                                    <span>ÄÃ£ thu Ä‘á»§</span>
                                   </span>
                                 ) : order.status === 'pending' ? (
                                   <span className="text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
-                                    <span>Còn nợ</span>
+                                    <span>CÃ²n ná»£</span>
                                   </span>
                                 ) : (
                                   <span className="text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                                     <Ban className="w-3 h-3" />
-                                    <span>Đã hủy</span>
+                                    <span>ÄÃ£ há»§y</span>
                                   </span>
                                 )}
                               </span>
@@ -2177,7 +2192,7 @@ export default function SalesManager({
                                 <button
                                   type="button"
                                   onClick={() => setPreviewOrder(order)}
-                                  title="Xem hóa đơn di động 9:16"
+                                  title="Xem hÃ³a Ä‘Æ¡n di Ä‘á»™ng 9:16"
                                   className="p-1 px-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 hover:text-amber-850 transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold font-sans"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
@@ -2186,7 +2201,7 @@ export default function SalesManager({
                                 <button
                                   type="button"
                                   onClick={() => generateInvoicePDF(order)}
-                                  title="Tải nhanh hóa đơn PDF"
+                                  title="Táº£i nhanh hÃ³a Ä‘Æ¡n PDF"
                                   className="p-1 px-2 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-semibold"
                                 >
                                   <Download className="w-3.5 h-3.5" />
@@ -2195,19 +2210,19 @@ export default function SalesManager({
                                 <button
                                   type="button"
                                   onClick={() => openEditOrder(order)}
-                                  title="Sửa thông tin đơn hàng"
+                                  title="Sá»­a thÃ´ng tin Ä‘Æ¡n hÃ ng"
                                   className="p-1 px-2.5 bg-sky-50 text-sky-700 border border-sky-200 rounded-lg hover:bg-sky-100 transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold"
                                 >
-                                  <span>Sửa</span>
+                                  <span>Sá»­a</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setDeletingOrder(order)}
-                                  title="Xóa đơn hàng"
+                                  title="XÃ³a Ä‘Æ¡n hÃ ng"
                                   className="p-1 px-2 bg-rose-50 text-rose-600 border border-rose-150 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer inline-flex items-center gap-1 text-xs font-bold"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Xóa</span>
+                                  <span>XÃ³a</span>
                                 </button>
                               </div>
                             </td>
@@ -2230,7 +2245,7 @@ export default function SalesManager({
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-blue-900 text-white">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5 text-blue-200" />
-                <h3 className="font-bold text-lg">Tạo Đơn Hàng Mới (Dạng Giỏ Hàng)</h3>
+                <h3 className="font-bold text-lg">Táº¡o ÄÆ¡n HÃ ng Má»›i (Dáº¡ng Giá» HÃ ng)</h3>
               </div>
               <button
                 onClick={() => setShowModal(false)}
@@ -2245,12 +2260,12 @@ export default function SalesManager({
                 {/* Customer & Date details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/50 shadow-sm">
                 <div className="relative">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Tên khách hàng</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">TÃªn khÃ¡ch hÃ ng</label>
                   <div className="relative">
                     <input
                       type="text"
                       required
-                      placeholder="Ví dụ: Đại lý In Trần Phú..."
+                      placeholder="VÃ­ dá»¥: Äáº¡i lÃ½ In Tráº§n PhÃº..."
                       value={customerName}
                       onChange={(e) => {
                         setCustomerName(e.target.value);
@@ -2270,7 +2285,7 @@ export default function SalesManager({
                           setShowCustomerDropdown(true);
                         }}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold hover:scale-110 duration-100 text-lg cursor-pointer"
-                        title="Xóa nhanh"
+                        title="XÃ³a nhanh"
                       >
                         &times;
                       </button>
@@ -2289,7 +2304,7 @@ export default function SalesManager({
                           }}
                           className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-xs font-bold text-slate-700 block transition-colors cursor-pointer"
                         >
-                          👤 {name}
+                          ðŸ‘¤ {name}
                         </button>
                       ))}
 
@@ -2301,13 +2316,13 @@ export default function SalesManager({
                           }}
                           className="w-full text-left px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-700 block transition-colors cursor-pointer"
                         >
-                          ✨ Thêm khách hàng mới: "{customerName}"
+                          âœ¨ ThÃªm khÃ¡ch hÃ ng má»›i: "{customerName}"
                         </button>
                       )}
 
                       {filteredCustomerSuggestions.length === 0 && !customerName.trim() && (
                         <div className="px-4 py-3 text-xs text-slate-400 font-medium text-center italic">
-                          Chuyên biệt chưa có đối tác. Hãy gõ để tự động thêm!
+                          ChuyÃªn biá»‡t chÆ°a cÃ³ Ä‘á»‘i tÃ¡c. HÃ£y gÃµ Ä‘á»ƒ tá»± Ä‘á»™ng thÃªm!
                         </div>
                       )}
                     </div>
@@ -2315,7 +2330,7 @@ export default function SalesManager({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Ngày ghi sổ hóa đơn</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">NgÃ y ghi sá»• hÃ³a Ä‘Æ¡n</label>
                   <div className="relative">
                     <input
                       type="date"
@@ -2330,7 +2345,7 @@ export default function SalesManager({
 
               {/* Product Category tab selector */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Loại sản phẩm thêm vào giỏ</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Loáº¡i sáº£n pháº©m thÃªm vÃ o giá»</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -2363,7 +2378,7 @@ export default function SalesManager({
                         : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
                     }`}
                   >
-                    Bán Áo thun Có Sẵn {availableTshirtProducts.length === 0 && '(Hết hàng)'}
+                    BÃ¡n Ão thun CÃ³ Sáºµn {availableTshirtProducts.length === 0 && '(Háº¿t hÃ ng)'}
                   </button>
                 </div>
               </div>
@@ -2375,7 +2390,7 @@ export default function SalesManager({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Đơn giá trên 1 Mét (VND)
+                        ÄÆ¡n giÃ¡ trÃªn 1 MÃ©t (VND)
                       </label>
                       <div className="flex gap-2">
                         <input
@@ -2391,15 +2406,15 @@ export default function SalesManager({
                           onClick={handleSaveDtfPrice}
                           disabled={!customerName.trim() || dtfUnitPrice <= 0}
                           className="shrink-0 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-[10px] font-black uppercase tracking-wide transition-colors cursor-pointer disabled:cursor-not-allowed"
-                          title="Lưu đơn giá này cho khách hàng đang chọn"
+                          title="LÆ°u Ä‘Æ¡n giÃ¡ nÃ y cho khÃ¡ch hÃ ng Ä‘ang chá»n"
                         >
-                          Lưu giá
+                          LÆ°u giÃ¡
                         </button>
                       </div>
                       {customerName.trim() ? (
                         <div className="mt-2">
                           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">
-                            Giá đã lưu của khách - bấm để chọn
+                            GiÃ¡ Ä‘Ã£ lÆ°u cá»§a khÃ¡ch - báº¥m Ä‘á»ƒ chá»n
                           </div>
                           {savedDtfPrices.length > 0 ? (
                             <div className="flex flex-wrap gap-1.5">
@@ -2420,13 +2435,13 @@ export default function SalesManager({
                             </div>
                           ) : (
                             <div className="text-[10px] text-slate-400 italic">
-                              Khách này chưa có giá cố định. Nhập giá rồi bấm “Lưu giá”.
+                              KhÃ¡ch nÃ y chÆ°a cÃ³ giÃ¡ cá»‘ Ä‘á»‹nh. Nháº­p giÃ¡ rá»“i báº¥m â€œLÆ°u giÃ¡â€.
                             </div>
                           )}
                         </div>
                       ) : (
                         <div className="mt-2 text-[10px] text-slate-400 italic">
-                          Chọn khách hàng để xem và sử dụng bảng giá riêng.
+                          Chá»n khÃ¡ch hÃ ng Ä‘á»ƒ xem vÃ  sá»­ dá»¥ng báº£ng giÃ¡ riÃªng.
                         </div>
                       )}
                     </div>
@@ -2440,8 +2455,8 @@ export default function SalesManager({
                           className="w-4.5 h-4.5 text-blue-600 rounded border-slate-300 pointer-events-auto"
                         />
                         <div className="text-left ml-2">
-                          <span className="text-xs font-bold text-blue-800 block">Nhập tổng số Mét thủ công</span>
-                          <span className="text-[10px] text-slate-400 block leading-none">Không cần chi tiết từng mẫu nhỏ</span>
+                          <span className="text-xs font-bold text-blue-800 block">Nháº­p tá»•ng sá»‘ MÃ©t thá»§ cÃ´ng</span>
+                          <span className="text-[10px] text-slate-400 block leading-none">KhÃ´ng cáº§n chi tiáº¿t tá»«ng máº«u nhá»</span>
                         </div>
                       </label>
                     </div>
@@ -2450,12 +2465,12 @@ export default function SalesManager({
                   {isManualDtf ? (
                     <div className="bg-blue-50/15 p-4 rounded-xl border border-blue-105 space-y-3.5 animate-slide-in">
                       <div>
-                        <label className="block text-[11px] uppercase font-bold text-slate-500 mb-1 font-sans">Tổng chiều dài phim cần in (Mét)</label>
+                        <label className="block text-[11px] uppercase font-bold text-slate-500 mb-1 font-sans">Tá»•ng chiá»u dÃ i phim cáº§n in (MÃ©t)</label>
                         <input
                           type="number"
                           step="0.01"
                           min="0.01"
-                          placeholder="Ví dụ: 5.5"
+                          placeholder="VÃ­ dá»¥: 5.5"
                           value={manualDtfMeters <= 0 ? '' : manualDtfMeters}
                           onChange={(e) => setManualDtfMeters(Math.max(0, parseFloat(e.target.value) || 0))}
                           className="w-full px-3 py-2 bg-white border border-slate-205 rounded-lg text-sm font-mono font-bold focus:outline-none text-slate-800 shadow-sm"
@@ -2463,12 +2478,12 @@ export default function SalesManager({
                       </div>
 
                       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-inner">
-                        <label className="block text-[10px] uppercase font-bold text-slate-500 mb-2">Hình gửi thi công (Maket / File gộp)</label>
+                        <label className="block text-[10px] uppercase font-bold text-slate-500 mb-2">HÃ¬nh gá»­i thi cÃ´ng (Maket / File gá»™p)</label>
                         <div className="flex items-center gap-4">
                           <div className="relative w-14 h-14 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                             {manualDtfImage ? (
                               <>
-                                <img src={manualDtfImage} alt="Mẫu chụp" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                <img src={manualDtfImage} alt="Máº«u chá»¥p" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                 <button
                                   type="button"
                                   onClick={() => setManualDtfImage(undefined)}
@@ -2483,10 +2498,10 @@ export default function SalesManager({
                           </div>
 
                           <div className="flex-1 space-y-1">
-                            <span className="block text-xs font-bold text-slate-700 leading-none">Tải ảnh sơ duyệt</span>
+                            <span className="block text-xs font-bold text-slate-700 leading-none">Táº£i áº£nh sÆ¡ duyá»‡t</span>
                             <label className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 hover:bg-blue-105 text-blue-600 text-[11px] font-bold rounded cursor-pointer transition-colors border border-blue-100">
                               <Upload className="w-3 h-3" />
-                              <span>{uploadingManualDtfImage ? 'Đang tải...' : 'Chọn ảnh'}</span>
+                              <span>{uploadingManualDtfImage ? 'Äang táº£i...' : 'Chá»n áº£nh'}</span>
                               <input
                                 type="file"
                                 accept="image/*"
@@ -2496,8 +2511,56 @@ export default function SalesManager({
                                 disabled={uploadingManualDtfImage}
                               />
                             </label>
+                            <div className="text-[10px] text-slate-400">
+                              Chá»n nhiá»u áº£nh hoáº·c Ctrl+V nhiá»u áº£nh vÃ o cá»­a sá»• nÃ y.
+                            </div>
                           </div>
                         </div>
+                        {(manualDtfImage || dtfOrderAttachments.length > 0) && (
+                          <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2">
+                            {manualDtfImage && (
+                              <div className="relative aspect-square rounded-lg overflow-hidden border border-blue-200 bg-slate-50">
+                                <img
+                                  src={manualDtfImage}
+                                  alt="áº¢nh PET Ä‘áº¡i diá»‡n"
+                                  className="w-full h-full object-cover cursor-zoom-in"
+                                  referrerPolicy="no-referrer"
+                                  onClick={() => setActivePreviewImage(manualDtfImage)}
+                                />
+                                <span className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-blue-600 text-white text-[9px] font-black">Äáº¡i diá»‡n</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setManualDtfImage(undefined);
+                                    setManualDtfFile(undefined);
+                                  }}
+                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
+                                  title="XÃ³a áº£nh Ä‘áº¡i diá»‡n"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            )}
+                            {dtfOrderAttachments.map((attachment, index) => (
+                              <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                                <img
+                                  src={attachment.image}
+                                  alt={`áº¢nh PET ${index + 2}`}
+                                  className="w-full h-full object-cover cursor-zoom-in"
+                                  onClick={() => setActivePreviewImage(attachment.image)}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setDtfOrderAttachments(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
+                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
+                                  title="XÃ³a áº£nh"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -2506,14 +2569,14 @@ export default function SalesManager({
                   {!isManualDtf && (
                     <div className="space-y-3 bg-indigo-50/20 p-4 rounded-xl border border-indigo-100/50">
                       <div className="flex items-center justify-between border-b border-indigo-100/60 pb-2">
-                        <span className="text-xs font-bold text-indigo-955 uppercase tracking-wider">Danh sách mẫu hình in</span>
+                        <span className="text-xs font-bold text-indigo-955 uppercase tracking-wider">Danh sÃ¡ch máº«u hÃ¬nh in</span>
                         <button
                           type="button"
                           onClick={handleAddDtfItem}
                           className="px-2.5 py-1.5 bg-blue-105 hover:bg-blue-200 text-blue-700 font-bold text-xs rounded-lg flex items-center gap-1 transition-colors cursor-pointer border border-blue-150 animate-fade-in"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Thêm mẫu in mới</span>
+                          <span>ThÃªm máº«u in má»›i</span>
                         </button>
                       </div>
 
@@ -2524,21 +2587,21 @@ export default function SalesManager({
                         return (
                           <div key={idx} className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm relative group space-y-2">
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-slate-400">Mẫu #{idx + 1}</span>
+                              <span className="text-xs font-bold text-slate-400">Máº«u #{idx + 1}</span>
                               {dtfItems.length > 1 && (
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveDtfItem(idx)}
                                   className="text-[11px] text-rose-500 hover:text-rose-700 font-bold cursor-pointer transition-colors"
                                 >
-                                  Xóa mẫu
+                                  XÃ³a máº«u
                                 </button>
                               )}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                               <div className="sm:col-span-3">
-                                <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Hình ảnh thiết kế mẫu in</label>
+                                <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">HÃ¬nh áº£nh thiáº¿t káº¿ máº«u in</label>
                                 <div className="flex items-center gap-3 bg-slate-50 p-2 border border-slate-200/60 rounded-xl">
                                   {item.image ? (
                                     <div className="relative group flex-shrink-0">
@@ -2553,7 +2616,7 @@ export default function SalesManager({
                                         type="button"
                                         onClick={() => handleUpdateDtfItem(idx, 'image', undefined)}
                                         className="absolute -top-1.5 -right-1.5 w-4.5 h-4.5 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold cursor-pointer transition-colors shadow-sm"
-                                        title="Xóa hình ảnh"
+                                        title="XÃ³a hÃ¬nh áº£nh"
                                       >
                                         &times;
                                       </button>
@@ -2578,29 +2641,29 @@ export default function SalesManager({
                                         className="px-3 py-1.5 bg-blue-50 hover:bg-blue-105 border border-blue-150 text-blue-680 font-bold text-[11px] rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 shadow-sm uppercase tracking-wider"
                                       >
                                         <Upload className="w-3 h-3" />
-                                        <span>Upload Hình Ảnh</span>
+                                        <span>Upload HÃ¬nh áº¢nh</span>
                                       </label>
                                       {item.image && (
                                         <button
                                           type="button"
                                           onClick={() => setActivePreviewImage(item.image!)}
                                           className="p-1 px-2.5 bg-slate-100 text-slate-600 hover:text-slate-800 text-[11px] font-bold rounded-lg cursor-pointer flex items-center gap-1 border border-slate-200"
-                                          title="Xem ảnh cỡ lớn"
+                                          title="Xem áº£nh cá»¡ lá»›n"
                                         >
                                           <Eye className="w-3.5 h-3.5" />
-                                          <span>Xem ảnh</span>
+                                          <span>Xem áº£nh</span>
                                         </button>
                                       )}
                                     </div>
                                     <div className="text-[10px] text-slate-400 mt-1 truncate">
-                                      Mẫu in: <span className="font-bold text-slate-600">{item.name || `Chưa tải ảnh (${idx + 1})`}</span>
+                                      Máº«u in: <span className="font-bold text-slate-600">{item.name || `ChÆ°a táº£i áº£nh (${idx + 1})`}</span>
                                     </div>
                                   </div>
                                 </div>
                               </div>
 
                               <div className="sm:col-span-2">
-                                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Chiều dài (Mét)</label>
+                                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Chiá»u dÃ i (MÃ©t)</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -2613,7 +2676,7 @@ export default function SalesManager({
                               </div>
 
                               <div>
-                                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Số lượng</label>
+                                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Sá»‘ lÆ°á»£ng</label>
                                 <input
                                   type="number"
                                   min="1"
@@ -2627,10 +2690,10 @@ export default function SalesManager({
 
                             <div className="pt-2 border-t border-dashed border-slate-100 flex items-center justify-between text-[11px] font-medium text-slate-500">
                               <div>
-                                Số m mẫu: <span className="font-bold text-slate-850 font-mono">{itemMeters.toFixed(2)}m</span>
+                                Sá»‘ m máº«u: <span className="font-bold text-slate-850 font-mono">{itemMeters.toFixed(2)}m</span>
                               </div>
                               <div>
-                                Thành tiền: <span className="font-bold text-blue-600 font-mono">{formatCurrency(itemPrice)}</span>
+                                ThÃ nh tiá»n: <span className="font-bold text-blue-600 font-mono">{formatCurrency(itemPrice)}</span>
                               </div>
                             </div>
                           </div>
@@ -2640,51 +2703,6 @@ export default function SalesManager({
                   </div>
                   )}
                   
-                  <div className="bg-sky-50/60 p-4 rounded-xl border border-sky-200 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <div className="text-xs font-bold uppercase tracking-wider text-sky-900">Ảnh bổ sung của toàn đơn PET DTF</div>
-                        <div className="text-[10px] text-sky-700 mt-0.5">Có thể chọn nhiều ảnh cùng lúc. Các ảnh này không làm thay đổi số mét hoặc thành tiền.</div>
-                      </div>
-                      <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-lg cursor-pointer border border-sky-300">
-                        <Upload className="w-3.5 h-3.5" />
-                        Thêm nhiều ảnh
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          className="hidden"
-                          onChange={e => {
-                            handleAddDtfOrderAttachments(e.target.files);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                    </div>
-                    {dtfOrderAttachments.length > 0 && (
-                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                        {dtfOrderAttachments.map((attachment, index) => (
-                          <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-sky-200 bg-white">
-                            <img
-                              src={attachment.image}
-                              alt={`Ảnh PET bổ sung ${index + 1}`}
-                              className="w-full h-full object-cover cursor-zoom-in"
-                              onClick={() => setActivePreviewImage(attachment.image)}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setDtfOrderAttachments(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
-                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
-                              title="Xóa ảnh"
-                            >
-                              &times;
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                   {/* Universal DTF Add to Cart trigger */}
                   <button
                     type="button"
@@ -2692,7 +2710,7 @@ export default function SalesManager({
                     className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold text-xs text-center rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/10 uppercase tracking-wider cursor-pointer border border-blue-700 mt-2.5 font-sans"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Thêm lô PET DTF {isManualDtf ? `(${manualDtfMeters}m)` : ''} vào giỏ đơn</span>
+                    <span>ThÃªm lÃ´ PET DTF {isManualDtf ? `(${manualDtfMeters}m)` : ''} vÃ o giá» Ä‘Æ¡n</span>
                   </button>
                 </div>
               ) : (
@@ -2700,7 +2718,7 @@ export default function SalesManager({
                   {/* T-shirt Group Selection */}
                   <div className="bg-blue-50/40 p-4 rounded-xl border border-blue-105 flex flex-col gap-2.5">
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Chọn mẫu mã & Màu sắc áo thun sỉ</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Chá»n máº«u mÃ£ & MÃ u sáº¯c Ã¡o thun sá»‰</label>
                       <select
                         value={selectedTshirtGroup}
                         onChange={(e) => {
@@ -2711,7 +2729,7 @@ export default function SalesManager({
                       >
                         {tshirtGroups.map((g, gi) => (
                           <option key={gi} value={g.key}>
-                            {g.name} - Màu: {g.color}
+                            {g.name} - MÃ u: {g.color}
                           </option>
                         ))}
                       </select>
@@ -2720,21 +2738,21 @@ export default function SalesManager({
                     {selectedTshirtGroup && (
                       <div className="flex flex-col gap-1.5 bg-white p-3 rounded-lg border border-slate-100">
                         <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-                          <span>Giá Bán Áo Thun (VND / Cái)</span>
+                          <span>GiÃ¡ BÃ¡n Ão Thun (VND / CÃ¡i)</span>
                           {activeGroupSizes[0]?.salePrice > 0 && (
                             <button
                               type="button"
                               onClick={() => setCustomTshirtPrice(activeGroupSizes[0]?.salePrice || 100000)}
                               className="text-[10px] text-blue-600 hover:underline cursor-pointer normal-case font-medium"
                             >
-                              (Đặt lại về giá gốc: {formatCurrency(activeGroupSizes[0].salePrice)})
+                              (Äáº·t láº¡i vá» giÃ¡ gá»‘c: {formatCurrency(activeGroupSizes[0].salePrice)})
                             </button>
                           )}
                         </div>
                         <input
                           type="number"
                           min="0"
-                          placeholder="Nhập giá bán"
+                          placeholder="Nháº­p giÃ¡ bÃ¡n"
                           value={customTshirtPrice || ''}
                           onChange={(e) => setCustomTshirtPrice(Math.max(0, parseInt(e.target.value) || 0))}
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -2747,7 +2765,7 @@ export default function SalesManager({
                   {selectedTshirtGroup && (
                     <div className="bg-slate-50 p-4.5 rounded-xl border border-slate-200">
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                        Kiểm phân size & Nhập số lượng mua (Tồn khả dụng sau khi giữ trong giỏ)
+                        Kiá»ƒm phÃ¢n size & Nháº­p sá»‘ lÆ°á»£ng mua (Tá»“n kháº£ dá»¥ng sau khi giá»¯ trong giá»)
                       </label>
                       <div className="divide-y divide-slate-200/60 max-h-48 overflow-y-auto pr-1">
                         {activeGroupSizes.map((prod) => {
@@ -2759,8 +2777,8 @@ export default function SalesManager({
                               Size {prod.size}
                             </div>
                             <div className="col-span-5 text-slate-500 font-medium">
-                              Tồn khả dụng: <span className={`font-bold ${availableStock <= 10 ? 'text-amber-600' : 'text-slate-700'}`}>{availableStock} chiếc</span>
-                              {reservedQuantity > 0 && <span className="block text-[9px] text-blue-600">Đã giữ trong giỏ: {reservedQuantity}</span>}
+                              Tá»“n kháº£ dá»¥ng: <span className={`font-bold ${availableStock <= 10 ? 'text-amber-600' : 'text-slate-700'}`}>{availableStock} chiáº¿c</span>
+                              {reservedQuantity > 0 && <span className="block text-[9px] text-blue-600">ÄÃ£ giá»¯ trong giá»: {reservedQuantity}</span>}
                             </div>
                             <div className="col-span-4 flex justify-end">
                               <input
@@ -2788,12 +2806,12 @@ export default function SalesManager({
                   {/* Design Print Image Uploader for T-shirt */}
                   <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-205 space-y-3">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Hình thiết kế hình in kẹp áo thun sỉ (Nếu có)
+                      HÃ¬nh thiáº¿t káº¿ hÃ¬nh in káº¹p Ã¡o thun sá»‰ (Náº¿u cÃ³)
                     </label>
                     <div className="flex items-center gap-4">
                       <div className="relative w-14 h-14 bg-white border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden shadow-sm">
                         {tshirtPrintImage ? (
-                          <img src={tshirtPrintImage} alt="Hình in" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={tshirtPrintImage} alt="HÃ¬nh in" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           <ImageIcon className="w-7 h-7 text-slate-300" />
                         )}
@@ -2809,11 +2827,11 @@ export default function SalesManager({
                       </div>
 
                       <div className="flex-1 space-y-0.5">
-                        <span className="block text-xs font-bold text-slate-700">Tải tệp hình in lên</span>
-                        <span className="block text-[10px] text-slate-400">Chọn tệp hình ảnh thực tế thi công</span>
+                        <span className="block text-xs font-bold text-slate-700">Táº£i tá»‡p hÃ¬nh in lÃªn</span>
+                        <span className="block text-[10px] text-slate-400">Chá»n tá»‡p hÃ¬nh áº£nh thá»±c táº¿ thi cÃ´ng</span>
                         <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-105 border border-blue-150 text-blue-700 text-xs font-bold rounded-lg transition-colors cursor-pointer mt-1">
                           <Upload className="w-3.5 h-3.5" />
-                          <span>{uploadingTshirtPrintImage ? 'Đang tải...' : 'Upload Hình In Lên Áo'}</span>
+                          <span>{uploadingTshirtPrintImage ? 'Äang táº£i...' : 'Upload HÃ¬nh In LÃªn Ão'}</span>
                           <input
                             type="file"
                             accept="image/*"
@@ -2827,21 +2845,21 @@ export default function SalesManager({
 
                   <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200 space-y-1.5">
                     <label className="block text-xs font-bold uppercase tracking-wider text-amber-800">
-                      Số tiền phụ thu đơn áo thun (VND)
+                      Sá»‘ tiá»n phá»¥ thu Ä‘Æ¡n Ã¡o thun (VND)
                     </label>
                     <div className="relative">
                       <input
                         type="number"
                         min="0"
                         step="1000"
-                        placeholder="Nhập số tiền, ví dụ: 30000"
+                        placeholder="Nháº­p sá»‘ tiá»n, vÃ­ dá»¥: 30000"
                         value={tshirtSurcharge || ''}
                         onChange={(e) => setTshirtSurcharge(Math.max(0, Number(e.target.value) || 0))}
                         className="w-full px-3 py-2 pr-12 bg-white border border-amber-300 rounded-lg text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-700">VND</span>
                     </div>
-                    <p className="text-[10px] text-amber-700">Đang cộng vào đơn: <strong>{formatCurrency(tshirtSurcharge)}</strong>. Chỉ áp dụng khi giỏ có áo thun.</p>
+                    <p className="text-[10px] text-amber-700">Äang cá»™ng vÃ o Ä‘Æ¡n: <strong>{formatCurrency(tshirtSurcharge)}</strong>. Chá»‰ Ã¡p dá»¥ng khi giá» cÃ³ Ã¡o thun.</p>
                   </div>
 
                   {/* T-shirt Add to Cart trigger */}
@@ -2851,7 +2869,7 @@ export default function SalesManager({
                     className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold text-xs text-center rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/10 uppercase tracking-wider cursor-pointer border border-blue-700 mt-2.5 font-sans"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Thêm lô sỉ áo thun vào giỏ đơn</span>
+                    <span>ThÃªm lÃ´ sá»‰ Ã¡o thun vÃ o giá» Ä‘Æ¡n</span>
                   </button>
                 </div>
               )}
@@ -2861,17 +2879,17 @@ export default function SalesManager({
                 <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 flex-shrink-0 animate-fade-in">
                   <div className="flex items-center gap-1.5 font-bold">
                     <ShoppingBag className="w-4.5 h-4.5 text-blue-600 animate-pulse" />
-                    <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Bước 2: Giỏ đơn hàng hiện tại ({cartItems.length} sản phẩm)</span>
+                    <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">BÆ°á»›c 2: Giá» Ä‘Æ¡n hÃ ng hiá»‡n táº¡i ({cartItems.length} sáº£n pháº©m)</span>
                   </div>
                   {cartItems.length > 0 && (
                     <div className="text-right">
                       {appliedTshirtSurcharge > 0 && (
                         <span className="block text-[9px] font-mono font-bold text-amber-700">
-                          Hàng: {formatCurrency(productSubtotal)} + Phụ thu: {formatCurrency(appliedTshirtSurcharge)}
+                          HÃ ng: {formatCurrency(productSubtotal)} + Phá»¥ thu: {formatCurrency(appliedTshirtSurcharge)}
                         </span>
                       )}
                       <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-150 shadow-sm animate-scale-in">
-                        Tổng tiền: {formatCurrency(totalPrice)}
+                        Tá»•ng tiá»n: {formatCurrency(totalPrice)}
                       </span>
                     </div>
                   )}
@@ -2879,7 +2897,7 @@ export default function SalesManager({
 
                 {cartItems.length === 0 ? (
                   <div className="text-center py-7 text-slate-450 font-semibold text-xs bg-white rounded-xl border border-dashed border-slate-305 shadow-inner">
-                    Giỏ hàng trống. Vui lòng thiết lập mặt hàng bất kỳ ở trên và click "Thêm lô..."
+                    Giá» hÃ ng trá»‘ng. Vui lÃ²ng thiáº¿t láº­p máº·t hÃ ng báº¥t ká»³ á»Ÿ trÃªn vÃ  click "ThÃªm lÃ´..."
                   </div>
                 ) : (
                   <div className="max-h-52 overflow-y-auto space-y-2 pr-1 animate-scale-in">
@@ -2890,7 +2908,7 @@ export default function SalesManager({
                             <div className="relative group flex-shrink-0">
                               <img
                                 src={item.image}
-                                alt="Mẫu trong giỏ"
+                                alt="Máº«u trong giá»"
                                 onClick={() => setActivePreviewImage(item.image!)}
                                 className="w-10 h-10 object-cover rounded shadow-sm border border-slate-200 cursor-zoom-in hover:scale-102 transition-transform"
                                 referrerPolicy="no-referrer"
@@ -2904,7 +2922,7 @@ export default function SalesManager({
                           <div className="min-w-0">
                             <span className="text-xs font-bold text-slate-850 block truncate">{item.productName}</span>
                             {item.color && (
-                              <span className="text-[10px] text-slate-450 block truncate font-mono font-bold">{item.color.replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')}</span>
+                              <span className="text-[10px] text-slate-450 block truncate font-mono font-bold">{item.color.replace(/\s*\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '')}</span>
                             )}
                           </div>
                         </div>
@@ -2918,7 +2936,7 @@ export default function SalesManager({
                             type="button"
                             onClick={() => handleRemoveCartItem(item.id)}
                             className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded-lg transition-colors cursor-pointer"
-                            title="Xóa ra khỏi giỏ đơn"
+                            title="XÃ³a ra khá»i giá» Ä‘Æ¡n"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -2932,7 +2950,7 @@ export default function SalesManager({
               {/* SECTION 3: BILLING & PAYMENT STATUS CHECKOUT */}
               {cartItems.length > 0 && (
                 <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200/60 space-y-3.5 shadow-inner">
-                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-600">Bước 3: Trạng thái thanh toán (Mặc định: Chưa thanh toán)</span>
+                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-600">BÆ°á»›c 3: Tráº¡ng thÃ¡i thanh toÃ¡n (Máº·c Ä‘á»‹nh: ChÆ°a thanh toÃ¡n)</span>
 
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <label className="inline-flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-xl border border-slate-200/55 hover:border-blue-500 transition-colors flex-1 shadow-sm">
@@ -2946,7 +2964,7 @@ export default function SalesManager({
                         }}
                         className="w-4.5 h-4.5 text-blue-600 border-slate-350 pointer-events-auto"
                       />
-                      <span className="text-xs font-bold text-slate-700 animate-fade-in">Chưa thanh toán</span>
+                      <span className="text-xs font-bold text-slate-700 animate-fade-in">ChÆ°a thanh toÃ¡n</span>
                     </label>
 
                     <label className="inline-flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-xl border border-slate-200/55 hover:border-blue-500 transition-colors flex-1 shadow-sm">
@@ -2960,7 +2978,7 @@ export default function SalesManager({
                         }}
                         className="w-4.5 h-4.5 text-blue-600 border-slate-350 pointer-events-auto"
                       />
-                      <span className="text-xs font-bold text-slate-700">Trả 1 phần</span>
+                      <span className="text-xs font-bold text-slate-700">Tráº£ 1 pháº§n</span>
                     </label>
 
                     <label className="inline-flex items-center gap-2 cursor-pointer bg-white px-3 py-2 rounded-xl border border-slate-200/55 hover:border-blue-500 transition-colors flex-1 shadow-sm">
@@ -2974,14 +2992,14 @@ export default function SalesManager({
                         }}
                         className="w-4.5 h-4.5 text-blue-600 border-slate-350"
                       />
-                      <span className="text-xs font-bold text-slate-705 font-sans">Thanh toán đủ</span>
+                      <span className="text-xs font-bold text-slate-705 font-sans">Thanh toÃ¡n Ä‘á»§</span>
                     </label>
                   </div>
 
                   {paymentType === 'partial' && (
                     <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-200/55 text-xs animate-fade-in">
                       <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-450 mb-1 font-sans">Số tiền trả trước (VND)</label>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-450 mb-1 font-sans">Sá»‘ tiá»n tráº£ trÆ°á»›c (VND)</label>
                         <input
                           type="number"
                           min="0"
@@ -2994,7 +3012,7 @@ export default function SalesManager({
                       </div>
 
                       <div className="text-right flex flex-col justify-end font-extrabold">
-                        <span className="text-[10px] uppercase font-bold text-rose-550 block font-sans">Số tiền còn nợ lại</span>
+                        <span className="text-[10px] uppercase font-bold text-rose-550 block font-sans">Sá»‘ tiá»n cÃ²n ná»£ láº¡i</span>
                         <span className="text-sm font-mono text-rose-600">{formatCurrency(debtAmount)}</span>
                       </div>
                     </div>
@@ -3002,32 +3020,32 @@ export default function SalesManager({
 
                   {paymentType === 'unpaid' && (
                     <div className="pt-2.5 border-t border-slate-200/40 text-xs flex justify-between items-center text-rose-600 font-bold font-mono animate-fade-in">
-                      <span className="font-sans">Còn nợ lại 100%:</span>
+                      <span className="font-sans">CÃ²n ná»£ láº¡i 100%:</span>
                       <span>{formatCurrency(totalPrice)}</span>
                     </div>
                   )}
 
                   {paymentType === 'full' && (
                     <div className="pt-2.5 border-t border-slate-200/40 text-xs flex justify-between items-center text-emerald-600 font-bold font-mono animate-fade-in">
-                      <span className="font-sans">Thanh toán hoàn tất:</span>
+                      <span className="font-sans">Thanh toÃ¡n hoÃ n táº¥t:</span>
                       <span>{formatCurrency(totalPrice)}</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* SECTION 4: ORDER NOTES (Ghi chú đơn hàng) */}
+              {/* SECTION 4: ORDER NOTES (Ghi chÃº Ä‘Æ¡n hÃ ng) */}
               {cartItems.length > 0 && (
                 <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200/60 space-y-2 shadow-inner">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">Ghi chú đơn hàng (Thay thế mã đơn hàng)</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">Ghi chÃº Ä‘Æ¡n hÃ ng (Thay tháº¿ mÃ£ Ä‘Æ¡n hÃ ng)</label>
                   <textarea
                     rows={2}
                     value={orderNotes}
                     onChange={(e) => setOrderNotes(e.target.value)}
-                    placeholder="Nhập ghi chú riêng của đơn này (ví dụ: Ủi mác, Đóng bao bì, Ship xe Phương Trang, v.v.)"
+                    placeholder="Nháº­p ghi chÃº riÃªng cá»§a Ä‘Æ¡n nÃ y (vÃ­ dá»¥: á»¦i mÃ¡c, ÄÃ³ng bao bÃ¬, Ship xe PhÆ°Æ¡ng Trang, v.v.)"
                     className="w-full px-3 py-2 bg-white border border-slate-205 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
-                  <p className="text-[10px] text-slate-400">Nếu bạn điền ghi chú này, nó sẽ hiển thị thay thế cho Mã đơn hàng ở bảng kê công nợ.</p>
+                  <p className="text-[10px] text-slate-400">Náº¿u báº¡n Ä‘iá»n ghi chÃº nÃ y, nÃ³ sáº½ hiá»ƒn thá»‹ thay tháº¿ cho MÃ£ Ä‘Æ¡n hÃ ng á»Ÿ báº£ng kÃª cÃ´ng ná»£.</p>
                 </div>
               )}
               </div>
@@ -3039,14 +3057,14 @@ export default function SalesManager({
                   disabled={isSavingOrder}
                   className="px-4 py-2 hover:bg-slate-100 border border-slate-200 text-slate-500 font-extrabold text-xs rounded-xl transition-colors cursor-pointer"
                 >
-                  Hủy bỏ
+                  Há»§y bá»
                 </button>
                 <button
                   type="submit"
                   className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold text-xs text-center rounded-xl transition-colors shadow-lg shadow-blue-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider font-bold"
                   disabled={cartItems.length === 0 || isSavingOrder}
                 >
-                  {isSavingOrder ? 'Đang lưu hóa đơn...' : 'Lưu hóa đơn & Ghi sổ'}
+                  {isSavingOrder ? 'Äang lÆ°u hÃ³a Ä‘Æ¡n...' : 'LÆ°u hÃ³a Ä‘Æ¡n & Ghi sá»•'}
                 </button>
               </div>
             </form>
@@ -3083,10 +3101,10 @@ export default function SalesManager({
               </div>
               <div>
                 <h4 className="font-extrabold text-white text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
-                  <span>Trình xem ảnh thiết kế gốc</span>
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full lowercase font-mono">100% Gốc</span>
+                  <span>TrÃ¬nh xem áº£nh thiáº¿t káº¿ gá»‘c</span>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full lowercase font-mono">100% Gá»‘c</span>
                 </h4>
-                <p className="text-[10px] text-slate-400">Hình ảnh thiết kế lưu trữ chất lượng tối đa, không bị nén dung lượng.</p>
+                <p className="text-[10px] text-slate-400">HÃ¬nh áº£nh thiáº¿t káº¿ lÆ°u trá»¯ cháº¥t lÆ°á»£ng tá»‘i Ä‘a, khÃ´ng bá»‹ nÃ©n dung lÆ°á»£ng.</p>
               </div>
             </div>
 
@@ -3099,7 +3117,7 @@ export default function SalesManager({
                   setLightboxRotate(0);
                 }}
                 className="w-9 h-9 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 rounded-xl flex items-center justify-center font-black text-lg transition-all cursor-pointer shadow border border-slate-700 hover:text-white"
-                title="Đóng (Esc/X)"
+                title="ÄÃ³ng (Esc/X)"
               >
                 &times;
               </button>
@@ -3147,13 +3165,13 @@ export default function SalesManager({
           >
             {/* Zoom Controls */}
             <div className="flex items-center gap-4.5 w-full md:w-auto">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest min-w-[64px]">Thu phóng:</span>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest min-w-[64px]">Thu phÃ³ng:</span>
               <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl p-1.5 px-3">
                 <button
                   type="button"
                   onClick={() => setLightboxZoom(prev => Math.max(0.5, prev - 0.25))}
                   className="w-7 h-7 bg-slate-800 hover:bg-slate-700 text-white rounded-lg cursor-pointer font-bold flex items-center justify-center transition-colors text-sm"
-                  title="Thu nhỏ (-25%)"
+                  title="Thu nhá» (-25%)"
                 >
                   -
                 </button>
@@ -3164,7 +3182,7 @@ export default function SalesManager({
                   type="button"
                   onClick={() => setLightboxZoom(prev => Math.min(4, prev + 0.25))}
                   className="w-7 h-7 bg-slate-800 hover:bg-slate-700 text-white rounded-lg cursor-pointer font-bold flex items-center justify-center transition-colors text-sm"
-                  title="Phóng to (+25%)"
+                  title="PhÃ³ng to (+25%)"
                 >
                   +
                 </button>
@@ -3172,9 +3190,9 @@ export default function SalesManager({
                   type="button"
                   onClick={() => setLightboxZoom(1)}
                   className="text-[10px] bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white px-2 py-1.5 rounded-md cursor-pointer transition-colors uppercase font-bold tracking-wide"
-                  title="Về kích thước chuẩn ban đầu"
+                  title="Vá» kÃ­ch thÆ°á»›c chuáº©n ban Ä‘áº§u"
                 >
-                  Chuẩn
+                  Chuáº©n
                 </button>
               </div>
             </div>
@@ -3186,10 +3204,10 @@ export default function SalesManager({
                 type="button"
                 onClick={() => setLightboxRotate(prev => (prev + 90) % 360)}
                 className="px-3.5 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-250 text-[11px] font-bold rounded-xl cursor-pointer transition-all hover:text-white inline-flex items-center gap-1.5"
-                title="Xoay hình ảnh thêm 90 độ"
+                title="Xoay hÃ¬nh áº£nh thÃªm 90 Ä‘á»™"
               >
                 <RotateCw className="w-3.5 h-3.5 text-blue-400" />
-                <span>Xoay 90°</span>
+                <span>Xoay 90Â°</span>
               </button>
 
               {/* Crisp Rendering Option */}
@@ -3201,10 +3219,10 @@ export default function SalesManager({
                     ? 'bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-500/10' 
                     : 'bg-slate-800 border-slate-705 text-slate-400 hover:text-white'
                 }`}
-                title="Bật tính năng này giúp hiển thị ảnh sắc nét đến từng điểm ảnh (không bị mờ bệt do trình duyệt tự làm mịn)"
+                title="Báº­t tÃ­nh nÄƒng nÃ y giÃºp hiá»ƒn thá»‹ áº£nh sáº¯c nÃ©t Ä‘áº¿n tá»«ng Ä‘iá»ƒm áº£nh (khÃ´ng bá»‹ má» bá»‡t do trÃ¬nh duyá»‡t tá»± lÃ m má»‹n)"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Chế độ: {lightboxRendering === 'crisp' ? 'Hiện Siêu Nét' : 'Làm mịn thường'}</span>
+                <span>Cháº¿ Ä‘á»™: {lightboxRendering === 'crisp' ? 'Hiá»‡n SiÃªu NÃ©t' : 'LÃ m má»‹n thÆ°á»ng'}</span>
               </button>
             </div>
 
@@ -3215,10 +3233,10 @@ export default function SalesManager({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 md:flex-none px-4 py-2.5 bg-slate-850 hover:bg-slate-800 border border-slate-700 text-blue-400 text-center font-bold text-[11px] rounded-xl transition-all hover:text-white inline-flex items-center justify-center gap-1.5 uppercase tracking-wider"
-                title="Mở ảnh trong một tab mới ở độ phân giải thật của file để kiểm duyệt"
+                title="Má»Ÿ áº£nh trong má»™t tab má»›i á»Ÿ Ä‘á»™ phÃ¢n giáº£i tháº­t cá»§a file Ä‘á»ƒ kiá»ƒm duyá»‡t"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Mở tab mới (100% Gốc)</span>
+                <span>Má»Ÿ tab má»›i (100% Gá»‘c)</span>
               </a>
 
               <button
@@ -3237,7 +3255,7 @@ export default function SalesManager({
                     a.click();
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
-                    showToast('Đã bắt đầu tải tệp thiết kế độ phân giải gốc xuống thiết bị!', 'success');
+                    showToast('ÄÃ£ báº¯t Ä‘áº§u táº£i tá»‡p thiáº¿t káº¿ Ä‘á»™ phÃ¢n giáº£i gá»‘c xuá»‘ng thiáº¿t bá»‹!', 'success');
                   } catch (err) {
                     // Fallback to simple a href download
                     const a = document.createElement('a');
@@ -3250,10 +3268,10 @@ export default function SalesManager({
                   }
                 }}
                 className="flex-1 md:flex-none px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:brightness-110 text-white font-extrabold text-[11px] rounded-xl transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 uppercase tracking-wider shadow-lg shadow-blue-500/10"
-                title="Tải tập tin thiết kế gốc độ nét tuyệt đối về máy tính/điện thoại"
+                title="Táº£i táº­p tin thiáº¿t káº¿ gá»‘c Ä‘á»™ nÃ©t tuyá»‡t Ä‘á»‘i vá» mÃ¡y tÃ­nh/Ä‘iá»‡n thoáº¡i"
               >
                 <Download className="w-4 h-4" />
-                <span>Tải File Gốc (Full Size)</span>
+                <span>Táº£i File Gá»‘c (Full Size)</span>
               </button>
             </div>
           </div>
@@ -3268,7 +3286,7 @@ export default function SalesManager({
             <div className="px-5 py-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between flex-shrink-0 text-white">
               <div className="flex items-center gap-2">
                 <FileText className="w-4.5 h-4.5 text-blue-400" />
-                <h3 className="font-bold text-xs tracking-wide uppercase">Hóa Đơn Mobile (9:16)</h3>
+                <h3 className="font-bold text-xs tracking-wide uppercase">HÃ³a ÄÆ¡n Mobile (9:16)</h3>
               </div>
               <button
                 onClick={() => setPreviewOrder(null)}
@@ -3291,38 +3309,38 @@ export default function SalesManager({
                   {/* Branding */}
                   <div className="text-center space-y-0.5 pb-3 border-b border-dashed border-slate-300">
                     <h4 className="text-xs font-black text-blue-900 tracking-wider uppercase">
-                      CƠ SỞ IN ẤN HOÀNG UYÊN
+                      CÆ  Sá»ž IN áº¤N HOÃ€NG UYÃŠN
                     </h4>
                     <p className="text-[9px] text-slate-500 font-medium">
-                      Gia Công In PET DTF & Áo Thun Sỉ Toàn Quốc
+                      Gia CÃ´ng In PET DTF & Ão Thun Sá»‰ ToÃ n Quá»‘c
                     </p>
                     <p className="text-[8px] text-slate-400 font-mono">
-                      Hotline: 0931325512 - 0941727079 — Đ/C: 557/51A Hương Lộ 3, Bình Tân, TP.HCM
+                      Hotline: 0931325512 - 0941727079 â€” Ä/C: 557/51A HÆ°Æ¡ng Lá»™ 3, BÃ¬nh TÃ¢n, TP.HCM
                     </p>
                   </div>
 
                   {/* Metadata */}
                   <div className="bg-slate-50/80 p-2.5 rounded-lg border border-slate-100 space-y-1 text-[11px] text-slate-700">
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-medium">Khách hàng:</span>
+                      <span className="text-slate-400 font-medium">KhÃ¡ch hÃ ng:</span>
                       <span className="font-black text-slate-800">{previewOrder.customerName}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-medium">Mã đơn:</span>
+                      <span className="text-slate-400 font-medium">MÃ£ Ä‘Æ¡n:</span>
                       <span className="font-mono font-bold text-blue-900 bg-blue-50 px-1 rounded">{previewOrder.orderCode}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-medium">Ngày lập:</span>
+                      <span className="text-slate-400 font-medium">NgÃ y láº­p:</span>
                       <span className="font-medium font-mono text-slate-600">{new Date(previewOrder.createdAt).toLocaleDateString('vi-VN')}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-medium">Kiểu đơn:</span>
+                      <span className="text-slate-400 font-medium">Kiá»ƒu Ä‘Æ¡n:</span>
                       <span className="font-bold text-[10px] uppercase text-slate-600">
-                        {previewOrder.type === 'dtf' ? 'In PET DTF' : previewOrder.type === 'tshirt' ? 'Bán Sỉ Áo Thun' : 'Hợp Nhất'}
+                        {previewOrder.type === 'dtf' ? 'In PET DTF' : previewOrder.type === 'tshirt' ? 'BÃ¡n Sá»‰ Ão Thun' : 'Há»£p Nháº¥t'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center pt-1.5 border-t border-dashed border-slate-200">
-                      <span className="text-slate-400 font-medium">Trạng thái:</span>
+                      <span className="text-slate-400 font-medium">Tráº¡ng thÃ¡i:</span>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
                         previewOrder.status === 'completed' 
                           ? 'bg-emerald-100 text-emerald-800' 
@@ -3330,25 +3348,25 @@ export default function SalesManager({
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-slate-150 text-slate-600'
                       }`}>
-                        {previewOrder.status === 'completed' ? 'Đã thu đủ' : previewOrder.status === 'pending' ? 'Ghi nợ' : 'Đã hủy'}
+                        {previewOrder.status === 'completed' ? 'ÄÃ£ thu Ä‘á»§' : previewOrder.status === 'pending' ? 'Ghi ná»£' : 'ÄÃ£ há»§y'}
                       </span>
                     </div>
                   </div>
 
                   {/* Items list */}
                   <div className="space-y-1.5">
-                    <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider block">Chi tiết đơn hàng:</span>
+                    <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider block">Chi tiáº¿t Ä‘Æ¡n hÃ ng:</span>
                     
                     <div className="space-y-2 max-h-[220px] overflow-y-auto pr-0.5">
                       {previewOrder.items && previewOrder.items.length > 0 ? (
                         previewOrder.items.map((item, idx) => (
                           <div key={item.id || idx} className="bg-white p-2 rounded-lg border border-slate-150 flex gap-2 text-[11px] items-center">
                             {item.image && (
-                              <img src={item.image} alt="mẫu" className="w-8 h-8 rounded object-cover border border-slate-100 flex-shrink-0" referrerPolicy="no-referrer" />
+                              <img src={item.image} alt="máº«u" className="w-8 h-8 rounded object-cover border border-slate-100 flex-shrink-0" referrerPolicy="no-referrer" />
                             )}
                             <div className="flex-1 min-w-0">
                               <span className="block font-bold text-slate-850 truncate">{item.productName}</span>
-                              <span className="block text-[9px] text-slate-400 font-mono truncate">{item.color.replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')}</span>
+                              <span className="block text-[9px] text-slate-400 font-mono truncate">{item.color.replace(/\s*\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '')}</span>
                               <div className="flex items-center justify-between mt-0.5 text-[9px]">
                                 <span className="font-mono text-slate-400">SL: {item.quantity} x {item.unitPrice.toLocaleString('vi-VN')}</span>
                                 <span className="font-bold text-slate-800 font-mono">{formatCurrency(item.totalPrice)}</span>
@@ -3360,11 +3378,11 @@ export default function SalesManager({
                         // Legacy single-item fallback
                         <div className="bg-white p-2 rounded-lg border border-slate-155 flex gap-2 text-[11px] items-center">
                           {Array.isArray(previewOrder.orderImages) && previewOrder.orderImages[0] && (
-                            <img src={previewOrder.orderImages[0]} alt="mẫu" className="w-8 h-8 rounded object-cover border border-slate-100 flex-shrink-0" referrerPolicy="no-referrer" />
+                            <img src={previewOrder.orderImages[0]} alt="máº«u" className="w-8 h-8 rounded object-cover border border-slate-100 flex-shrink-0" referrerPolicy="no-referrer" />
                           )}
                           <div className="flex-1 min-w-0">
                             <span className="block font-bold text-slate-850 truncate">{previewOrder.productName}</span>
-                            <span className="block text-[9px] text-slate-400 font-mono truncate">{(previewOrder.color || 'Mặc định').replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')}</span>
+                            <span className="block text-[9px] text-slate-400 font-mono truncate">{(previewOrder.color || 'Máº·c Ä‘á»‹nh').replace(/\s*\(PhÃ¢n khÃºc nháº­p sá»‰\)/gi, '')}</span>
                             <div className="flex items-center justify-between mt-0.5 text-[9px]">
                               <span className="font-mono text-slate-450 font-medium">SL: {previewOrder.quantity} x {previewOrder.unitPrice.toLocaleString('vi-VN')}</span>
                               <span className="font-bold text-slate-800 font-mono">{formatCurrency(previewOrder.totalPrice)}</span>
@@ -3382,31 +3400,31 @@ export default function SalesManager({
                     {(previewOrder.surcharge || 0) > 0 && (
                       <>
                         <div className="flex justify-between items-center font-medium">
-                          <span className="text-slate-400">TIỀN HÀNG:</span>
+                          <span className="text-slate-400">TIá»€N HÃ€NG:</span>
                           <span className="font-bold text-slate-700 font-mono">{formatCurrency(previewOrder.totalPrice - (previewOrder.surcharge || 0))}</span>
                         </div>
                         <div className="flex justify-between items-center font-medium text-amber-700">
-                          <span>PHỤ THU:</span>
+                          <span>PHá»¤ THU:</span>
                           <span className="font-bold font-mono">{formatCurrency(previewOrder.surcharge || 0)}</span>
                         </div>
                       </>
                     )}
                     <div className="flex justify-between items-center font-medium">
-                      <span className="text-slate-400">TỔNG CỘNG:</span>
+                      <span className="text-slate-400">Tá»”NG Cá»˜NG:</span>
                       <span className="font-bold text-slate-700 font-mono">{formatCurrency(previewOrder.totalPrice)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-emerald-600 font-bold">ĐÃ THANH TOÁN:</span>
+                      <span className="text-emerald-600 font-bold">ÄÃƒ THANH TOÃN:</span>
                       <span className="font-extrabold text-emerald-600 font-mono">{formatCurrency(previewOrder.paidAmount)}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-150">
-                      <span className="font-black text-rose-600">CÒN NỢ LẠI:</span>
+                      <span className="font-black text-rose-600">CÃ’N Ná»¢ Láº I:</span>
                       <span className="font-black text-rose-600 font-mono">{formatCurrency(previewOrder.debtAmount)}</span>
                     </div>
                   </div>
 
                   <div className="text-center pt-1.5 pb-0 bg-slate-50 p-2 rounded-lg border border-slate-100 text-[9px] text-slate-400 leading-tight">
-                    <span>Xin vui lòng thanh toán đối chiếu ảnh này khi nhận hàng. Cảm ơn quý khách hàng!</span>
+                    <span>Xin vui lÃ²ng thanh toÃ¡n Ä‘á»‘i chiáº¿u áº£nh nÃ y khi nháº­n hÃ ng. Cáº£m Æ¡n quÃ½ khÃ¡ch hÃ ng!</span>
                   </div>
                 </div>
               </div>
@@ -3421,7 +3439,7 @@ export default function SalesManager({
                 className="w-full py-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-extrabold text-xs text-center rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 uppercase tracking-wider"
               >
                 <Download className="w-3.5 h-3.5 animate-bounce" />
-                <span>{downloadingPNG ? 'Đang xuất ảnh...' : 'Tải ảnh Gửi Zalo (9:16)'}</span>
+                <span>{downloadingPNG ? 'Äang xuáº¥t áº£nh...' : 'Táº£i áº£nh Gá»­i Zalo (9:16)'}</span>
               </button>
               
               <div className="grid grid-cols-2 gap-2">
@@ -3433,14 +3451,14 @@ export default function SalesManager({
                   className="py-1.5 bg-slate-700 hover:bg-slate-655 text-slate-300 border border-slate-600 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition-colors cursor-pointer"
                 >
                   <Download className="w-3 h-3" />
-                  <span>Mẫu A5 PDF</span>
+                  <span>Máº«u A5 PDF</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewOrder(null)}
                   className="py-1.5 bg-slate-800 hover:bg-slate-755 text-slate-450 border border-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
                 >
-                  Đóng
+                  ÄÃ³ng
                 </button>
               </div>
             </div>
@@ -3480,10 +3498,10 @@ export default function SalesManager({
           <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-pink-200 bg-gradient-to-br from-rose-50 via-white to-amber-50 p-7 text-center shadow-2xl animate-scale-in">
             <div className="absolute -top-12 -left-12 w-32 h-32 rounded-full bg-pink-300/25 blur-2xl" />
             <div className="absolute -bottom-12 -right-12 w-36 h-36 rounded-full bg-amber-300/30 blur-2xl" />
-            <div className="absolute top-5 left-7 text-pink-400 text-xl animate-bounce">♥</div>
-            <div className="absolute top-8 right-8 text-amber-400 text-xl animate-pulse">✦</div>
-            <div className="absolute bottom-16 left-10 text-amber-400 text-lg animate-pulse">✦</div>
-            <div className="absolute bottom-20 right-10 text-pink-400 text-xl animate-bounce">♥</div>
+            <div className="absolute top-5 left-7 text-pink-400 text-xl animate-bounce">â™¥</div>
+            <div className="absolute top-8 right-8 text-amber-400 text-xl animate-pulse">âœ¦</div>
+            <div className="absolute bottom-16 left-10 text-amber-400 text-lg animate-pulse">âœ¦</div>
+            <div className="absolute bottom-20 right-10 text-pink-400 text-xl animate-bounce">â™¥</div>
 
             <div className="relative">
               <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shadow-xl shadow-pink-300/50 ring-8 ring-pink-100">
@@ -3492,17 +3510,17 @@ export default function SalesManager({
 
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider mb-3">
                 <Sparkles className="w-3.5 h-3.5" />
-                Hóa đơn đã được ghi sổ
+                HÃ³a Ä‘Æ¡n Ä‘Ã£ Ä‘Æ°á»£c ghi sá»•
               </div>
 
               <h3 className="text-2xl font-black text-rose-600 leading-tight">
-                Chúc mừng vợ yêu
+                ChÃºc má»«ng vá»£ yÃªu
               </h3>
               <p className="mt-1 text-lg font-extrabold text-slate-800">
-                siêng năng ghi sổ!
+                siÃªng nÄƒng ghi sá»•!
               </p>
               <p className="mt-3 text-sm font-medium text-slate-500">
-                Thêm một hóa đơn đã được lưu gọn gàng. Vợ yêu hôm nay thật chăm chỉ!
+                ThÃªm má»™t hÃ³a Ä‘Æ¡n Ä‘Ã£ Ä‘Æ°á»£c lÆ°u gá»n gÃ ng. Vá»£ yÃªu hÃ´m nay tháº­t chÄƒm chá»‰!
               </p>
 
               <button
@@ -3510,7 +3528,7 @@ export default function SalesManager({
                 onClick={() => setShowOrderCelebration(false)}
                 className="mt-6 w-full py-3 bg-gradient-to-r from-pink-500 to-rose-600 hover:brightness-105 active:scale-[0.98] text-white rounded-xl font-black text-sm shadow-lg shadow-pink-300/40 transition-all cursor-pointer"
               >
-                Vợ yêu giỏi quá!
+                Vá»£ yÃªu giá»i quÃ¡!
               </button>
             </div>
           </div>
@@ -3523,7 +3541,7 @@ export default function SalesManager({
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl overflow-hidden animate-scale-in max-h-[94vh] flex flex-col">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-blue-900 text-white">
               <div>
-                <h3 className="font-bold text-lg">Chỉnh Sửa Chi Tiết Đơn Áo Thun</h3>
+                <h3 className="font-bold text-lg">Chá»‰nh Sá»­a Chi Tiáº¿t ÄÆ¡n Ão Thun</h3>
                 <p className="text-[10px] text-blue-200 font-mono">{editingOrder.orderCode}</p>
               </div>
               <button onClick={() => setEditingOrder(null)} className="text-white/80 hover:text-white cursor-pointer text-xl">&times;</button>
@@ -3532,18 +3550,18 @@ export default function SalesManager({
             <form onSubmit={handleEditTshirtSubmit} className="p-6 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Tên khách hàng</label>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">TÃªn khÃ¡ch hÃ ng</label>
                   <input required value={editCustomerName} onChange={e => setEditCustomerName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Ngày ghi sổ</label>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">NgÃ y ghi sá»•</label>
                   <input type="date" required value={editCreatedAt} onChange={e => setEditCreatedAt(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold" />
                 </div>
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase text-slate-600">Chi tiết mẫu áo, size, số lượng, đơn giá và hình ảnh</label>
+                  <label className="text-xs font-bold uppercase text-slate-600">Chi tiáº¿t máº«u Ã¡o, size, sá»‘ lÆ°á»£ng, Ä‘Æ¡n giÃ¡ vÃ  hÃ¬nh áº£nh</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -3563,14 +3581,14 @@ export default function SalesManager({
                     }}
                     className="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-xs font-bold cursor-pointer"
                   >
-                    + Thêm dòng áo
+                    + ThÃªm dÃ²ng Ã¡o
                   </button>
                 </div>
 
                 {editTshirtItems.map((item, index) => (
                   <div key={item.id || index} className="p-3 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-12 gap-3 items-end">
                     <div className="col-span-12 sm:col-span-5">
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Mẫu áo / Màu / Size</label>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Máº«u Ã¡o / MÃ u / Size</label>
                       <select
                         value={item.productId || ''}
                         onChange={e => {
@@ -3585,7 +3603,7 @@ export default function SalesManager({
                         }}
                         className="w-full px-2 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold"
                       >
-                        <option value="" disabled>Chọn mẫu áo và size</option>
+                        <option value="" disabled>Chá»n máº«u Ã¡o vÃ  size</option>
                         {products.map(product => (
                           <option key={product.id} value={product.id}>
                             {product.name} - {product.color} - Size {product.size} (Kho: {product.stock})
@@ -3594,26 +3612,26 @@ export default function SalesManager({
                       </select>
                     </div>
                     <div className="col-span-4 sm:col-span-2">
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Số lượng</label>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Sá»‘ lÆ°á»£ng</label>
                       <input type="number" min="1" value={item.quantity} onChange={e => updateEditTshirtItem(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} className="w-full px-2 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold" />
                     </div>
                     <div className="col-span-4 sm:col-span-2">
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Đơn giá</label>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">ÄÆ¡n giÃ¡</label>
                       <input type="number" min="0" value={item.unitPrice} onChange={e => updateEditTshirtItem(index, { unitPrice: Math.max(0, Number(e.target.value) || 0) })} className="w-full px-2 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold" />
                     </div>
                     <div className="col-span-4 sm:col-span-2">
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Thành tiền</label>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">ThÃ nh tiá»n</label>
                       <div className="px-2 py-2 bg-blue-50 border border-blue-100 rounded-lg text-xs font-mono font-bold text-blue-700">{formatCurrency(item.totalPrice)}</div>
                     </div>
                     <button type="button" disabled={editTshirtItems.length === 1} onClick={() => setEditTshirtItems(prev => prev.filter((_, i) => i !== index))} className="col-span-12 sm:col-span-1 py-2 text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-30 cursor-pointer"><Trash2 className="w-4 h-4 mx-auto" /></button>
 
                     <div className="col-span-12 flex items-center gap-3 border-t border-slate-200 pt-2">
-                      {item.image ? <img src={item.image} alt="Hình in áo" className="w-12 h-12 rounded-lg object-cover border border-slate-200 cursor-zoom-in" onClick={() => setActivePreviewImage(item.image!)} /> : <div className="w-12 h-12 rounded-lg border border-dashed border-slate-300 flex items-center justify-center"><ImageIcon className="w-5 h-5 text-slate-300" /></div>}
+                      {item.image ? <img src={item.image} alt="HÃ¬nh in Ã¡o" className="w-12 h-12 rounded-lg object-cover border border-slate-200 cursor-zoom-in" onClick={() => setActivePreviewImage(item.image!)} /> : <div className="w-12 h-12 rounded-lg border border-dashed border-slate-300 flex items-center justify-center"><ImageIcon className="w-5 h-5 text-slate-300" /></div>}
                       <label className="px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg text-xs font-bold cursor-pointer">
-                        {item.image ? 'Đổi hình ảnh post kèm' : 'Thêm hình ảnh post kèm'}
+                        {item.image ? 'Äá»•i hÃ¬nh áº£nh post kÃ¨m' : 'ThÃªm hÃ¬nh áº£nh post kÃ¨m'}
                         <input type="file" accept="image/*" className="hidden" onChange={e => handleEditTshirtImage(index, e.target.files?.[0])} />
                       </label>
-                      {item.image && <button type="button" onClick={() => updateEditTshirtItem(index, { image: undefined, rawFile: undefined })} className="text-xs font-bold text-rose-600 cursor-pointer">Xóa hình</button>}
+                      {item.image && <button type="button" onClick={() => updateEditTshirtItem(index, { image: undefined, rawFile: undefined })} className="text-xs font-bold text-rose-600 cursor-pointer">XÃ³a hÃ¬nh</button>}
                     </div>
                   </div>
                 ))}
@@ -3621,17 +3639,17 @@ export default function SalesManager({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-amber-800 mb-1">Phụ thu (VND)</label>
-                  <input type="number" min="0" value={editTshirtSurcharge || ''} placeholder="Nhập số tiền phụ thu" onChange={e => setEditTshirtSurcharge(Math.max(0, Number(e.target.value) || 0))} className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg font-mono font-bold" />
+                  <label className="block text-xs font-bold uppercase text-amber-800 mb-1">Phá»¥ thu (VND)</label>
+                  <input type="number" min="0" value={editTshirtSurcharge || ''} placeholder="Nháº­p sá»‘ tiá»n phá»¥ thu" onChange={e => setEditTshirtSurcharge(Math.max(0, Number(e.target.value) || 0))} className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg font-mono font-bold" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Đã thanh toán (VND)</label>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">ÄÃ£ thanh toÃ¡n (VND)</label>
                   <input type="number" min="0" value={editPaidAmountStr} onChange={e => setEditPaidAmountStr(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-mono font-bold text-emerald-700" />
                 </div>
                 <div className="flex flex-col justify-end text-right">
-                  <span className="text-[10px] font-bold uppercase text-slate-500">Tổng đơn hàng</span>
+                  <span className="text-[10px] font-bold uppercase text-slate-500">Tá»•ng Ä‘Æ¡n hÃ ng</span>
                   <span className="font-mono font-black text-blue-700">{formatCurrency(editTshirtItems.reduce((sum, item) => sum + item.totalPrice, 0) + editTshirtSurcharge)}</span>
-                  <span className="text-[10px] font-bold uppercase text-rose-500 mt-1">Còn nợ</span>
+                  <span className="text-[10px] font-bold uppercase text-rose-500 mt-1">CÃ²n ná»£</span>
                   <span className="font-mono font-black text-rose-600">
                     {formatCurrency(Math.max(0, editTshirtItems.reduce((sum, item) => sum + item.totalPrice, 0) + editTshirtSurcharge - (Number(editPaidAmountStr) || 0)))}
                   </span>
@@ -3640,22 +3658,22 @@ export default function SalesManager({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Trạng thái</label>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Tráº¡ng thÃ¡i</label>
                   <select value={editStatus} onChange={e => setEditStatus(e.target.value as OrderStatus)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold">
-                    <option value="pending">Còn nợ (Chưa thu đủ)</option>
-                    <option value="completed">Đã thu đủ</option>
-                    <option value="cancelled">Đã hủy đơn</option>
+                    <option value="pending">CÃ²n ná»£ (ChÆ°a thu Ä‘á»§)</option>
+                    <option value="completed">ÄÃ£ thu Ä‘á»§</option>
+                    <option value="cancelled">ÄÃ£ há»§y Ä‘Æ¡n</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Ghi chú đơn hàng</label>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Ghi chÃº Ä‘Æ¡n hÃ ng</label>
                   <textarea rows={2} value={editNotes} onChange={e => setEditNotes(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold" />
                 </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setEditingOrder(null)} className="px-4 py-2 hover:bg-slate-100 text-slate-500 font-semibold text-sm rounded-xl cursor-pointer">Hủy bỏ</button>
-                <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl cursor-pointer">Cập nhật đơn áo thun</button>
+                <button type="button" onClick={() => setEditingOrder(null)} className="px-4 py-2 hover:bg-slate-100 text-slate-500 font-semibold text-sm rounded-xl cursor-pointer">Há»§y bá»</button>
+                <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl cursor-pointer">Cáº­p nháº­t Ä‘Æ¡n Ã¡o thun</button>
               </div>
             </form>
           </div>
@@ -3667,7 +3685,7 @@ export default function SalesManager({
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in text-slate-700">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in max-h-[94vh] flex flex-col">
             <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-blue-900 text-white">
-              <h3 className="font-bold text-lg">Chỉnh Sửa Chi Tiết Đơn Hàng</h3>
+              <h3 className="font-bold text-lg">Chá»‰nh Sá»­a Chi Tiáº¿t ÄÆ¡n HÃ ng</h3>
               <button
                 onClick={() => setEditingOrder(null)}
                 className="text-white/80 hover:text-white cursor-pointer text-xl"
@@ -3678,7 +3696,7 @@ export default function SalesManager({
 
             <form onSubmit={handleEditOrderSubmit} className="p-6 space-y-4 overflow-y-auto">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Tên Khách Hàng</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">TÃªn KhÃ¡ch HÃ ng</label>
                 <input
                   type="text"
                   required
@@ -3690,7 +3708,7 @@ export default function SalesManager({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Mã đơn hàng</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">MÃ£ Ä‘Æ¡n hÃ ng</label>
                   <input
                     type="text"
                     disabled
@@ -3700,7 +3718,7 @@ export default function SalesManager({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Ngày ghi sổ (Tạo đơn)</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">NgÃ y ghi sá»• (Táº¡o Ä‘Æ¡n)</label>
                   <input
                     type="date"
                     required
@@ -3713,7 +3731,7 @@ export default function SalesManager({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Số lượng / Số mét</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Sá»‘ lÆ°á»£ng / Sá»‘ mÃ©t</label>
                   <input
                     type="text"
                     required
@@ -3743,7 +3761,7 @@ export default function SalesManager({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Đơn Giá (VND)</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">ÄÆ¡n GiÃ¡ (VND)</label>
                   <input
                     type="text"
                     required
@@ -3775,7 +3793,7 @@ export default function SalesManager({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Tổng Tiền (VND)</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Tá»•ng Tiá»n (VND)</label>
                   <input
                     type="text"
                     required
@@ -3799,7 +3817,7 @@ export default function SalesManager({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Đã Thanh Toán (VND)</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">ÄÃ£ Thanh ToÃ¡n (VND)</label>
                   <input
                     type="text"
                     required
@@ -3827,34 +3845,34 @@ export default function SalesManager({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Số Tiền Còn Nợ</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Sá»‘ Tiá»n CÃ²n Ná»£</label>
                 <div className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm font-mono font-bold text-rose-600">
                   {formatCurrency(Math.max(0, (parseFloat(editTotalPriceStr) || 0) - (parseFloat(editPaidAmountStr) || 0)))}
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Trạng thái đơn hàng</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Tráº¡ng thÃ¡i Ä‘Æ¡n hÃ ng</label>
                 <select
                   value={editStatus}
                   onChange={(e) => setEditStatus(e.target.value as OrderStatus)}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold cursor-pointer"
                 >
-                  <option value="pending">Còn nợ (Chưa thu đủ)</option>
-                  <option value="completed">Đã thu đủ</option>
-                  <option value="cancelled">Đã hủy đơn</option>
+                  <option value="pending">CÃ²n ná»£ (ChÆ°a thu Ä‘á»§)</option>
+                  <option value="completed">ÄÃ£ thu Ä‘á»§</option>
+                  <option value="cancelled">ÄÃ£ há»§y Ä‘Æ¡n</option>
                 </select>
               </div>
 
               <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-sky-900">Hình ảnh đơn PET DTF</label>
-                    <p className="text-[10px] text-sky-700 mt-0.5">Xóa ảnh cũ, thay ảnh hoặc thêm nhiều ảnh mới cho đơn này.</p>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-sky-900">HÃ¬nh áº£nh Ä‘Æ¡n PET DTF</label>
+                    <p className="text-[10px] text-sky-700 mt-0.5">XÃ³a áº£nh cÅ©, thay áº£nh hoáº·c thÃªm nhiá»u áº£nh má»›i cho Ä‘Æ¡n nÃ y.</p>
                   </div>
                   <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-lg cursor-pointer border border-sky-300">
                     <Upload className="w-3.5 h-3.5" />
-                    Thêm / thay ảnh
+                    ThÃªm / thay áº£nh
                     <input
                       type="file"
                       accept="image/*"
@@ -3873,7 +3891,7 @@ export default function SalesManager({
                       <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-sky-200 bg-white">
                         <img
                           src={attachment.image}
-                          alt={`Ảnh đơn PET ${index + 1}`}
+                          alt={`áº¢nh Ä‘Æ¡n PET ${index + 1}`}
                           className="w-full h-full object-cover cursor-zoom-in"
                           onClick={() => setActivePreviewImage(attachment.image)}
                           referrerPolicy="no-referrer"
@@ -3882,7 +3900,7 @@ export default function SalesManager({
                           type="button"
                           onClick={() => setEditDtfImages(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
                           className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
-                          title="Xóa ảnh khỏi đơn"
+                          title="XÃ³a áº£nh khá»i Ä‘Æ¡n"
                         >
                           &times;
                         </button>
@@ -3891,18 +3909,18 @@ export default function SalesManager({
                   </div>
                 ) : (
                   <div className="py-4 text-center text-xs font-semibold text-sky-700 border border-dashed border-sky-300 rounded-lg">
-                    Đơn này chưa có hình ảnh.
+                    ÄÆ¡n nÃ y chÆ°a cÃ³ hÃ¬nh áº£nh.
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Ghi chú đơn hàng (Thay thế mã đơn hàng)</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans">Ghi chÃº Ä‘Æ¡n hÃ ng (Thay tháº¿ mÃ£ Ä‘Æ¡n hÃ ng)</label>
                 <textarea
                   rows={2}
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Nhập ghi chú riêng của đơn này (Ví dụ: Ship xe đò, Ủi nhãn mác, v.v.)"
+                  placeholder="Nháº­p ghi chÃº riÃªng cá»§a Ä‘Æ¡n nÃ y (VÃ­ dá»¥: Ship xe Ä‘Ã², á»¦i nhÃ£n mÃ¡c, v.v.)"
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
@@ -3913,13 +3931,13 @@ export default function SalesManager({
                   onClick={() => setEditingOrder(null)}
                   className="px-4 py-2 hover:bg-slate-100 text-slate-500 font-semibold text-sm rounded-xl cursor-pointer"
                 >
-                  Hủy bỏ
+                  Há»§y bá»
                 </button>
                 <button
                   type="submit"
                   className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl cursor-pointer"
                 >
-                  Cập nhật đơn hàng
+                  Cáº­p nháº­t Ä‘Æ¡n hÃ ng
                 </button>
               </div>
             </form>
@@ -3933,7 +3951,7 @@ export default function SalesManager({
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
             <div className="px-6 py-5 border-b border-rose-100 flex items-center justify-between bg-rose-600 text-white">
               <h3 className="font-bold text-lg flex items-center gap-2">
-                <span>Xác nhận xóa đơn hàng</span>
+                <span>XÃ¡c nháº­n xÃ³a Ä‘Æ¡n hÃ ng</span>
               </h3>
               <button
                 onClick={() => setDeletingOrder(null)}
@@ -3945,32 +3963,32 @@ export default function SalesManager({
 
             <div className="p-6 space-y-4">
               <p className="text-sm font-semibold text-slate-700">
-                Bạn có chắc chắn muốn xóa đơn hàng này không?
+                Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n xÃ³a Ä‘Æ¡n hÃ ng nÃ y khÃ´ng?
               </p>
               <div className="p-4 bg-rose-50 border border-rose-105 rounded-xl text-xs space-y-1 text-slate-800">
                 <div className="flex justify-between font-bold">
-                  <span>Mã đơn:</span>
+                  <span>MÃ£ Ä‘Æ¡n:</span>
                   <span className="text-rose-650 font-mono">{deletingOrder.orderCode}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Khách hàng:</span>
+                  <span>KhÃ¡ch hÃ ng:</span>
                   <span className="font-bold text-slate-700">{deletingOrder.customerName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Sản phẩm:</span>
+                  <span>Sáº£n pháº©m:</span>
                   <span className="font-semibold text-slate-700 max-w-[200px] truncate" title={deletingOrder.productName}>
                     {deletingOrder.productName}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Tổng tiền:</span>
+                  <span>Tá»•ng tiá»n:</span>
                   <span className="font-bold text-slate-800 font-mono">{formatCurrency(deletingOrder.totalPrice)}</span>
                 </div>
               </div>
               <p className="text-[11px] text-slate-400 italic">
                 {deletingOrder.type === 'tshirt'
-                  ? 'Số lượng áo trong hóa đơn sẽ được hoàn trả về đúng mẫu, màu và size trong kho.'
-                  : 'Lưu ý: Hành động này là vĩnh viễn và không thể khôi phục lại.'}
+                  ? 'Sá»‘ lÆ°á»£ng Ã¡o trong hÃ³a Ä‘Æ¡n sáº½ Ä‘Æ°á»£c hoÃ n tráº£ vá» Ä‘Ãºng máº«u, mÃ u vÃ  size trong kho.'
+                  : 'LÆ°u Ã½: HÃ nh Ä‘á»™ng nÃ y lÃ  vÄ©nh viá»…n vÃ  khÃ´ng thá»ƒ khÃ´i phá»¥c láº¡i.'}
               </p>
             </div>
 
@@ -3980,14 +3998,14 @@ export default function SalesManager({
                 onClick={() => setDeletingOrder(null)}
                 className="px-4 py-2 hover:bg-slate-200 text-slate-500 font-semibold rounded-xl cursor-pointer"
               >
-                Hủy bỏ
+                Há»§y bá»
               </button>
               <button
                 type="button"
                 onClick={handleDeleteOrderConfirm}
                 className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl cursor-pointer"
               >
-                Đồng ý xóa
+                Äá»“ng Ã½ xÃ³a
               </button>
             </div>
           </div>
