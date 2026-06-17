@@ -922,7 +922,9 @@ export default function SalesManager({
         unitPrice: dtfUnitPrice,
         totalPrice: Number((manualDtfMeters * dtfUnitPrice).toFixed(0)),
         image: manualDtfImage,
-        rawFile: manualDtfFile
+        rawFile: manualDtfFile,
+        extraImages: dtfOrderAttachments.map(attachment => attachment.image),
+        extraRawFiles: dtfOrderAttachments.map(attachment => attachment.rawFile)
       };
       setCartItems(prev => [...prev, newItem]);
       
@@ -930,6 +932,7 @@ export default function SalesManager({
       setManualDtfMeters(1.0);
       setManualDtfImage(undefined);
       setManualDtfFile(undefined);
+      setDtfOrderAttachments([]);
     } else {
       if (dtfItems.length === 0) return;
       const itemsToAdd: OrderItem[] = [];
@@ -1186,15 +1189,25 @@ export default function SalesManager({
           }
         }
 
+        const extraAttachments: DtfAttachment[] = (item.extraImages || []).map((image, index) => ({
+          image,
+          rawFile: item.extraRawFiles?.[index]
+        }));
+        const uploadedExtraImages = extraAttachments.length > 0
+          ? await uploadDtfAttachments(extraAttachments, `item_extra_${item.id}`)
+          : [];
+
         // Clean up text in color and product name
         const cleanColor = (item.color || '').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim();
         const cleanProductName = (item.productName || '').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim();
+        const { rawFile, extraRawFiles, ...cleanItem } = item;
 
         return {
-          ...item,
+          ...cleanItem,
           productName: cleanProductName,
           color: cleanColor,
-          image: imageUrl || undefined
+          image: imageUrl || undefined,
+          extraImages: uploadedExtraImages
         };
       })
     );
@@ -1223,6 +1236,7 @@ export default function SalesManager({
       : [];
     const orderImagesUrl = Array.from(new Set([
       ...cleanCartItems.map(item => item.image).filter(Boolean) as string[],
+      ...cleanCartItems.flatMap(item => item.extraImages || []),
       ...uploadedDtfAttachments
     ]));
     const finalStatus: OrderStatus = finalPaid >= totalPrice ? 'completed' : 'pending';
@@ -2889,21 +2903,46 @@ export default function SalesManager({
                     {cartItems.map((item) => (
                       <div key={item.id} className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between gap-3 text-xs shadow-sm">
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          {item.image ? (
-                            <div className="relative group flex-shrink-0">
-                              <img
-                                src={item.image}
-                                alt="Mẫu trong giỏ"
-                                onClick={() => setActivePreviewImage(item.image!)}
-                                className="w-10 h-10 object-cover rounded shadow-sm border border-slate-200 cursor-zoom-in hover:scale-102 transition-transform"
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
-                          ) : (
-                            <div className="w-10 h-10 bg-slate-50 rounded border border-dashed border-slate-200 flex items-center justify-center text-slate-400 flex-shrink-0">
-                              <ShoppingBag className="w-4 h-4 opacity-40" />
-                            </div>
-                          )}
+                          {(() => {
+                            const cartItemImages = Array.from(new Set([
+                              ...(item.image ? [item.image] : []),
+                              ...(item.extraImages || [])
+                            ]));
+
+                            if (cartItemImages.length === 0) {
+                              return (
+                                <div className="w-10 h-10 bg-slate-50 rounded border border-dashed border-slate-200 flex items-center justify-center text-slate-400 flex-shrink-0">
+                                  <ShoppingBag className="w-4 h-4 opacity-40" />
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="flex items-center gap-1 flex-shrink-0 max-w-[96px] overflow-hidden">
+                                {cartItemImages.slice(0, 3).map((image, imageIndex) => (
+                                  <button
+                                    key={`${image}-${imageIndex}`}
+                                    type="button"
+                                    onClick={() => setActivePreviewImage(image)}
+                                    className="relative w-10 h-10 rounded shadow-sm border border-slate-200 overflow-hidden cursor-zoom-in hover:scale-102 transition-transform bg-slate-50"
+                                    title={`Xem ảnh ${imageIndex + 1}`}
+                                  >
+                                    <img
+                                      src={image}
+                                      alt={`Mẫu trong giỏ ${imageIndex + 1}`}
+                                      className="w-full h-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                    {imageIndex === 2 && cartItemImages.length > 3 && (
+                                      <span className="absolute inset-0 bg-slate-900/65 text-white text-[10px] font-black flex items-center justify-center">
+                                        +{cartItemImages.length - 3}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })()}
                           <div className="min-w-0">
                             <span className="text-xs font-bold text-slate-850 block truncate">{item.productName}</span>
                             {item.color && (
@@ -3375,7 +3414,8 @@ export default function SalesManager({
                   {(() => {
                     const uploadedImages = Array.from(new Set([
                       ...(previewOrder.orderImages || []),
-                      ...((previewOrder.items || []).map(item => item.image).filter(Boolean) as string[])
+                      ...((previewOrder.items || []).map(item => item.image).filter(Boolean) as string[]),
+                      ...(previewOrder.items || []).flatMap(item => item.extraImages || [])
                     ]));
                     if (uploadedImages.length === 0) return null;
                     return (
