@@ -470,6 +470,33 @@ export default function SalesManager({
     }, 4500);
   };
 
+  const addManualDtfImages = (files: File[]) => {
+    if (files.length === 0) return;
+    if (!manualDtfImage) {
+      const [primaryFile, ...extraFiles] = files;
+      setManualDtfImage(URL.createObjectURL(primaryFile));
+      setManualDtfFile(primaryFile);
+      if (extraFiles.length > 0) {
+        setDtfOrderAttachments(prev => [
+          ...prev,
+          ...extraFiles.map(extraFile => ({
+            image: URL.createObjectURL(extraFile),
+            rawFile: extraFile
+          }))
+        ]);
+      }
+      return;
+    }
+
+    setDtfOrderAttachments(prev => [
+      ...prev,
+      ...files.map(extraFile => ({
+        image: URL.createObjectURL(extraFile),
+        rawFile: extraFile
+      }))
+    ]);
+  };
+
   useEffect(() => {
     const prices = StorageManager.getDtfPricesForCustomer(customerName);
     setSavedDtfPrices(prices);
@@ -505,18 +532,16 @@ export default function SalesManager({
       const items = e.clipboardData?.items;
       if (!items) return;
 
-      let fileItem = null;
+      const pastedImageFiles: File[] = [];
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
-          fileItem = items[i];
-          break;
+          const pastedFile = items[i].getAsFile();
+          if (pastedFile) pastedImageFiles.push(pastedFile);
         }
       }
 
-      if (!fileItem) return;
-
-      const file = fileItem.getAsFile();
-      if (!file) return;
+      if (pastedImageFiles.length === 0) return;
+      const file = pastedImageFiles[0];
 
       // Prevent default browser paste behaviors
       e.preventDefault();
@@ -569,9 +594,12 @@ export default function SalesManager({
 
       } else if (selectedProductType === 'dtf') {
         if (isManualDtf) {
-          const objectUrl = URL.createObjectURL(file);
-          setManualDtfImage(objectUrl);
-          setManualDtfFile(file);
+          const shouldUploadPrimary = !manualDtfImage;
+          addManualDtfImages(pastedImageFiles);
+          if (!shouldUploadPrimary) {
+            showToast(`Đã dán thêm ${pastedImageFiles.length} ảnh PET DTF vào hóa đơn.`, 'success');
+            return;
+          }
 
           const isOnline = StorageManager.getIsSupabaseActive();
           if (isOnline) {
@@ -676,28 +704,23 @@ export default function SalesManager({
     return () => {
       document.removeEventListener('paste', handlePaste);
     };
-  }, [showModal, selectedProductType, isManualDtf, dtfItems]);
+  }, [showModal, selectedProductType, isManualDtf, dtfItems, manualDtfImage]);
 
   const handleManualDtfImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles: File[] = e.target.files ? Array.from(e.target.files) : [];
     const file = selectedFiles[0];
     if (!file) return;
 
-    if (selectedFiles.length > 1) {
-      setDtfOrderAttachments(prev => [
-        ...prev,
-        ...selectedFiles.slice(1).map(extraFile => ({
-          image: URL.createObjectURL(extraFile),
-          rawFile: extraFile
-        }))
-      ]);
-      showToast(`Đã thêm ${selectedFiles.length} ảnh PET DTF. Ảnh đầu tiên làm ảnh đại diện, các ảnh còn lại lưu kèm hóa đơn.`, 'success');
+    const shouldUploadPrimary = !manualDtfImage;
+    addManualDtfImages(selectedFiles);
+    e.target.value = '';
+
+    if (!shouldUploadPrimary) {
+      showToast(`Đã thêm ${selectedFiles.length} ảnh PET DTF vào hóa đơn.`, 'success');
+      return;
     }
 
     setUploadingManualDtfImage(true);
-    const objectUrl = URL.createObjectURL(file);
-    setManualDtfImage(objectUrl);
-    setManualDtfFile(file);
     setUploadingManualDtfImage(false);
 
     const isOnline = StorageManager.getIsSupabaseActive();
@@ -730,14 +753,6 @@ export default function SalesManager({
         console.error('Uploading manual design failed:', err);
       }
     }
-  };
-
-  const handleAddDtfOrderAttachments = (files?: FileList | null) => {
-    if (!files?.length) return;
-    setDtfOrderAttachments(prev => [
-      ...prev,
-      ...Array.from(files).map(file => ({ image: URL.createObjectURL(file), rawFile: file }))
-    ]);
   };
 
   // Custom addition of DTF items
@@ -2496,8 +2511,56 @@ export default function SalesManager({
                                 disabled={uploadingManualDtfImage}
                               />
                             </label>
+                            <div className="text-[10px] text-slate-400">
+                              Chọn nhiều ảnh hoặc Ctrl+V nhiều ảnh vào cửa sổ này.
+                            </div>
                           </div>
                         </div>
+                        {(manualDtfImage || dtfOrderAttachments.length > 0) && (
+                          <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2">
+                            {manualDtfImage && (
+                              <div className="relative aspect-square rounded-lg overflow-hidden border border-blue-200 bg-slate-50">
+                                <img
+                                  src={manualDtfImage}
+                                  alt="Ảnh PET đại diện"
+                                  className="w-full h-full object-cover cursor-zoom-in"
+                                  referrerPolicy="no-referrer"
+                                  onClick={() => setActivePreviewImage(manualDtfImage)}
+                                />
+                                <span className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-blue-600 text-white text-[9px] font-black">Đại diện</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setManualDtfImage(undefined);
+                                    setManualDtfFile(undefined);
+                                  }}
+                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
+                                  title="Xóa ảnh đại diện"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            )}
+                            {dtfOrderAttachments.map((attachment, index) => (
+                              <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                                <img
+                                  src={attachment.image}
+                                  alt={`Ảnh PET ${index + 2}`}
+                                  className="w-full h-full object-cover cursor-zoom-in"
+                                  onClick={() => setActivePreviewImage(attachment.image)}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setDtfOrderAttachments(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
+                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
+                                  title="Xóa ảnh"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -2640,51 +2703,6 @@ export default function SalesManager({
                   </div>
                   )}
                   
-                  <div className="bg-sky-50/60 p-4 rounded-xl border border-sky-200 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <div className="text-xs font-bold uppercase tracking-wider text-sky-900">Ảnh bổ sung của toàn đơn PET DTF</div>
-                        <div className="text-[10px] text-sky-700 mt-0.5">Có thể chọn nhiều ảnh cùng lúc. Các ảnh này không làm thay đổi số mét hoặc thành tiền.</div>
-                      </div>
-                      <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-sky-100 text-sky-700 text-xs font-bold rounded-lg cursor-pointer border border-sky-300">
-                        <Upload className="w-3.5 h-3.5" />
-                        Thêm nhiều ảnh
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          className="hidden"
-                          onChange={e => {
-                            handleAddDtfOrderAttachments(e.target.files);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                    </div>
-                    {dtfOrderAttachments.length > 0 && (
-                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                        {dtfOrderAttachments.map((attachment, index) => (
-                          <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-sky-200 bg-white">
-                            <img
-                              src={attachment.image}
-                              alt={`Ảnh PET bổ sung ${index + 1}`}
-                              className="w-full h-full object-cover cursor-zoom-in"
-                              onClick={() => setActivePreviewImage(attachment.image)}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setDtfOrderAttachments(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
-                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
-                              title="Xóa ảnh"
-                            >
-                              &times;
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                   {/* Universal DTF Add to Cart trigger */}
                   <button
                     type="button"
