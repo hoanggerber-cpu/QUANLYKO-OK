@@ -34,7 +34,9 @@ export interface OrderItem {
   unitPrice: number;
   totalPrice: number;
   image?: string;
+  extraImages?: string[];
   rawFile?: any;
+  extraRawFiles?: any[];
 }
 
 export interface Order {
