@@ -2480,21 +2480,8 @@ export default function SalesManager({
                       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-inner">
                         <label className="block text-[10px] uppercase font-bold text-slate-500 mb-2">Hình gửi thi công (Maket / File gộp)</label>
                         <div className="flex items-center gap-4">
-                          <div className="relative w-14 h-14 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
-                            {manualDtfImage ? (
-                              <>
-                                <img src={manualDtfImage} alt="Mẫu chụp" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                <button
-                                  type="button"
-                                  onClick={() => setManualDtfImage(undefined)}
-                                  className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold"
-                                >
-                                  &times;
-                                </button>
-                              </>
-                            ) : (
-                              <ImageIcon className="w-6 h-6 text-slate-350" />
-                            )}
+                          <div className="w-14 h-14 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
+                            <ImageIcon className="w-6 h-6 text-slate-350" />
                           </div>
 
                           <div className="flex-1 space-y-1">
@@ -2516,51 +2503,49 @@ export default function SalesManager({
                             </div>
                           </div>
                         </div>
-                        {(manualDtfImage || dtfOrderAttachments.length > 0) && (
-                          <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2">
-                            {manualDtfImage && (
-                              <div className="relative aspect-square rounded-lg overflow-hidden border border-blue-200 bg-slate-50">
-                                <img
-                                  src={manualDtfImage}
-                                  alt="Ảnh PET đại diện"
-                                  className="w-full h-full object-cover cursor-zoom-in"
-                                  referrerPolicy="no-referrer"
-                                  onClick={() => setActivePreviewImage(manualDtfImage)}
-                                />
-                                <span className="absolute left-1 bottom-1 px-1.5 py-0.5 rounded bg-blue-600 text-white text-[9px] font-black">Đại diện</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setManualDtfImage(undefined);
-                                    setManualDtfFile(undefined);
-                                  }}
-                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
-                                  title="Xóa ảnh đại diện"
-                                >
-                                  &times;
-                                </button>
-                              </div>
-                            )}
-                            {dtfOrderAttachments.map((attachment, index) => (
-                              <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
-                                <img
-                                  src={attachment.image}
-                                  alt={`Ảnh PET ${index + 2}`}
-                                  className="w-full h-full object-cover cursor-zoom-in"
-                                  onClick={() => setActivePreviewImage(attachment.image)}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => setDtfOrderAttachments(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
-                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
-                                  title="Xóa ảnh"
-                                >
-                                  &times;
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        {(manualDtfImage || dtfOrderAttachments.length > 0) && (() => {
+                          const allDtfImages = [
+                            ...(manualDtfImage ? [{ image: manualDtfImage, rawFile: manualDtfFile }] : []),
+                            ...dtfOrderAttachments
+                          ];
+
+                          const removeDtfImageAt = (imageIndex: number) => {
+                            if (manualDtfImage && imageIndex === 0) {
+                              const [nextImage, ...remainingImages] = dtfOrderAttachments;
+                              setManualDtfImage(nextImage?.image);
+                              setManualDtfFile(nextImage?.rawFile);
+                              setDtfOrderAttachments(remainingImages);
+                              return;
+                            }
+
+                            const attachmentIndex = manualDtfImage ? imageIndex - 1 : imageIndex;
+                            setDtfOrderAttachments(prev => prev.filter((_, itemIndex) => itemIndex !== attachmentIndex));
+                          };
+
+                          return (
+                            <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2">
+                              {allDtfImages.map((attachment, index) => (
+                                <div key={`${attachment.image}-${index}`} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                                  <img
+                                    src={attachment.image}
+                                    alt={`Ảnh PET ${index + 1}`}
+                                    className="w-full h-full object-cover cursor-zoom-in"
+                                    referrerPolicy="no-referrer"
+                                    onClick={() => setActivePreviewImage(attachment.image)}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeDtfImageAt(index)}
+                                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white text-xs font-bold shadow cursor-pointer"
+                                    title="Xóa ảnh"
+                                  >
+                                    &times;
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ) : null}
@@ -3361,9 +3346,6 @@ export default function SalesManager({
                       {previewOrder.items && previewOrder.items.length > 0 ? (
                         previewOrder.items.map((item, idx) => (
                           <div key={item.id || idx} className="bg-white p-2 rounded-lg border border-slate-150 flex gap-2 text-[11px] items-center">
-                            {item.image && (
-                              <img src={item.image} alt="mẫu" className="w-8 h-8 rounded object-cover border border-slate-100 flex-shrink-0" referrerPolicy="no-referrer" />
-                            )}
                             <div className="flex-1 min-w-0">
                               <span className="block font-bold text-slate-850 truncate">{item.productName}</span>
                               <span className="block text-[9px] text-slate-400 font-mono truncate">{item.color.replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')}</span>
@@ -3377,9 +3359,6 @@ export default function SalesManager({
                       ) : (
                         // Legacy single-item fallback
                         <div className="bg-white p-2 rounded-lg border border-slate-155 flex gap-2 text-[11px] items-center">
-                          {Array.isArray(previewOrder.orderImages) && previewOrder.orderImages[0] && (
-                            <img src={previewOrder.orderImages[0]} alt="mẫu" className="w-8 h-8 rounded object-cover border border-slate-100 flex-shrink-0" referrerPolicy="no-referrer" />
-                          )}
                           <div className="flex-1 min-w-0">
                             <span className="block font-bold text-slate-850 truncate">{previewOrder.productName}</span>
                             <span className="block text-[9px] text-slate-400 font-mono truncate">{(previewOrder.color || 'Mặc định').replace(/\s*\(Phân khúc nhập sỉ\)/gi, '')}</span>
@@ -3392,6 +3371,33 @@ export default function SalesManager({
                       )}
                     </div>
                   </div>
+
+                  {(() => {
+                    const uploadedImages = Array.from(new Set([
+                      ...(previewOrder.orderImages || []),
+                      ...((previewOrder.items || []).map(item => item.image).filter(Boolean) as string[])
+                    ]));
+                    if (uploadedImages.length === 0) return null;
+                    return (
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider block">
+                          Hình ảnh đã tải lên ({uploadedImages.length}):
+                        </span>
+                        <div className="grid grid-cols-4 gap-1.5 bg-white p-2 rounded-lg border border-slate-150">
+                          {uploadedImages.map((image, index) => (
+                            <img
+                              key={`${image}-${index}`}
+                              src={image}
+                              alt={`Ảnh thiết kế ${index + 1}`}
+                              className="w-full aspect-square object-cover rounded border border-slate-100 cursor-zoom-in"
+                              referrerPolicy="no-referrer"
+                              onClick={() => setActivePreviewImage(image)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Billing totals */}
