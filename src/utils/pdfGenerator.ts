@@ -154,19 +154,17 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
       image: order.orderImages && order.orderImages[0] ? order.orderImages[0] : undefined
     }
   ];
+  const uploadedImages = Array.from(new Set([
+    ...(order.orderImages || []),
+    ...(items.map(item => item.image).filter(Boolean) as string[])
+  ]));
 
   const itemsHtml = items.map((item, idx) => {
     const isTshirt = item.type === 'tshirt';
     const classification = item.color + (item.size ? ` - Size: ${item.size}` : '');
-    
-    const imgHtml = item.image 
-      ? `<img src="${item.image}" style="width: 44px; height: 44px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0;" referrerPolicy="no-referrer" />`
-      : `<div style="width: 44px; height: 44px; background-color: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; color: #94a3b8; font-family: 'JetBrains Mono', monospace; text-transform: uppercase;">N/O</div>`;
-
     return `
       <tr style="border-bottom: 1px solid #f1f5f9;">
         <td style="padding: 10px 0; text-align: center; color: #64748b; font-weight: 500; font-family: 'JetBrains Mono', monospace; width: 40px;">${idx + 1}</td>
-        <td style="padding: 10px 10px 10px 0; text-align: center; width: 55px;">${imgHtml}</td>
         <td style="padding: 10px 0;">
           <div style="font-weight: 700; color: #0f172a; font-size: 13px;">${item.productName}</div>
           <div style="font-size: 11px; color: #64748b; margin-top: 1.5px; font-family: system-ui;">Phân loại: ${classification}</div>
@@ -177,6 +175,19 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
       </tr>
     `;
   }).join('');
+  const uploadedImagesHtml = uploadedImages.length > 0 ? `
+    <div style="margin-top: 18px; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; background-color: #f8fafc;">
+      <div style="font-size: 10px; font-weight: 850; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Hình ảnh đã tải lên (${uploadedImages.length})</div>
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;">
+        ${uploadedImages.map((image, index) => `
+          <div style="position: relative;">
+            <img src="${image}" style="width: 100%; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff;" referrerPolicy="no-referrer" />
+            <div style="position: absolute; left: 4px; bottom: 4px; background: rgba(15, 23, 42, 0.72); color: white; font-size: 8px; font-weight: 800; border-radius: 999px; padding: 1px 5px;">${index + 1}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  ` : '';
 
   const typeText = order.type === 'dtf' ? 'In PET DTF gia công' : order.type === 'tshirt' ? 'Bán Sỉ Áo Thun phôi' : 'Đơn hàng tổng hợp gộp';
   const surcharge = order.surcharge || 0;
@@ -220,7 +231,6 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
         <thead>
           <tr style="border-bottom: 2px solid #0f172a; background-color: #f8fafc;">
             <th style="padding: 10px 0; text-align: center; font-weight: 800; color: #0F172A; width: 40px;">STT</th>
-            <th style="padding: 10px 10px 10px 0; text-align: center; font-weight: 800; color: #0F172A; width: 55px;">MẪU</th>
             <th style="padding: 10px 0; font-weight: 800; color: #0F172A;">CHI TIẾT SẢN PHẨM</th>
             <th style="padding: 10px 0; text-align: right; font-weight: 800; color: #0F172A; width: 95px;">ĐƠN GIÁ</th>
             <th style="padding: 10px 0; text-align: center; font-weight: 800; color: #0F172A; width: 40px;">SL</th>
@@ -232,6 +242,7 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
         </tbody>
       </table>
     </div>
+    ${uploadedImagesHtml}
 
     <!-- Bottom Pricing Box -->
     <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 15px; display: flex; justify-content: flex-end;">
