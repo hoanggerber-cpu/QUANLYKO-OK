@@ -156,7 +156,8 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
   ];
   const uploadedImages = Array.from(new Set([
     ...(order.orderImages || []),
-    ...(items.map(item => item.image).filter(Boolean) as string[])
+    ...(items.map(item => item.image).filter(Boolean) as string[]),
+    ...items.flatMap(item => item.extraImages || [])
   ]));
 
   const itemsHtml = items.map((item, idx) => {
