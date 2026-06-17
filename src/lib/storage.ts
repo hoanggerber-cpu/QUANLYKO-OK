@@ -317,8 +317,12 @@ export class StorageManager {
         ...o,
         orderImages: o.orderImages?.map(image => this.serializeBackupAsset(image) || ''),
         items: o.items?.map(it => {
-          const { rawFile, ...rest } = it as any;
-          return { ...rest, image: this.serializeBackupAsset(rest.image) };
+          const { rawFile, extraRawFiles, ...rest } = it as any;
+          return {
+            ...rest,
+            image: this.serializeBackupAsset(rest.image),
+            extraImages: rest.extraImages?.map((image: string) => this.serializeBackupAsset(image) || '')
+          };
         })
       }));
       const previous = localStorage.getItem(key);
@@ -499,7 +503,10 @@ export class StorageManager {
     for (const order of orders) {
       order.orderImages = (await Promise.all((order.orderImages || []).map(image => embedImage(image)))).filter(Boolean) as string[];
       if (order.items) {
-        for (const item of order.items) item.image = await embedImage(item.image);
+        for (const item of order.items) {
+          item.image = await embedImage(item.image);
+          item.extraImages = (await Promise.all((item.extraImages || []).map(image => embedImage(image)))).filter(Boolean) as string[];
+        }
       }
     }
     const allLocalData: Record<string, unknown> = {};
@@ -1086,7 +1093,11 @@ export class StorageManager {
           ...o,
           quantity: qty,
           orderImages: this.parseOrderImagesArray(o.orderImages).map(image => this.resolveBackupAsset(image) || image),
-          items: o.items?.map(item => ({ ...item, image: this.resolveBackupAsset(item.image) }))
+          items: o.items?.map(item => ({
+            ...item,
+            image: this.resolveBackupAsset(item.image),
+            extraImages: item.extraImages?.map(image => this.resolveBackupAsset(image) || image)
+          }))
         };
       });
     } catch (e) {
