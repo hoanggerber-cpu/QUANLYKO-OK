@@ -19,6 +19,16 @@ interface DtfAttachment {
   rawFile?: File;
 }
 
+interface TshirtSizeGroup {
+  key: string;
+  size: string;
+  stock: number;
+  products: Product[];
+}
+
+const normalizeTshirtGroupKey = (value: string | undefined): string =>
+  (value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi-VN');
+
 const urlToFile = async (url: string, prefixName: string): Promise<File | null> => {
   try {
     const res = await fetch(url);
@@ -426,7 +436,7 @@ export default function SalesManager({
   // Synchronize customTshirtPrice when selectedTshirtGroup updates
   useEffect(() => {
     if (selectedTshirtGroup) {
-      const groupItems = products.filter(p => `${p.name} - Màu: ${p.color}` === selectedTshirtGroup);
+      const groupItems = products.filter(p => normalizeTshirtGroupKey(p.name) === selectedTshirtGroup);
       if (groupItems.length > 0) {
         setCustomTshirtPrice(groupItems[0].salePrice || 100000);
       }
@@ -863,21 +873,67 @@ export default function SalesManager({
     }
   };
 
-  // Derived T-shirt grouped properties
-  const tshirtGroups = Array.from(
-    new Set(products.map(p => `${p.name} - Màu: ${p.color}`))
-  ).map(groupKey => {
-    const groupItems = products.filter(p => `${p.name} - Màu: ${p.color}` === groupKey);
-    return {
-      key: groupKey,
-      name: groupItems[0].name,
-      color: groupItems[0].color,
-      salePrice: groupItems[0].salePrice,
-      image: groupItems[0].image
-    };
-  });
+  // Match the inventory screen: one selectable group per product name.
+  const tshirtGroups = useMemo(() => {
+    const groups = new Map<string, {
+      key: string;
+      name: string;
+      salePrice: number;
+      image: string;
+    }>();
 
-  const activeGroupSizes = products.filter(p => `${p.name} - Màu: ${p.color}` === selectedTshirtGroup);
+    products.forEach(product => {
+      const key = normalizeTshirtGroupKey(product.name);
+      if (!key || groups.has(key)) return;
+      groups.set(key, {
+        key,
+        name: product.name.trim(),
+        salePrice: product.salePrice,
+        image: product.image
+      });
+    });
+
+    return Array.from(groups.values());
+  }, [products]);
+
+  const activeGroupProducts = useMemo(
+    () => products.filter(product => normalizeTshirtGroupKey(product.name) === selectedTshirtGroup),
+    [products, selectedTshirtGroup]
+  );
+
+  const activeGroupSizes = useMemo<TshirtSizeGroup[]>(() => {
+    const sizeGroups = new Map<string, TshirtSizeGroup>();
+
+    activeGroupProducts.forEach(product => {
+      const size = (product.size || 'N/A').trim();
+      const key = normalizeTshirtGroupKey(size);
+      const existing = sizeGroups.get(key);
+      if (existing) {
+        existing.stock += product.stock;
+        existing.products.push(product);
+        return;
+      }
+      sizeGroups.set(key, {
+        key,
+        size,
+        stock: product.stock,
+        products: [product]
+      });
+    });
+
+    return Array.from(sizeGroups.values());
+  }, [activeGroupProducts]);
+
+  useEffect(() => {
+    if (tshirtGroups.length === 0) {
+      if (selectedTshirtGroup) setSelectedTshirtGroup('');
+      return;
+    }
+    if (!tshirtGroups.some(group => group.key === selectedTshirtGroup)) {
+      setSelectedTshirtGroup(tshirtGroups[0].key);
+      setTshirtSizesQty({});
+    }
+  }, [tshirtGroups, selectedTshirtGroup]);
 
   const getReservedTshirtQuantity = (product: Product) => {
     return cartItems
@@ -892,6 +948,9 @@ export default function SalesManager({
       )
       .reduce((sum, item) => sum + item.quantity, 0);
   };
+
+  const getReservedTshirtSizeQuantity = (sizeGroup: TshirtSizeGroup) =>
+    sizeGroup.products.reduce((sum, product) => sum + getReservedTshirtQuantity(product), 0);
 
   // Calculate total price reactively based on shopping cart
   const productSubtotal = cartItems.reduce((acc, item) => acc + item.totalPrice, 0);
@@ -961,35 +1020,48 @@ export default function SalesManager({
   };
 
   const handleAddTshirtsToCart = () => {
-    const nonZeroSizes = activeGroupSizes.filter(p => (tshirtSizesQty[p.id] || 0) > 0);
+    const nonZeroSizes = activeGroupSizes.filter(sizeGroup => (tshirtSizesQty[sizeGroup.key] || 0) > 0);
     if (nonZeroSizes.length === 0) {
       showToast('Vui lòng nhập số lượng đặt mua cho ít nhất một Size!', 'error');
       return;
     }
 
     // Check stock limit
-    for (const prod of nonZeroSizes) {
-      const alreadyInCart = getReservedTshirtQuantity(prod);
-      const orderQty = tshirtSizesQty[prod.id] || 0;
-      if (orderQty + alreadyInCart > prod.stock) {
-        showToast(`Số lượng đặt mua (${orderQty + alreadyInCart}) của dòng Size ${prod.size} vượt quá hàng tồn trong kho (${prod.stock})!`, 'error');
+    for (const sizeGroup of nonZeroSizes) {
+      const alreadyInCart = getReservedTshirtSizeQuantity(sizeGroup);
+      const orderQty = tshirtSizesQty[sizeGroup.key] || 0;
+      if (orderQty + alreadyInCart > sizeGroup.stock) {
+        showToast(`Số lượng đặt mua (${orderQty + alreadyInCart}) của dòng Size ${sizeGroup.size} vượt quá hàng tồn trong kho (${sizeGroup.stock})!`, 'error');
         return;
       }
     }
 
-    const itemsToAdd: OrderItem[] = nonZeroSizes.map(prod => ({
-      id: 'ci_' + Math.random().toString(36).substring(2, 11),
-      productId: prod.id,
-      type: 'tshirt',
-      productName: prod.name,
-      color: `${prod.color} - Size ${prod.size || 'N/A'}`,
-      size: prod.size,
-      quantity: tshirtSizesQty[prod.id] || 0,
-      unitPrice: customTshirtPrice,
-      totalPrice: (tshirtSizesQty[prod.id] || 0) * customTshirtPrice,
-      image: tshirtPrintImage,
-      rawFile: tshirtPrintFile
-    }));
+    const itemsToAdd: OrderItem[] = [];
+    for (const sizeGroup of nonZeroSizes) {
+      let remainingQuantity = tshirtSizesQty[sizeGroup.key] || 0;
+
+      for (const product of sizeGroup.products) {
+        if (remainingQuantity <= 0) break;
+        const availableStock = Math.max(0, product.stock - getReservedTshirtQuantity(product));
+        const allocatedQuantity = Math.min(remainingQuantity, availableStock);
+        if (allocatedQuantity <= 0) continue;
+
+        itemsToAdd.push({
+          id: 'ci_' + Math.random().toString(36).substring(2, 11),
+          productId: product.id,
+          type: 'tshirt',
+          productName: product.name,
+          color: `${product.color} - Size ${product.size || 'N/A'}`,
+          size: product.size,
+          quantity: allocatedQuantity,
+          unitPrice: customTshirtPrice,
+          totalPrice: allocatedQuantity * customTshirtPrice,
+          image: tshirtPrintImage,
+          rawFile: tshirtPrintFile
+        });
+        remainingQuantity -= allocatedQuantity;
+      }
+    }
 
     setCartItems(prev => [...prev, ...itemsToAdd]);
 
@@ -2717,7 +2789,7 @@ export default function SalesManager({
                   {/* T-shirt Group Selection */}
                   <div className="bg-blue-50/40 p-4 rounded-xl border border-blue-105 flex flex-col gap-2.5">
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Chọn mẫu mã & Màu sắc áo thun sỉ</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Chọn mặt hàng áo thun trong kho</label>
                       <select
                         value={selectedTshirtGroup}
                         onChange={(e) => {
@@ -2726,9 +2798,9 @@ export default function SalesManager({
                         }}
                         className="w-full px-3 py-2 bg-white border border-slate-205 rounded-xl text-sm focus:outline-none font-bold text-slate-800 shadow-sm cursor-pointer"
                       >
-                        {tshirtGroups.map((g, gi) => (
-                          <option key={gi} value={g.key}>
-                            {g.name} - Màu: {g.color}
+                        {tshirtGroups.map((group) => (
+                          <option key={group.key} value={group.key}>
+                            {group.name}
                           </option>
                         ))}
                       </select>
@@ -2738,13 +2810,13 @@ export default function SalesManager({
                       <div className="flex flex-col gap-1.5 bg-white p-3 rounded-lg border border-slate-100">
                         <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
                           <span>Giá Bán Áo Thun (VND / Cái)</span>
-                          {activeGroupSizes[0]?.salePrice > 0 && (
+                          {activeGroupProducts[0]?.salePrice > 0 && (
                             <button
                               type="button"
-                              onClick={() => setCustomTshirtPrice(activeGroupSizes[0]?.salePrice || 100000)}
+                              onClick={() => setCustomTshirtPrice(activeGroupProducts[0]?.salePrice || 100000)}
                               className="text-[10px] text-blue-600 hover:underline cursor-pointer normal-case font-medium"
                             >
-                              (Đặt lại về giá gốc: {formatCurrency(activeGroupSizes[0].salePrice)})
+                              (Đặt lại về giá gốc: {formatCurrency(activeGroupProducts[0].salePrice)})
                             </button>
                           )}
                         </div>
@@ -2767,13 +2839,13 @@ export default function SalesManager({
                         Kiểm phân size & Nhập số lượng mua (Tồn khả dụng sau khi giữ trong giỏ)
                       </label>
                       <div className="divide-y divide-slate-200/60 max-h-48 overflow-y-auto pr-1">
-                        {activeGroupSizes.map((prod) => {
-                          const reservedQuantity = getReservedTshirtQuantity(prod);
-                          const availableStock = Math.max(0, prod.stock - reservedQuantity);
+                        {activeGroupSizes.map((sizeGroup) => {
+                          const reservedQuantity = getReservedTshirtSizeQuantity(sizeGroup);
+                          const availableStock = Math.max(0, sizeGroup.stock - reservedQuantity);
                           return (
-                            <div key={prod.id} className="grid grid-cols-12 gap-2 py-2 items-center text-xs">
+                            <div key={sizeGroup.key} className="grid grid-cols-12 gap-2 py-2 items-center text-xs">
                             <div className="col-span-3 font-extrabold text-slate-800 text-sm">
-                              Size {prod.size}
+                              Size {sizeGroup.size}
                             </div>
                             <div className="col-span-5 text-slate-500 font-medium">
                               Tồn khả dụng: <span className={`font-bold ${availableStock <= 10 ? 'text-amber-600' : 'text-slate-700'}`}>{availableStock} chiếc</span>
@@ -2785,11 +2857,11 @@ export default function SalesManager({
                                 min="0"
                                 max={availableStock}
                                 placeholder="0"
-                                value={tshirtSizesQty[prod.id] || ''}
+                                value={tshirtSizesQty[sizeGroup.key] || ''}
                                 onChange={(e) => {
                                   let val = parseInt(e.target.value) || 0;
                                   val = Math.min(availableStock, Math.max(0, val));
-                                  setTshirtSizesQty(prev => ({ ...prev, [prod.id]: val }));
+                                  setTshirtSizesQty(prev => ({ ...prev, [sizeGroup.key]: val }));
                                 }}
                                 disabled={availableStock === 0}
                                 className="w-18 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-bold font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
