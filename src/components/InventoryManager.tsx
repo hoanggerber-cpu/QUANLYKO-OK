@@ -231,6 +231,38 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     return groupedProducts.find(g => g.key === selectedGroupKey) || null;
   }, [selectedGroupKey, groupedProducts]);
 
+  const selectedSizeGroups = useMemo(() => {
+    if (!selectedGroup) return [];
+    const groups = new Map<string, {
+      key: string;
+      size: string;
+      totalStock: number;
+      paidStock: number;
+      unpaidStock: number;
+      lots: Product[];
+    }>();
+
+    selectedGroup.items.forEach(product => {
+      const size = (product.size || 'L').trim();
+      const key = size.toLocaleLowerCase('vi-VN');
+      const group = groups.get(key) || {
+        key,
+        size,
+        totalStock: 0,
+        paidStock: 0,
+        unpaidStock: 0,
+        lots: []
+      };
+      group.totalStock += product.stock;
+      if (product.source === 'consignment_paid') group.paidStock += product.stock;
+      if (product.source === 'consignment_unpaid') group.unpaidStock += product.stock;
+      group.lots.push(product);
+      groups.set(key, group);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => sortSizes(a.size, b.size));
+  }, [selectedGroup]);
+
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -705,9 +737,10 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
 
                   {/* SIZE GRID / MINI CARDS inside modal */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 pt-6">
-                    {selectedGroup.items.sort((a,b) => sortSizes(a.size || '', b.size || '')).map((variant) => {
-                      const isOut = variant.stock <= 0;
-                      const isLow = variant.stock > 0 && variant.stock <= 10;
+                    {selectedSizeGroups.map((sizeGroup) => {
+                      const variant = sizeGroup.lots[0];
+                      const isOut = sizeGroup.totalStock <= 0;
+                      const isLow = sizeGroup.totalStock > 0 && sizeGroup.totalStock <= 10;
 
                       let stockStyle = "bg-emerald-50/90 text-emerald-800 border-emerald-250";
                       let dotStyle = "bg-emerald-500 animate-pulse";
@@ -721,25 +754,25 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
 
                       return (
                         <div
-                          key={variant.id}
+                          key={sizeGroup.key}
                           className="bg-white border border-slate-200 shadow-[0_12px_36px_rgba(0,0,0,0.035)] rounded-3xl p-8 flex flex-col justify-between relative group/variant text-slate-700"
                         >
                           {/* Mini Card Header info */}
                           <div className="flex items-center justify-between gap-1.5 mb-5">
                             <div className="flex items-center gap-3.5 min-w-0">
                               <span className="w-14 h-14 flex items-center justify-center text-lg font-black bg-slate-900 border border-slate-800 text-white rounded-2xl group-hover/variant:bg-blue-600 group-hover/variant:border-blue-600 transition-all duration-300 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-                                {variant.size || 'L'}
+                                {sizeGroup.size}
                               </span>
                               <div className="flex flex-col min-w-0">
                                 <span className="font-extrabold text-slate-900 text-[15px] tracking-tight">
                                   Biến thể áo thun
                                 </span>
                                 <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide mt-0.5">
-                                  Phân loại size: {variant.size}
+                                  Phân loại size: {sizeGroup.size}
                                 </span>
-                                {(variant.source === 'consignment_unpaid' || variant.source === 'consignment_paid') && (
+                                {sizeGroup.lots.some(lot => lot.source === 'consignment_unpaid' || lot.source === 'consignment_paid') && (
                                   <span className="text-[9px] text-slate-400 font-mono font-bold mt-1">
-                                    Lô: {variant.id.slice(-6).toUpperCase()} · {new Date(variant.createdAt).toLocaleDateString('vi-VN')}
+                                    {sizeGroup.lots.length} lô nhập
                                   </span>
                                 )}
                               </div>
@@ -813,46 +846,86 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                             <span className="text-[10px] uppercase font-black tracking-widest opacity-80">TỒN KHO THỰC TẾ</span>
                             <div className="flex items-center gap-2">
                               <span className={`w-2.5 h-2.5 rounded-full ${dotStyle}`} />
-                              <span className="text-base font-black tracking-tight">{isOut ? 'HẾT HÀNG' : `${variant.stock} cái`}</span>
+                              <span className="text-base font-black tracking-tight">{isOut ? 'HẾT HÀNG' : `${sizeGroup.totalStock} cái`}</span>
                             </div>
                           </div>
 
-                          {(variant.source === 'consignment_unpaid' || variant.source === 'consignment_paid') && (
-                            <div className={`mt-3 px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-wide flex items-center justify-between gap-2 ${
-                              variant.source === 'consignment_paid'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-150'
-                                : 'bg-amber-50 text-amber-700 border-amber-150'
-                            }`}>
-                              <span>{variant.source === 'consignment_paid' ? 'Ký gửi - Đã thanh toán' : 'Ký gửi - Chưa thanh toán'}</span>
-                              {variant.source === 'consignment_unpaid' && onUpdateProduct && (
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void onUpdateProduct(variant.id, { source: 'consignment_paid' });
-                                  }}
-                                  className="normal-case px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
-                                >
-                                  Đánh dấu đã thanh toán
-                                </button>
-                              )}
+                          {(sizeGroup.paidStock > 0 || sizeGroup.unpaidStock > 0) && (
+                            <div className="grid grid-cols-2 gap-2 mt-3">
+                              <div className="rounded-xl border border-emerald-150 bg-emerald-50 px-3 py-2 text-emerald-700">
+                                <span className="block text-[9px] font-black uppercase">Đã thanh toán</span>
+                                <strong className="text-sm">{sizeGroup.paidStock} cái</strong>
+                              </div>
+                              <div className="rounded-xl border border-amber-150 bg-amber-50 px-3 py-2 text-amber-700">
+                                <span className="block text-[9px] font-black uppercase">Chưa thanh toán</span>
+                                <strong className="text-sm">{sizeGroup.unpaidStock} cái</strong>
+                              </div>
                             </div>
                           )}
 
-                          {/* Dynamic detailed price table */}
-                          <div className="mt-5 pt-4.5 border-t border-slate-100 text-xs text-slate-600 font-mono">
-                            <div className="flex justify-between items-center bg-slate-50/80 py-2.5 px-4 rounded-xl border border-slate-150 shadow-2xs">
-                              <span className="text-slate-400 uppercase font-black text-[9px] tracking-wider">Giá nhập kho:</span>
-                              <span className="font-extrabold text-slate-705 text-xs">{formatVND(variant.importPrice)}</span>
-                            </div>
+                          <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+                            {sizeGroup.lots.map((lot) => (
+                              <div key={lot.id} className="rounded-xl border border-slate-150 bg-slate-50/80 p-3 text-[10px]">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <div className="font-black text-slate-700">
+                                      Lô {lot.id.slice(-6).toUpperCase()} · {lot.stock} cái
+                                    </div>
+                                    <div className="text-slate-400 font-mono mt-0.5">
+                                      {new Date(lot.createdAt).toLocaleDateString('vi-VN')} · {formatVND(lot.importPrice)}
+                                    </div>
+                                  </div>
+                                  <span className={`px-2 py-1 rounded-lg border font-black ${
+                                    lot.source === 'consignment_paid'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-150'
+                                      : lot.source === 'consignment_unpaid'
+                                        ? 'bg-amber-50 text-amber-700 border-amber-150'
+                                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                                  }`}>
+                                    {lot.source === 'consignment_paid'
+                                      ? 'Đã thanh toán'
+                                      : lot.source === 'consignment_unpaid'
+                                        ? 'Chưa thanh toán'
+                                        : 'Kho thường'}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap justify-end gap-1.5 mt-2">
+                                  {lot.source === 'consignment_unpaid' && onUpdateProduct && (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void onUpdateProduct(lot.id, { source: 'consignment_paid' });
+                                      }}
+                                      className="px-2 py-1 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700 cursor-pointer"
+                                    >
+                                      Đánh dấu đã thanh toán
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleEditClick(lot);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-150 font-bold cursor-pointer"
+                                  >
+                                    Sửa lô
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleDeleteClick(lot);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-150 font-bold cursor-pointer"
+                                  >
+                                    Xóa lô
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-
-                          {/* Ghi chú preview */}
-                          {localStorage.getItem(`product_note_${variant.id}`) && (
-                            <div className="mt-4 bg-amber-50/40 border border-dashed border-amber-200/70 p-3 rounded-xl text-[11px] text-amber-800 line-clamp-2 leading-relaxed shadow-2xs">
-                              📝 <strong>Note:</strong> {localStorage.getItem(`product_note_${variant.id}`)}
-                            </div>
-                          )}
                         </div>
                       );
                     })}
