@@ -5,7 +5,11 @@ export interface User {
   fullName: string;
 }
 
-export type ProductSource = 'self_produced' | 'external';
+export type ProductSource =
+  | 'self_produced'
+  | 'external'
+  | 'consignment_unpaid'
+  | 'consignment_paid';
 
 export interface Product {
   id: string;
