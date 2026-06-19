@@ -526,6 +526,8 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
               const hasUnsplash = isUnsplashUrl(group.image);
               const hasSelfProduced = group.items.some((p) => p.source === 'self_produced');
               const hasExternal = group.items.some((p) => p.source === 'external');
+              const hasConsignmentUnpaid = group.items.some((p) => p.source === 'consignment_unpaid');
+              const hasConsignmentPaid = group.items.some((p) => p.source === 'consignment_paid');
               const isOutOfStock = group.totalStock === 0;
               const isLowStock = group.totalStock > 0 && group.totalStock <= 10;
 
@@ -571,6 +573,17 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                     {hasExternal && (
                       <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-750 border border-blue-105 rounded-md text-[9.5px] font-bold">
                         📦 Ngoài
+                      </span>
+                    )}
+
+                    {hasConsignmentUnpaid && (
+                      <span className="inline-flex items-center px-2 py-0.5 bg-amber-50 text-amber-750 border border-amber-150 rounded-md text-[9.5px] font-bold">
+                        Ký gửi - Chưa thanh toán
+                      </span>
+                    )}
+                    {hasConsignmentPaid && (
+                      <span className="inline-flex items-center px-2 py-0.5 bg-emerald-50 text-emerald-750 border border-emerald-150 rounded-md text-[9.5px] font-bold">
+                        Ký gửi - Đã thanh toán
                       </span>
                     )}
 
@@ -658,6 +671,21 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                     </div>
                   </div>
                 </div>
+
+                {selectedGroup.items.some(product => product.source === 'consignment_unpaid' || product.source === 'consignment_paid') && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedGroup.items.some(product => product.source === 'consignment_unpaid') && (
+                      <span className="inline-block px-3 py-1 bg-amber-50 text-amber-700 border border-amber-150 text-[10px] font-black rounded-lg uppercase tracking-wide">
+                        Ký gửi - Chưa thanh toán
+                      </span>
+                    )}
+                    {selectedGroup.items.some(product => product.source === 'consignment_paid') && (
+                      <span className="inline-block px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-150 text-[10px] font-black rounded-lg uppercase tracking-wide">
+                        Ký gửi - Đã thanh toán
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Sub variants Grid container */}
                 <div>
@@ -774,6 +802,28 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                               <span className="text-base font-black tracking-tight">{isOut ? 'HẾT HÀNG' : `${variant.stock} cái`}</span>
                             </div>
                           </div>
+
+                          {(variant.source === 'consignment_unpaid' || variant.source === 'consignment_paid') && (
+                            <div className={`mt-3 px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-wide flex items-center justify-between gap-2 ${
+                              variant.source === 'consignment_paid'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-150'
+                                : 'bg-amber-50 text-amber-700 border-amber-150'
+                            }`}>
+                              <span>{variant.source === 'consignment_paid' ? 'Ký gửi - Đã thanh toán' : 'Ký gửi - Chưa thanh toán'}</span>
+                              {variant.source === 'consignment_unpaid' && onUpdateProduct && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void onUpdateProduct(variant.id, { source: 'consignment_paid' });
+                                  }}
+                                  className="normal-case px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                                >
+                                  Đánh dấu đã thanh toán
+                                </button>
+                              )}
+                            </div>
+                          )}
 
                           {/* Dynamic detailed price table */}
                           <div className="mt-5 pt-4.5 border-t border-slate-100 text-xs text-slate-600 font-mono">
@@ -984,6 +1034,30 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                         className="w-4.5 h-4.5 text-blue-600 border-slate-300 focus:ring-blue-550 focus:ring-1"
                       />
                       <span className="text-xs font-bold text-slate-700">Nhập kho hàng mua đơn vị ngoài</span>
+                    </label>
+
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="source"
+                        value="consignment_unpaid"
+                        checked={source === 'consignment_unpaid'}
+                        onChange={() => setSource('consignment_unpaid')}
+                        className="w-4.5 h-4.5 text-amber-600 border-slate-300 focus:ring-amber-500 focus:ring-1"
+                      />
+                      <span className="text-xs font-bold text-amber-700">{'Ký gửi - Chưa thanh toán'}</span>
+                    </label>
+
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="source"
+                        value="consignment_paid"
+                        checked={source === 'consignment_paid'}
+                        onChange={() => setSource('consignment_paid')}
+                        className="w-4.5 h-4.5 text-emerald-600 border-slate-300 focus:ring-emerald-500 focus:ring-1"
+                      />
+                      <span className="text-xs font-bold text-emerald-700">{'Ký gửi - Đã thanh toán'}</span>
                     </label>
                   </div>
                 </div>
@@ -1205,6 +1279,30 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                         className="w-4.5 h-4.5 text-blue-600 border-slate-300 pointer-events-auto"
                       />
                       <span className="text-xs font-bold text-slate-700">Mua ngoài</span>
+                    </label>
+
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="editSource"
+                        value="consignment_unpaid"
+                        checked={editSource === 'consignment_unpaid'}
+                        onChange={() => setEditSource('consignment_unpaid')}
+                        className="w-4.5 h-4.5 text-amber-600 border-slate-300 pointer-events-auto"
+                      />
+                      <span className="text-xs font-bold text-amber-700">{'Ký gửi - Chưa thanh toán'}</span>
+                    </label>
+
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="editSource"
+                        value="consignment_paid"
+                        checked={editSource === 'consignment_paid'}
+                        onChange={() => setEditSource('consignment_paid')}
+                        className="w-4.5 h-4.5 text-emerald-600 border-slate-300 pointer-events-auto"
+                      />
+                      <span className="text-xs font-bold text-emerald-700">{'Ký gửi - Đã thanh toán'}</span>
                     </label>
                   </div>
                 </div>
