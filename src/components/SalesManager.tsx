@@ -24,7 +24,8 @@ interface TshirtSizeGroup {
   size: string;
   stock: number;
   products: Product[];
-  consignmentStatus?: 'paid' | 'unpaid';
+  paidStock: number;
+  unpaidStock: number;
 }
 
 const normalizeTshirtGroupKey = (value: string | undefined): string =>
@@ -923,16 +924,13 @@ export default function SalesManager({
 
     activeGroupProducts.forEach(product => {
       const size = (product.size || 'N/A').trim();
-      const consignmentStatus = product.source === 'consignment_paid'
-        ? 'paid'
-        : product.source === 'consignment_unpaid'
-          ? 'unpaid'
-          : undefined;
-      const key = `${normalizeTshirtGroupKey(size)}::${consignmentStatus || 'regular'}`;
+      const key = normalizeTshirtGroupKey(size);
       const existing = sizeGroups.get(key);
       if (existing) {
         existing.stock += product.stock;
         existing.products.push(product);
+        if (product.source === 'consignment_paid') existing.paidStock += product.stock;
+        if (product.source === 'consignment_unpaid') existing.unpaidStock += product.stock;
         return;
       }
       sizeGroups.set(key, {
@@ -940,8 +938,19 @@ export default function SalesManager({
         size,
         stock: product.stock,
         products: [product],
-        consignmentStatus
+        paidStock: product.source === 'consignment_paid' ? product.stock : 0,
+        unpaidStock: product.source === 'consignment_unpaid' ? product.stock : 0
       });
+    });
+
+    sizeGroups.forEach(group => {
+      const priority = (product: Product) => product.source === 'consignment_paid'
+        ? 0
+        : product.source === 'consignment_unpaid'
+          ? 1
+          : 2;
+      group.products.sort((a, b) => priority(a) - priority(b)
+        || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     });
 
     return Array.from(sizeGroups.values());
@@ -2875,18 +2884,15 @@ export default function SalesManager({
                             <div key={sizeGroup.key} className="grid grid-cols-12 gap-2 py-2 items-center text-xs">
                             <div className="col-span-3 font-extrabold text-slate-800 text-sm">
                               Size {sizeGroup.size}
-                              {sizeGroup.consignmentStatus && (
-                                <span className={`block mt-1 text-[9px] font-black uppercase leading-tight ${
-                                  sizeGroup.consignmentStatus === 'paid' ? 'text-emerald-650' : 'text-amber-650'
-                                }`}>
-                                  {sizeGroup.consignmentStatus === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
-                                </span>
-                              )}
                             </div>
                             <div className="col-span-5 text-slate-500 font-medium">
                               Tồn khả dụng: <span className={`font-bold ${availableStock <= 10 ? 'text-amber-600' : 'text-slate-700'}`}>{availableStock} chiếc</span>
-                              {sizeGroup.consignmentStatus === 'paid' && (
-                                <span className="block text-[9px] text-emerald-650 font-bold">Không tính tiền áo</span>
+                              {(sizeGroup.paidStock > 0 || sizeGroup.unpaidStock > 0) && (
+                                <span className="block text-[9px] font-bold mt-0.5">
+                                  <span className="text-emerald-650">Đã trả: {sizeGroup.paidStock}</span>
+                                  {' · '}
+                                  <span className="text-amber-650">Chưa trả: {sizeGroup.unpaidStock}</span>
+                                </span>
                               )}
                               {reservedQuantity > 0 && <span className="block text-[9px] text-blue-600">Đã giữ trong giỏ: {reservedQuantity}</span>}
                             </div>
