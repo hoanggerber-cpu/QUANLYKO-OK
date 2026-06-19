@@ -24,6 +24,7 @@ interface TshirtSizeGroup {
   size: string;
   stock: number;
   products: Product[];
+  consignmentStatus?: 'paid' | 'unpaid';
 }
 
 const normalizeTshirtGroupKey = (value: string | undefined): string =>
@@ -890,16 +891,20 @@ export default function SalesManager({
       const groupItems = products.filter(item => normalizeTshirtGroupKey(item.name) === key);
       const hasPaidConsignment = groupItems.some(item => item.source === 'consignment_paid');
       const hasUnpaidConsignment = groupItems.some(item => item.source === 'consignment_unpaid');
+      const paidConsignmentStock = groupItems
+        .filter(item => item.source === 'consignment_paid')
+        .reduce((sum, item) => sum + item.stock, 0);
+      const unpaidConsignmentStock = groupItems
+        .filter(item => item.source === 'consignment_unpaid')
+        .reduce((sum, item) => sum + item.stock, 0);
       groups.set(key, {
         key,
         name: product.name.trim(),
         salePrice: product.salePrice,
         image: product.image,
-        statusLabel: hasPaidConsignment && !hasUnpaidConsignment
-          ? 'Ký gửi - Đã thanh toán'
-          : hasUnpaidConsignment
-            ? 'Ký gửi - Chưa thanh toán'
-            : undefined
+        statusLabel: hasPaidConsignment || hasUnpaidConsignment
+          ? `Ký gửi: đã trả ${paidConsignmentStock}, chưa trả ${unpaidConsignmentStock}`
+          : undefined
       });
     });
 
@@ -918,7 +923,12 @@ export default function SalesManager({
 
     activeGroupProducts.forEach(product => {
       const size = (product.size || 'N/A').trim();
-      const key = normalizeTshirtGroupKey(size);
+      const consignmentStatus = product.source === 'consignment_paid'
+        ? 'paid'
+        : product.source === 'consignment_unpaid'
+          ? 'unpaid'
+          : undefined;
+      const key = `${normalizeTshirtGroupKey(size)}::${consignmentStatus || 'regular'}`;
       const existing = sizeGroups.get(key);
       if (existing) {
         existing.stock += product.stock;
@@ -929,7 +939,8 @@ export default function SalesManager({
         key,
         size,
         stock: product.stock,
-        products: [product]
+        products: [product],
+        consignmentStatus
       });
     });
 
@@ -2864,9 +2875,19 @@ export default function SalesManager({
                             <div key={sizeGroup.key} className="grid grid-cols-12 gap-2 py-2 items-center text-xs">
                             <div className="col-span-3 font-extrabold text-slate-800 text-sm">
                               Size {sizeGroup.size}
+                              {sizeGroup.consignmentStatus && (
+                                <span className={`block mt-1 text-[9px] font-black uppercase leading-tight ${
+                                  sizeGroup.consignmentStatus === 'paid' ? 'text-emerald-650' : 'text-amber-650'
+                                }`}>
+                                  {sizeGroup.consignmentStatus === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                </span>
+                              )}
                             </div>
                             <div className="col-span-5 text-slate-500 font-medium">
                               Tồn khả dụng: <span className={`font-bold ${availableStock <= 10 ? 'text-amber-600' : 'text-slate-700'}`}>{availableStock} chiếc</span>
+                              {sizeGroup.consignmentStatus === 'paid' && (
+                                <span className="block text-[9px] text-emerald-650 font-bold">Không tính tiền áo</span>
+                              )}
                               {reservedQuantity > 0 && <span className="block text-[9px] text-blue-600">Đã giữ trong giỏ: {reservedQuantity}</span>}
                             </div>
                             <div className="col-span-4 flex justify-end">
