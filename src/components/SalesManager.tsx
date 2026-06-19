@@ -438,7 +438,8 @@ export default function SalesManager({
     if (selectedTshirtGroup) {
       const groupItems = products.filter(p => normalizeTshirtGroupKey(p.name) === selectedTshirtGroup);
       if (groupItems.length > 0) {
-        setCustomTshirtPrice(groupItems[0].salePrice || 100000);
+        const isFullyPaidConsignment = groupItems.every(product => product.source === 'consignment_paid');
+        setCustomTshirtPrice(isFullyPaidConsignment ? 0 : (groupItems[0].salePrice || 100000));
       }
     }
   }, [selectedTshirtGroup, products]);
@@ -880,16 +881,25 @@ export default function SalesManager({
       name: string;
       salePrice: number;
       image: string;
+      statusLabel?: string;
     }>();
 
     products.forEach(product => {
       const key = normalizeTshirtGroupKey(product.name);
       if (!key || groups.has(key)) return;
+      const groupItems = products.filter(item => normalizeTshirtGroupKey(item.name) === key);
+      const hasPaidConsignment = groupItems.some(item => item.source === 'consignment_paid');
+      const hasUnpaidConsignment = groupItems.some(item => item.source === 'consignment_unpaid');
       groups.set(key, {
         key,
         name: product.name.trim(),
         salePrice: product.salePrice,
-        image: product.image
+        image: product.image,
+        statusLabel: hasPaidConsignment && !hasUnpaidConsignment
+          ? 'Ký gửi - Đã thanh toán'
+          : hasUnpaidConsignment
+            ? 'Ký gửi - Chưa thanh toán'
+            : undefined
       });
     });
 
@@ -900,6 +910,8 @@ export default function SalesManager({
     () => products.filter(product => normalizeTshirtGroupKey(product.name) === selectedTshirtGroup),
     [products, selectedTshirtGroup]
   );
+  const isFullyPaidConsignment = activeGroupProducts.length > 0
+    && activeGroupProducts.every(product => product.source === 'consignment_paid');
 
   const activeGroupSizes = useMemo<TshirtSizeGroup[]>(() => {
     const sizeGroups = new Map<string, TshirtSizeGroup>();
@@ -1045,6 +1057,7 @@ export default function SalesManager({
         const availableStock = Math.max(0, product.stock - getReservedTshirtQuantity(product));
         const allocatedQuantity = Math.min(remainingQuantity, availableStock);
         if (allocatedQuantity <= 0) continue;
+        const itemUnitPrice = product.source === 'consignment_paid' ? 0 : customTshirtPrice;
 
         itemsToAdd.push({
           id: 'ci_' + Math.random().toString(36).substring(2, 11),
@@ -1054,8 +1067,8 @@ export default function SalesManager({
           color: `${product.color} - Size ${product.size || 'N/A'}`,
           size: product.size,
           quantity: allocatedQuantity,
-          unitPrice: customTshirtPrice,
-          totalPrice: allocatedQuantity * customTshirtPrice,
+          unitPrice: itemUnitPrice,
+          totalPrice: allocatedQuantity * itemUnitPrice,
           image: tshirtPrintImage,
           rawFile: tshirtPrintFile
         });
@@ -2800,13 +2813,13 @@ export default function SalesManager({
                       >
                         {tshirtGroups.map((group) => (
                           <option key={group.key} value={group.key}>
-                            {group.name}
+                            {group.name}{group.statusLabel ? ` (${group.statusLabel})` : ''}
                           </option>
                         ))}
                       </select>
                     </div>
 
-                    {selectedTshirtGroup && (
+                    {selectedTshirtGroup && !isFullyPaidConsignment && (
                       <div className="flex flex-col gap-1.5 bg-white p-3 rounded-lg border border-slate-100">
                         <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
                           <span>Giá Bán Áo Thun (VND / Cái)</span>
@@ -2828,6 +2841,11 @@ export default function SalesManager({
                           onChange={(e) => setCustomTshirtPrice(Math.max(0, parseInt(e.target.value) || 0))}
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
+                      </div>
+                    )}
+                    {selectedTshirtGroup && isFullyPaidConsignment && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-800">
+                        Kho ký gửi đã thanh toán: đơn hàng này không tính thêm tiền áo.
                       </div>
                     )}
                   </div>
