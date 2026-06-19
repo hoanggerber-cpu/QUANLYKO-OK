@@ -339,11 +339,14 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     // Standardize to existing name spelling to avoid duplicates
     const finalName = existingByName ? existingByName.name.trim() : trimmedName;
 
-    // Check if EXACT match exists (same name, color, and size)
-    const exactMatch = products.find(
+    const isConsignment = source === 'consignment_unpaid' || source === 'consignment_paid';
+    // Normal inventory keeps the previous merge behavior. Every consignment receipt
+    // is a separate lot so its quantity and payment state can be managed independently.
+    const exactMatch = isConsignment ? undefined : products.find(
       p => p.name.trim().toLowerCase() === finalName.toLowerCase() &&
            p.color.trim().toLowerCase() === trimmedColor.toLowerCase() &&
-           (p.size || 'L').trim().toLowerCase() === trimmedSize.toLowerCase()
+           (p.size || 'L').trim().toLowerCase() === trimmedSize.toLowerCase() &&
+           p.source === source
     );
 
     try {
@@ -528,6 +531,12 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
               const hasExternal = group.items.some((p) => p.source === 'external');
               const hasConsignmentUnpaid = group.items.some((p) => p.source === 'consignment_unpaid');
               const hasConsignmentPaid = group.items.some((p) => p.source === 'consignment_paid');
+              const consignmentUnpaidStock = group.items
+                .filter(product => product.source === 'consignment_unpaid')
+                .reduce((sum, product) => sum + product.stock, 0);
+              const consignmentPaidStock = group.items
+                .filter(product => product.source === 'consignment_paid')
+                .reduce((sum, product) => sum + product.stock, 0);
               const isOutOfStock = group.totalStock === 0;
               const isLowStock = group.totalStock > 0 && group.totalStock <= 10;
 
@@ -578,12 +587,12 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
 
                     {hasConsignmentUnpaid && (
                       <span className="inline-flex items-center px-2 py-0.5 bg-amber-50 text-amber-750 border border-amber-150 rounded-md text-[9.5px] font-bold">
-                        Ký gửi - Chưa thanh toán
+                        Ký gửi chưa trả: {consignmentUnpaidStock}
                       </span>
                     )}
                     {hasConsignmentPaid && (
                       <span className="inline-flex items-center px-2 py-0.5 bg-emerald-50 text-emerald-750 border border-emerald-150 rounded-md text-[9.5px] font-bold">
-                        Ký gửi - Đã thanh toán
+                        Ký gửi đã trả: {consignmentPaidStock}
                       </span>
                     )}
 
@@ -728,6 +737,11 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                                 <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide mt-0.5">
                                   Phân loại size: {variant.size}
                                 </span>
+                                {(variant.source === 'consignment_unpaid' || variant.source === 'consignment_paid') && (
+                                  <span className="text-[9px] text-slate-400 font-mono font-bold mt-1">
+                                    Lô: {variant.id.slice(-6).toUpperCase()} · {new Date(variant.createdAt).toLocaleDateString('vi-VN')}
+                                  </span>
+                                )}
                               </div>
                             </div>
 
