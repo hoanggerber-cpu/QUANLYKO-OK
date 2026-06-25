@@ -289,6 +289,101 @@ export class StorageManager {
     }))));
   }
 
+  private static normalizeProduct(product: Product): Product {
+    const createdAt = product.createdAt || new Date().toISOString();
+    return {
+      ...product,
+      createdAt,
+      updatedAt: product.updatedAt || createdAt,
+      deletedAt: product.deletedAt || null,
+      syncVersion: Number(product.syncVersion || 1),
+      image: this.resolveBackupAsset(product.image) || ''
+    };
+  }
+
+  private static mergeProductsByUpdatedAt(remote: Product[], local: Product[]): Product[] {
+    const merged = new Map<string, Product>();
+    const putNewer = (product: Product) => {
+      const normalized = this.normalizeProduct(product);
+      const current = merged.get(normalized.id);
+      if (!current) {
+        merged.set(normalized.id, normalized);
+        return;
+      }
+      const currentTime = new Date(current.updatedAt || current.createdAt).getTime();
+      const nextTime = new Date(normalized.updatedAt || normalized.createdAt).getTime();
+      if (nextTime >= currentTime) merged.set(normalized.id, normalized);
+    };
+
+    remote.forEach(putNewer);
+    local.forEach(putNewer);
+    return Array.from(merged.values()).sort((a, b) =>
+      new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+    );
+  }
+
+  private static toProductPayload(product: Product, includeSyncMetadata: boolean = true): any {
+    const payload: any = {
+      id: product.id,
+      name: product.name,
+      image: product.image || '',
+      color: product.color,
+      stock: Number(product.stock) || 0,
+      import_price: Number(product.importPrice) || 0,
+      sale_price: Number(product.salePrice) || 0,
+      source: product.source || 'self_produced',
+      created_at: product.createdAt || new Date().toISOString()
+    };
+    if (product.size) payload.size = product.size;
+    if (includeSyncMetadata) {
+      payload.updated_at = product.updatedAt || product.createdAt || new Date().toISOString();
+      payload.deleted_at = product.deletedAt || null;
+      payload.sync_version = Number(product.syncVersion || 1);
+    }
+    return payload;
+  }
+
+  private static async insertProductPayload(product: Product): Promise<void> {
+    const payload = this.toProductPayload(product, true);
+    const { error } = await supabase.from('products').insert([payload]);
+    if (!error) return;
+
+    console.warn('Supabase product insert with sync metadata failed, retrying legacy schema:', error.message);
+    const legacyPayload = this.toProductPayload(product, false);
+    if (product.deletedAt) legacyPayload.source = '__deleted__';
+    const { error: retryErr } = await supabase.from('products').insert([legacyPayload]);
+    if (retryErr) throw retryErr;
+  }
+
+  private static async updateProductPayload(id: string, updatedProduct: Product, changedFields?: Partial<Product>): Promise<void> {
+    const buildPayload = (includeSyncMetadata: boolean) => {
+      const payload: any = {};
+      if (!changedFields || changedFields.name !== undefined) payload.name = updatedProduct.name;
+      if (!changedFields || changedFields.color !== undefined) payload.color = updatedProduct.color;
+      if (!changedFields || changedFields.size !== undefined) payload.size = updatedProduct.size || null;
+      if (!changedFields || changedFields.stock !== undefined) payload.stock = Number(updatedProduct.stock) || 0;
+      if (!changedFields || changedFields.importPrice !== undefined) payload.import_price = Number(updatedProduct.importPrice) || 0;
+      if (!changedFields || changedFields.salePrice !== undefined) payload.sale_price = Number(updatedProduct.salePrice) || 0;
+      if (!changedFields || changedFields.source !== undefined) payload.source = updatedProduct.source;
+      if (!changedFields || changedFields.image !== undefined) payload.image = updatedProduct.image || '';
+      if (includeSyncMetadata) {
+        payload.updated_at = updatedProduct.updatedAt || new Date().toISOString();
+        payload.deleted_at = updatedProduct.deletedAt || null;
+        payload.sync_version = Number(updatedProduct.syncVersion || 1);
+      } else if (updatedProduct.deletedAt) {
+        payload.source = '__deleted__';
+      }
+      return payload;
+    };
+
+    const { error } = await supabase.from('products').update(buildPayload(true)).eq('id', id);
+    if (!error) return;
+
+    console.warn('Supabase product update with sync metadata failed, retrying legacy schema:', error.message);
+    const { error: retryErr } = await supabase.from('products').update(buildPayload(false)).eq('id', id);
+    if (retryErr) throw retryErr;
+  }
+
   private static saveLocalBackup(key: string, value: unknown): void {
     try {
       localStorage.setItem(
@@ -751,19 +846,26 @@ export class StorageManager {
       if (prodError) {
         console.warn('Cannot fetch products from Supabase:', prodError.message);
       } else if (dbProducts && dbProducts.length > 0) {
-        const mappedProducts: Product[] = dbProducts.map(p => ({
-          id: p.id,
-          name: p.name,
-          image: p.image || p.image_url || '',
-          color: p.color || '',
-          size: p.size || undefined,
-          stock: p.stock ?? 0,
-          importPrice: p.import_price ?? p.importPrice ?? 0,
-          salePrice: p.sale_price ?? p.salePrice ?? 0,
-          source: p.source || 'self_produced',
-          createdAt: p.created_at || new Date().toISOString()
-        }));
-        const mergedProducts = this.mergeById(mappedProducts, this.getProducts());
+        const mappedProducts: Product[] = dbProducts.map(p => {
+          const isLegacyDeleted = p.source === '__deleted__';
+          const createdAt = p.created_at || new Date().toISOString();
+          return {
+            id: p.id,
+            name: p.name,
+            image: p.image || p.image_url || '',
+            color: p.color || '',
+            size: p.size || undefined,
+            stock: p.stock ?? 0,
+            importPrice: p.import_price ?? p.importPrice ?? 0,
+            salePrice: p.sale_price ?? p.salePrice ?? 0,
+            source: isLegacyDeleted ? 'self_produced' : (p.source || 'self_produced'),
+            createdAt,
+            updatedAt: p.updated_at || p.updatedAt || createdAt,
+            deletedAt: p.deleted_at || p.deletedAt || (isLegacyDeleted ? createdAt : null),
+            syncVersion: Number(p.sync_version ?? p.syncVersion ?? 1)
+          };
+        });
+        const mergedProducts = this.mergeProductsByUpdatedAt(mappedProducts, this.getProducts());
         this.saveLocalBackup('products', this.getProducts());
         this.saveProducts(mergedProducts);
       }
@@ -907,51 +1009,29 @@ export class StorageManager {
   static getProducts(): Product[] {
     const raw = localStorage.getItem(this.STORAGE_PREFIX + 'products');
     if (!raw) {
-      this.saveProducts(MOCK_PRODUCTS);
-      return MOCK_PRODUCTS;
+      const normalizedMockProducts = MOCK_PRODUCTS.map(product => this.normalizeProduct(product));
+      this.saveProducts(normalizedMockProducts);
+      return normalizedMockProducts;
     }
     return (JSON.parse(raw) as Product[]).map(product => ({
-      ...product,
-      image: this.resolveBackupAsset(product.image) || ''
+      ...this.normalizeProduct(product)
     }));
   }
 
   static async addProduct(product: Omit<Product, 'id' | 'createdAt'>): Promise<Product> {
+    const now = new Date().toISOString();
     const newProduct: Product = {
       ...product,
       id: 'p_' + Math.random().toString(36).substr(2, 9),
-      createdAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      syncVersion: 1
     };
 
     if (this.isSupabaseActive) {
-      const payload: any = {
-        id: newProduct.id,
-        name: newProduct.name,
-        image: newProduct.image,
-        color: newProduct.color,
-        stock: newProduct.stock,
-        import_price: newProduct.importPrice,
-        sale_price: newProduct.salePrice,
-        source: newProduct.source,
-        created_at: newProduct.createdAt
-      };
-      
-      if (newProduct.size) {
-        payload.size = newProduct.size;
-      }
-
       try {
-        const { error } = await supabase.from('products').insert([payload]);
-        if (error) {
-          console.warn('Supabase product sync failed (retrying without size):', error.message);
-          if (payload.size) {
-            delete payload.size;
-            const { error: retryErr } = await supabase.from('products').insert([payload]);
-            if (retryErr) throw retryErr;
-          } else {
-            throw error;
-          }
-        }
+        await this.insertProductPayload(newProduct);
       } catch (err: any) {
         console.error('Supabase product initial sync failed:', err);
         throw err;
@@ -968,8 +1048,16 @@ export class StorageManager {
   static async updateProductStock(id: string, newStock: number, throwOnRemoteError: boolean = false): Promise<void> {
     const products = this.getProducts();
     const idx = products.findIndex(p => p.id === id);
+    let updatedProduct: Product | undefined;
     if (idx !== -1) {
-      products[idx].stock = newStock;
+      const now = new Date().toISOString();
+      products[idx] = {
+        ...products[idx],
+        stock: newStock,
+        updatedAt: now,
+        syncVersion: Number(products[idx].syncVersion || 1) + 1
+      };
+      updatedProduct = products[idx];
       this.saveProducts(products);
     }
 
@@ -977,29 +1065,14 @@ export class StorageManager {
       try {
         const { data: existing } = await supabase.from('products').select('id').eq('id', id).maybeSingle();
         if (!existing) {
-          const localProd = products.find(p => p.id === id);
+          const localProd = updatedProduct || products.find(p => p.id === id);
           if (localProd) {
-            const fullPayload: any = {
-              id: localProd.id,
-              name: localProd.name,
-              color: localProd.color,
-              stock: newStock,
-              import_price: localProd.importPrice,
-              sale_price: localProd.salePrice,
-              source: localProd.source,
-              image: localProd.image,
-              created_at: localProd.createdAt || new Date().toISOString()
-            };
-            if (localProd.size) fullPayload.size = localProd.size;
-            const { error: insertErr } = await supabase.from('products').insert([fullPayload]);
-            if (insertErr) throw insertErr;
+            await this.insertProductPayload(localProd);
           }
         } else {
-          const { error } = await supabase
-            .from('products')
-            .update({ stock: newStock })
-            .eq('id', id);
-          if (error) throw error;
+          if (updatedProduct) {
+            await this.updateProductPayload(id, updatedProduct, { stock: newStock });
+          }
         }
       } catch (err) {
         console.error('Supabase stock update failed:', err);
@@ -1009,44 +1082,29 @@ export class StorageManager {
   }
 
   static async updateProduct(id: string, updatedFields: Partial<Product>): Promise<void> {
+    const products = this.getProducts();
+    const idx = products.findIndex(p => p.id === id);
+    const now = new Date().toISOString();
+    const nextProduct = idx !== -1 ? {
+      ...products[idx],
+      ...updatedFields,
+      updatedAt: now,
+      syncVersion: Number(products[idx].syncVersion || 1) + 1
+    } : undefined;
+
     if (this.isSupabaseActive) {
       try {
         const { data: existing } = await supabase.from('products').select('id').eq('id', id).maybeSingle();
         if (!existing) {
-          const products = this.getProducts();
-          const localProd = products.find(p => p.id === id);
-          if (localProd) {
-            const finalFields = { ...localProd, ...updatedFields };
-            const fullPayload: any = {
-              id: finalFields.id,
-              name: finalFields.name,
-              color: finalFields.color,
-              stock: Number(finalFields.stock),
-              import_price: Number(finalFields.importPrice),
-              sale_price: Number(finalFields.salePrice),
-              source: finalFields.source,
-              image: finalFields.image || '',
-              created_at: finalFields.createdAt || new Date().toISOString()
-            };
-            if (finalFields.size) fullPayload.size = finalFields.size;
-            const { error: insertErr } = await supabase.from('products').insert([fullPayload]);
-            if (insertErr) throw insertErr;
+          if (nextProduct) {
+            await this.insertProductPayload(nextProduct);
           } else {
             console.warn('Local product not found for update-insert ID:', id);
           }
         } else {
-          const payload: any = {};
-          if (updatedFields.name !== undefined) payload.name = updatedFields.name;
-          if (updatedFields.color !== undefined) payload.color = updatedFields.color;
-          if (updatedFields.size !== undefined) payload.size = updatedFields.size;
-          if (updatedFields.stock !== undefined) payload.stock = updatedFields.stock;
-          if (updatedFields.importPrice !== undefined) payload.import_price = updatedFields.importPrice;
-          if (updatedFields.salePrice !== undefined) payload.sale_price = updatedFields.salePrice;
-          if (updatedFields.source !== undefined) payload.source = updatedFields.source;
-          if (updatedFields.image !== undefined) payload.image = updatedFields.image;
-
-          const { error } = await supabase.from('products').update(payload).eq('id', id);
-          if (error) throw error;
+          if (nextProduct) {
+            await this.updateProductPayload(id, nextProduct, updatedFields);
+          }
         }
       } catch (err) {
         console.error('Supabase product update failed:', err);
@@ -1054,28 +1112,47 @@ export class StorageManager {
       }
     }
 
-    const products = this.getProducts();
-    const idx = products.findIndex(p => p.id === id);
     if (idx !== -1) {
-      products[idx] = { ...products[idx], ...updatedFields };
+      products[idx] = nextProduct!;
       this.saveProducts(products);
     }
   }
 
   static async deleteProduct(id: string): Promise<void> {
+    const products = this.getProducts();
+    const idx = products.findIndex(p => p.id === id);
+    if (idx === -1) return;
+
+    const now = new Date().toISOString();
+    const deletedProduct: Product = {
+      ...products[idx],
+      stock: 0,
+      deletedAt: now,
+      updatedAt: now,
+      syncVersion: Number(products[idx].syncVersion || 1) + 1
+    };
+
     if (this.isSupabaseActive) {
       try {
-        const { error } = await supabase.from('products').delete().eq('id', id);
-        if (error) throw error;
+        const { data: existing } = await supabase.from('products').select('id').eq('id', id).maybeSingle();
+        if (existing) {
+          await this.updateProductPayload(id, deletedProduct, { stock: 0, deletedAt: now, updatedAt: now, syncVersion: deletedProduct.syncVersion });
+        } else {
+          await this.insertProductPayload(deletedProduct);
+        }
       } catch (err) {
-        console.error('Supabase product delete failed:', err);
+        console.error('Supabase product soft delete failed:', err);
         throw err;
       }
     }
 
-    const products = this.getProducts();
-    const filtered = products.filter(p => p.id !== id);
-    this.saveProducts(filtered);
+    products[idx] = deletedProduct;
+    this.saveProducts(products);
+  }
+
+  static async clearLocalProductCacheAndReloadFromSupabase(): Promise<boolean> {
+    localStorage.removeItem(this.STORAGE_PREFIX + 'products');
+    return this.syncAllDataFromSupabase();
   }
 
   // --- ORDERS MANAGEMENT ---
