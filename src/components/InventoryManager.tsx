@@ -15,9 +15,29 @@ import {
   ChevronUp,
   Pencil,
   Trash2,
-  MoreVertical
+  MoreVertical,
+  RotateCw
 } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
+
+const ACTIVE_PRODUCT_SOURCES: ProductSource[] = [
+  'self_produced',
+  'external',
+  'new_produced_unpaid',
+  'consignment_unpaid',
+  'consignment_paid'
+];
+
+const PRODUCT_SOURCE_LABELS: Record<ProductSource, string> = {
+  self_produced: 'Tự sản xuất',
+  external: 'Mua ngoài',
+  new_produced_unpaid: 'Hàng mới SX - chưa thanh toán',
+  consignment_unpaid: 'Ký gửi - chưa thanh toán',
+  consignment_paid: 'Ký gửi - đã thanh toán'
+};
+
+const isConsignmentSource = (source: ProductSource) =>
+  source === 'consignment_unpaid' || source === 'consignment_paid';
 
 const isUnsplashUrl = (url: string | undefined): boolean => {
   if (!url) return true;
@@ -101,6 +121,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   const [isCustomSize, setIsCustomSize] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [expandedLotGroups, setExpandedLotGroups] = useState<Record<string, boolean>>({});
 
   // Autocomplete suggestions state
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -119,6 +140,9 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
 
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
+  const [transferLot, setTransferLot] = useState<Product | null>(null);
+  const [transferQuantity, setTransferQuantity] = useState(1);
+  const [transferTargetSource, setTransferTargetSource] = useState<ProductSource>('consignment_paid');
 
   // Form State
   const [name, setName] = useState('');
@@ -137,7 +161,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
 
   // Get unique existing product names for Autocomplete suggestions
   const existingNames = useMemo(() => {
-    const list = products.map(p => p.name.trim());
+    const list = products.filter(p => !p.deletedAt).map(p => p.name.trim());
     return Array.from(new Set(list));
   }, [products]);
 
@@ -159,7 +183,9 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     );
   }, [editName, existingNames]);
 
-  const filtered = products.filter(p =>
+  const activeProducts = useMemo(() => products.filter(p => !p.deletedAt), [products]);
+
+  const filtered = activeProducts.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.color.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (p.size && p.size.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -239,6 +265,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
       totalStock: number;
       paidStock: number;
       unpaidStock: number;
+      newProducedUnpaidStock: number;
       lots: Product[];
     }>();
 
@@ -251,11 +278,13 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
         totalStock: 0,
         paidStock: 0,
         unpaidStock: 0,
+        newProducedUnpaidStock: 0,
         lots: []
       };
       group.totalStock += product.stock;
       if (product.source === 'consignment_paid') group.paidStock += product.stock;
       if (product.source === 'consignment_unpaid') group.unpaidStock += product.stock;
+      if (product.source === 'new_produced_unpaid') group.newProducedUnpaidStock += product.stock;
       group.lots.push(product);
       groups.set(key, group);
     });
@@ -371,14 +400,17 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     // Standardize to existing name spelling to avoid duplicates
     const finalName = existingByName ? existingByName.name.trim() : trimmedName;
 
-    const isConsignment = source === 'consignment_unpaid' || source === 'consignment_paid';
+    const isConsignment = isConsignmentSource(source);
     // Normal inventory keeps the previous merge behavior. Every consignment receipt
     // is a separate lot so its quantity and payment state can be managed independently.
     const exactMatch = isConsignment ? undefined : products.find(
       p => p.name.trim().toLowerCase() === finalName.toLowerCase() &&
            p.color.trim().toLowerCase() === trimmedColor.toLowerCase() &&
            (p.size || 'L').trim().toLowerCase() === trimmedSize.toLowerCase() &&
-           p.source === source
+           p.source === source &&
+           Number(p.importPrice) === Number(importPrice) &&
+           Number(p.salePrice) === 0 &&
+           !p.deletedAt
     );
 
     try {
@@ -476,6 +508,77 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     }
   };
 
+  const handleOpenTransfer = (lot: Product) => {
+    if (lot.stock <= 0) {
+      alert('Lô này đã hết tồn, không còn số lượng để chuyển.');
+      return;
+    }
+    setTransferLot(lot);
+    setTransferQuantity(1);
+    setTransferTargetSource(lot.source === 'consignment_paid' ? 'consignment_unpaid' : 'consignment_paid');
+    setActiveMenuId(null);
+  };
+
+  const handleTransferSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferLot || !onUpdateProduct || !onAddProduct) return;
+    const qty = Math.floor(Number(transferQuantity));
+    if (qty <= 0 || qty > transferLot.stock) {
+      alert('Số lượng chuyển kho không hợp lệ.');
+      return;
+    }
+    if (transferTargetSource === transferLot.source) {
+      alert('Nguồn đích phải khác nguồn hiện tại.');
+      return;
+    }
+
+    const remainingSourceStock = transferLot.stock - qty;
+    const canMergeIntoExisting = !isConsignmentSource(transferTargetSource);
+    const targetLot = canMergeIntoExisting
+      ? activeProducts.find(product =>
+          product.id !== transferLot.id &&
+          product.name.trim().toLocaleLowerCase('vi-VN') === transferLot.name.trim().toLocaleLowerCase('vi-VN') &&
+          product.color.trim().toLocaleLowerCase('vi-VN') === transferLot.color.trim().toLocaleLowerCase('vi-VN') &&
+          (product.size || 'L').trim().toLocaleLowerCase('vi-VN') === (transferLot.size || 'L').trim().toLocaleLowerCase('vi-VN') &&
+          product.source === transferTargetSource &&
+          Number(product.importPrice) === Number(transferLot.importPrice) &&
+          Number(product.salePrice) === Number(transferLot.salePrice)
+        )
+      : undefined;
+
+    try {
+      await onUpdateProduct(transferLot.id, { stock: remainingSourceStock });
+      if (targetLot) {
+        await onUpdateProduct(targetLot.id, { stock: targetLot.stock + qty });
+      } else {
+        await onAddProduct({
+          name: transferLot.name,
+          color: transferLot.color,
+          size: transferLot.size || 'L',
+          stock: qty,
+          importPrice: transferLot.importPrice,
+          salePrice: transferLot.salePrice,
+          source: transferTargetSource,
+          image: transferLot.image || ''
+        });
+      }
+      setTransferLot(null);
+    } catch (error) {
+      console.error('Transfer product lot failed:', error);
+      alert('Không thể chuyển kho. Vui lòng kiểm tra kết nối và thử lại.');
+    }
+  };
+
+  const handleClearLocalProductCache = async () => {
+    if (!confirm('Xóa cache kho áo trên máy này và tải lại từ Supabase? Dữ liệu local chưa đồng bộ có thể bị bỏ qua.')) return;
+    const ok = await StorageManager.clearLocalProductCacheAndReloadFromSupabase();
+    if (!ok) {
+      alert('Không tải được dữ liệu từ Supabase. Vui lòng kiểm tra kết nối.');
+      return;
+    }
+    window.location.reload();
+  };
+
   return (
     <div className="space-y-6 animate-fade-in text-slate-700">
       {/* Search and Action Bar */}
@@ -492,13 +595,22 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
             className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm shadow-sm"
           />
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/10 cursor-pointer whitespace-nowrap uppercase tracking-wide"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Thêm áo kho mới</span>
-        </button>
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={handleClearLocalProductCache}
+            className="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer whitespace-nowrap"
+          >
+            <RotateCw className="w-4 h-4" />
+            <span>Xóa cache máy này</span>
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/10 cursor-pointer whitespace-nowrap uppercase tracking-wide"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Thêm áo kho mới</span>
+          </button>
+        </div>
       </div>
 
       {/* Grid view showing stats */}
@@ -509,7 +621,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
           </div>
           <div>
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Tổng sản phẩm</span>
-            <span className="text-xl font-bold text-slate-800">{products.length} dòng</span>
+            <span className="text-xl font-bold text-slate-800">{activeProducts.length} dòng</span>
           </div>
         </div>
 
@@ -520,7 +632,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
           <div>
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Tổng số lượng kho</span>
             <span className="text-xl font-bold text-slate-800">
-              {products.reduce((acc, curr) => acc + curr.stock, 0)} cái
+              {activeProducts.reduce((acc, curr) => acc + curr.stock, 0)} cái
             </span>
           </div>
         </div>
@@ -532,7 +644,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
           <div>
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Báo cáo tồn kho thấp</span>
             <span className="text-xl font-bold text-amber-600">
-              {products.filter(p => p.stock <= 10).length} mã hàng
+              {activeProducts.filter(p => p.stock <= 10).length} mã hàng
             </span>
           </div>
         </div>
@@ -561,8 +673,12 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
               const hasUnsplash = isUnsplashUrl(group.image);
               const hasSelfProduced = group.items.some((p) => p.source === 'self_produced');
               const hasExternal = group.items.some((p) => p.source === 'external');
+              const hasNewProducedUnpaid = group.items.some((p) => p.source === 'new_produced_unpaid');
               const hasConsignmentUnpaid = group.items.some((p) => p.source === 'consignment_unpaid');
               const hasConsignmentPaid = group.items.some((p) => p.source === 'consignment_paid');
+              const newProducedUnpaidStock = group.items
+                .filter(product => product.source === 'new_produced_unpaid')
+                .reduce((sum, product) => sum + product.stock, 0);
               const consignmentUnpaidStock = group.items
                 .filter(product => product.source === 'consignment_unpaid')
                 .reduce((sum, product) => sum + product.stock, 0);
@@ -614,6 +730,11 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                     {hasExternal && (
                       <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-750 border border-blue-105 rounded-md text-[9.5px] font-bold">
                         📦 Ngoài
+                      </span>
+                    )}
+                    {hasNewProducedUnpaid && (
+                      <span className="inline-flex items-center px-2 py-0.5 bg-orange-50 text-orange-750 border border-orange-150 rounded-md text-[9.5px] font-bold">
+                        Mới SX chưa trả: {newProducedUnpaidStock}
                       </span>
                     )}
 
@@ -709,12 +830,22 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                           📦 Ngoài
                         </span>
                       )}
+                      {selectedGroup.items.some(p => p.source === 'new_produced_unpaid') && (
+                        <span className="inline-block px-3 py-1 bg-orange-50 text-orange-700 border border-orange-100 text-[10px] font-black rounded-lg uppercase tracking-wide shadow-2xs">
+                          Hàng mới SX - chưa thanh toán
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {selectedGroup.items.some(product => product.source === 'consignment_unpaid' || product.source === 'consignment_paid') && (
+                {selectedGroup.items.some(product => product.source === 'new_produced_unpaid' || product.source === 'consignment_unpaid' || product.source === 'consignment_paid') && (
                   <div className="flex flex-wrap gap-2">
+                    {selectedGroup.items.some(product => product.source === 'new_produced_unpaid') && (
+                      <span className="inline-block px-3 py-1 bg-orange-50 text-orange-700 border border-orange-150 text-[10px] font-black rounded-lg uppercase tracking-wide">
+                        Hàng mới sản xuất - chưa thanh toán
+                      </span>
+                    )}
                     {selectedGroup.items.some(product => product.source === 'consignment_unpaid') && (
                       <span className="inline-block px-3 py-1 bg-amber-50 text-amber-700 border border-amber-150 text-[10px] font-black rounded-lg uppercase tracking-wide">
                         Ký gửi - Chưa thanh toán
@@ -765,21 +896,16 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                               </span>
                               <div className="flex flex-col min-w-0">
                                 <span className="font-extrabold text-slate-900 text-[15px] tracking-tight">
-                                  Biến thể áo thun
+                                  {selectedGroup.name}
                                 </span>
                                 <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide mt-0.5">
-                                  Phân loại size: {sizeGroup.size}
+                                  Size {sizeGroup.size} · {sizeGroup.lots.length} lô nhập
                                 </span>
-                                {sizeGroup.lots.some(lot => lot.source === 'consignment_unpaid' || lot.source === 'consignment_paid') && (
-                                  <span className="text-[9px] text-slate-400 font-mono font-bold mt-1">
-                                    {sizeGroup.lots.length} lô nhập
-                                  </span>
-                                )}
                               </div>
                             </div>
 
                             {/* Actions ellipsis menu ⋮ */}
-                            <div className="relative" onClick={(e) => e.stopPropagation()}>
+                            <div className="hidden" onClick={(e) => e.stopPropagation()}>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -850,21 +976,36 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                             </div>
                           </div>
 
-                          {(sizeGroup.paidStock > 0 || sizeGroup.unpaidStock > 0) && (
-                            <div className="grid grid-cols-2 gap-2 mt-3">
+                          {(sizeGroup.paidStock > 0 || sizeGroup.unpaidStock > 0 || sizeGroup.newProducedUnpaidStock > 0) && (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
                               <div className="rounded-xl border border-emerald-150 bg-emerald-50 px-3 py-2 text-emerald-700">
-                                <span className="block text-[9px] font-black uppercase">Đã thanh toán</span>
+                                <span className="block text-[9px] font-black uppercase">Ký gửi đã trả</span>
                                 <strong className="text-sm">{sizeGroup.paidStock} cái</strong>
                               </div>
+                              <div className="rounded-xl border border-orange-150 bg-orange-50 px-3 py-2 text-orange-700">
+                                <span className="block text-[9px] font-black uppercase">Mới SX chưa trả</span>
+                                <strong className="text-sm">{sizeGroup.newProducedUnpaidStock} cái</strong>
+                              </div>
                               <div className="rounded-xl border border-amber-150 bg-amber-50 px-3 py-2 text-amber-700">
-                                <span className="block text-[9px] font-black uppercase">Chưa thanh toán</span>
+                                <span className="block text-[9px] font-black uppercase">Ký gửi chưa trả</span>
                                 <strong className="text-sm">{sizeGroup.unpaidStock} cái</strong>
                               </div>
                             </div>
                           )}
 
                           <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
-                            {sizeGroup.lots.map((lot) => (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setExpandedLotGroups(prev => ({ ...prev, [sizeGroup.key]: !prev[sizeGroup.key] }));
+                              }}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 text-xs font-black hover:bg-slate-100 cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              {expandedLotGroups[sizeGroup.key] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              {expandedLotGroups[sizeGroup.key] ? 'Ẩn chi tiết lô' : `Xem chi tiết lô (${sizeGroup.lots.length})`}
+                            </button>
+                            {expandedLotGroups[sizeGroup.key] && sizeGroup.lots.map((lot) => (
                               <div key={lot.id} className="rounded-xl border border-slate-150 bg-slate-50/80 p-3 text-[10px]">
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
@@ -875,21 +1016,90 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                                       {new Date(lot.createdAt).toLocaleDateString('vi-VN')} · {formatVND(lot.importPrice)}
                                     </div>
                                   </div>
-                                  <span className={`px-2 py-1 rounded-lg border font-black ${
-                                    lot.source === 'consignment_paid'
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-150'
-                                      : lot.source === 'consignment_unpaid'
-                                        ? 'bg-amber-50 text-amber-700 border-amber-150'
-                                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                                  }`}>
-                                    {lot.source === 'consignment_paid'
-                                      ? 'Đã thanh toán'
-                                      : lot.source === 'consignment_unpaid'
-                                        ? 'Chưa thanh toán'
-                                        : 'Kho thường'}
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`px-2 py-1 rounded-lg border font-black ${
+                                      lot.source === 'consignment_paid'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-150'
+                                        : lot.source === 'new_produced_unpaid'
+                                          ? 'bg-orange-50 text-orange-700 border-orange-150'
+                                          : lot.source === 'consignment_unpaid'
+                                            ? 'bg-amber-50 text-amber-700 border-amber-150'
+                                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                                    }`}>
+                                      {PRODUCT_SOURCE_LABELS[lot.source]}
+                                    </span>
+                                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setActiveMenuId(activeMenuId === lot.id ? null : lot.id);
+                                        }}
+                                        className="p-1.5 hover:bg-white text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+                                        title="Tùy chọn lô"
+                                      >
+                                        <MoreVertical className="w-4 h-4" />
+                                      </button>
+                                      {activeMenuId === lot.id && (
+                                        <>
+                                          <div className="fixed inset-0 z-40" onClick={(event) => { event.stopPropagation(); setActiveMenuId(null); }} />
+                                          <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl border border-slate-200 shadow-xl py-1.5 z-50 text-left">
+                                            {(lot.source === 'consignment_unpaid' || lot.source === 'new_produced_unpaid') && onUpdateProduct && (
+                                              <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  setActiveMenuId(null);
+                                                  void onUpdateProduct(lot.id, { source: 'consignment_paid' });
+                                                }}
+                                                className="w-full px-3 py-1.5 text-xs hover:bg-emerald-50 flex items-center gap-1.5 text-emerald-700 font-bold transition-all"
+                                              >
+                                                <BadgeCheck className="w-3.5 h-3.5" />
+                                                <span>Đánh dấu đã thanh toán</span>
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                handleOpenTransfer(lot);
+                                              }}
+                                              className="w-full px-3 py-1.5 text-xs hover:bg-orange-50 flex items-center gap-1.5 text-orange-700 font-bold transition-all"
+                                            >
+                                              <Layers className="w-3.5 h-3.5" />
+                                              <span>Chuyển/gộp kho</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                setActiveMenuId(null);
+                                                handleEditClick(lot);
+                                              }}
+                                              className="w-full px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center gap-1.5 text-slate-700 font-bold transition-all"
+                                            >
+                                              <Pencil className="w-3.5 h-3.5 text-blue-500" />
+                                              <span>Sửa lô</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                setActiveMenuId(null);
+                                                handleDeleteClick(lot);
+                                              }}
+                                              className="w-full px-3 py-1.5 text-xs hover:bg-rose-50 flex items-center gap-1.5 text-rose-600 font-bold transition-all"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                              <span>Xóa lô</span>
+                                            </button>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="flex flex-wrap justify-end gap-1.5 mt-2">
+                                <div className="hidden">
                                   {lot.source === 'consignment_unpaid' && onUpdateProduct && (
                                     <button
                                       type="button"
@@ -947,6 +1157,81 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
           </div>
         )}
       </div>
+
+      {transferLot && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-scale-in text-slate-700">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-orange-900 text-white">
+              <div>
+                <h3 className="font-bold text-lg">Chuyển / gộp kho áo</h3>
+                <p className="text-xs text-orange-100 mt-1">{transferLot.name} · Size {transferLot.size || 'N/A'}</p>
+              </div>
+              <button
+                onClick={() => setTransferLot(null)}
+                className="text-white/80 hover:text-white cursor-pointer text-xl"
+              >
+                &times;
+              </button>
+            </div>
+            <form onSubmit={handleTransferSubmit} className="p-6 space-y-4">
+              <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-500 font-bold">Nguồn hiện tại</span>
+                  <span className="font-black text-slate-800">{PRODUCT_SOURCE_LABELS[transferLot.source]}</span>
+                </div>
+                <div className="flex justify-between gap-3 mt-2">
+                  <span className="text-slate-500 font-bold">Tồn trong lô</span>
+                  <span className="font-black text-slate-800">{transferLot.stock} cái</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5">Số lượng chuyển</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={transferLot.stock}
+                  value={transferQuantity}
+                  onChange={(e) => setTransferQuantity(Math.max(1, Math.min(transferLot.stock, Number(e.target.value))))}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5">Chuyển sang nguồn</label>
+                <select
+                  value={transferTargetSource}
+                  onChange={(e) => setTransferTargetSource(e.target.value as ProductSource)}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm cursor-pointer"
+                >
+                  {ACTIVE_PRODUCT_SOURCES.filter(item => item !== transferLot.source).map(item => (
+                    <option key={item} value={item}>{PRODUCT_SOURCE_LABELS[item]}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-500 mt-2">
+                  Chỉ tự gộp khi cùng tên, màu, size, nguồn, giá nhập và giá bán. Lô ký gửi được giữ riêng để không mất lịch sử.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setTransferLot(null)}
+                  className="px-4 py-2 hover:bg-slate-100 text-slate-500 font-semibold text-sm rounded-xl cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-xl cursor-pointer"
+                >
+                  Chuyển kho
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add New Product Modal */}
       {showModal && (
@@ -1098,7 +1383,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                 {/* Mandatory Source radio selection */}
                 <div className="col-span-2 bg-blue-50/40 p-4 rounded-xl border border-blue-50">
                   <span className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Phân loại nguồn hàng nhập (Bắt buộc chọn)</span>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-1">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-4 mt-1">
                     <label className="inline-flex items-center gap-2 cursor-pointer">
                       <input
                         type="radio"
@@ -1109,6 +1394,18 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                         className="w-4.5 h-4.5 text-blue-600 border-slate-300 focus:ring-blue-550 focus:ring-1"
                       />
                       <span className="text-xs font-bold text-slate-700">Nhập kho hàng tự sản xuất</span>
+                    </label>
+
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="source"
+                        value="new_produced_unpaid"
+                        checked={source === 'new_produced_unpaid'}
+                        onChange={() => setSource('new_produced_unpaid')}
+                        className="w-4.5 h-4.5 text-orange-600 border-slate-300 focus:ring-orange-500 focus:ring-1"
+                      />
+                      <span className="text-xs font-bold text-orange-700">Hàng mới SX - chưa thanh toán</span>
                     </label>
 
                     <label className="inline-flex items-center gap-2 cursor-pointer">
@@ -1343,7 +1640,7 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                 {/* Edit Source */}
                 <div className="col-span-2 bg-blue-50/40 p-4 rounded-xl border border-blue-50">
                   <span className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Phân loại nguồn hàng nhập</span>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 mt-1">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-4 mt-1">
                     <label className="inline-flex items-center gap-2 cursor-pointer">
                       <input
                         type="radio"
@@ -1354,6 +1651,18 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
                         className="w-4.5 h-4.5 text-blue-600 border-slate-300 pointer-events-auto"
                       />
                       <span className="text-xs font-bold text-slate-700">Tự sản xuất</span>
+                    </label>
+
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="editSource"
+                        value="new_produced_unpaid"
+                        checked={editSource === 'new_produced_unpaid'}
+                        onChange={() => setEditSource('new_produced_unpaid')}
+                        className="w-4.5 h-4.5 text-orange-600 border-slate-300 pointer-events-auto"
+                      />
+                      <span className="text-xs font-bold text-orange-700">Hàng mới SX - chưa thanh toán</span>
                     </label>
 
                     <label className="inline-flex items-center gap-2 cursor-pointer">
