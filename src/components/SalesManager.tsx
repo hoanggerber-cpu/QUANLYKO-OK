@@ -25,6 +25,7 @@ interface TshirtSizeGroup {
   stock: number;
   products: Product[];
   paidStock: number;
+  newProducedUnpaidStock: number;
   unpaidStock: number;
 }
 
@@ -886,14 +887,18 @@ export default function SalesManager({
       statusLabel?: string;
     }>();
 
-    products.forEach(product => {
+    products.filter(product => !product.deletedAt).forEach(product => {
       const key = normalizeTshirtGroupKey(product.name);
       if (!key || groups.has(key)) return;
-      const groupItems = products.filter(item => normalizeTshirtGroupKey(item.name) === key);
+      const groupItems = products.filter(item => !item.deletedAt && normalizeTshirtGroupKey(item.name) === key);
       const hasPaidConsignment = groupItems.some(item => item.source === 'consignment_paid');
+      const hasNewProducedUnpaid = groupItems.some(item => item.source === 'new_produced_unpaid');
       const hasUnpaidConsignment = groupItems.some(item => item.source === 'consignment_unpaid');
       const paidConsignmentStock = groupItems
         .filter(item => item.source === 'consignment_paid')
+        .reduce((sum, item) => sum + item.stock, 0);
+      const newProducedUnpaidStock = groupItems
+        .filter(item => item.source === 'new_produced_unpaid')
         .reduce((sum, item) => sum + item.stock, 0);
       const unpaidConsignmentStock = groupItems
         .filter(item => item.source === 'consignment_unpaid')
@@ -903,8 +908,8 @@ export default function SalesManager({
         name: product.name.trim(),
         salePrice: product.salePrice,
         image: product.image,
-        statusLabel: hasPaidConsignment || hasUnpaidConsignment
-          ? `Ký gửi: đã trả ${paidConsignmentStock}, chưa trả ${unpaidConsignmentStock}`
+        statusLabel: hasPaidConsignment || hasNewProducedUnpaid || hasUnpaidConsignment
+          ? `Đã trả ${paidConsignmentStock}, mới SX chưa trả ${newProducedUnpaidStock}, ký gửi chưa trả ${unpaidConsignmentStock}`
           : undefined
       });
     });
@@ -913,7 +918,7 @@ export default function SalesManager({
   }, [products]);
 
   const activeGroupProducts = useMemo(
-    () => products.filter(product => normalizeTshirtGroupKey(product.name) === selectedTshirtGroup),
+    () => products.filter(product => !product.deletedAt && normalizeTshirtGroupKey(product.name) === selectedTshirtGroup),
     [products, selectedTshirtGroup]
   );
   const isFullyPaidConsignment = activeGroupProducts.length > 0
@@ -930,6 +935,7 @@ export default function SalesManager({
         existing.stock += product.stock;
         existing.products.push(product);
         if (product.source === 'consignment_paid') existing.paidStock += product.stock;
+        if (product.source === 'new_produced_unpaid') existing.newProducedUnpaidStock += product.stock;
         if (product.source === 'consignment_unpaid') existing.unpaidStock += product.stock;
         return;
       }
@@ -939,6 +945,7 @@ export default function SalesManager({
         stock: product.stock,
         products: [product],
         paidStock: product.source === 'consignment_paid' ? product.stock : 0,
+        newProducedUnpaidStock: product.source === 'new_produced_unpaid' ? product.stock : 0,
         unpaidStock: product.source === 'consignment_unpaid' ? product.stock : 0
       });
     });
@@ -946,9 +953,11 @@ export default function SalesManager({
     sizeGroups.forEach(group => {
       const priority = (product: Product) => product.source === 'consignment_paid'
         ? 0
-        : product.source === 'consignment_unpaid'
+        : product.source === 'new_produced_unpaid'
           ? 1
-          : 2;
+          : product.source === 'consignment_unpaid'
+            ? 2
+            : 3;
       group.products.sort((a, b) => priority(a) - priority(b)
         || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     });
@@ -2887,11 +2896,13 @@ export default function SalesManager({
                             </div>
                             <div className="col-span-5 text-slate-500 font-medium">
                               Tồn khả dụng: <span className={`font-bold ${availableStock <= 10 ? 'text-amber-600' : 'text-slate-700'}`}>{availableStock} chiếc</span>
-                              {(sizeGroup.paidStock > 0 || sizeGroup.unpaidStock > 0) && (
+                              {(sizeGroup.paidStock > 0 || sizeGroup.newProducedUnpaidStock > 0 || sizeGroup.unpaidStock > 0) && (
                                 <span className="block text-[9px] font-bold mt-0.5">
                                   <span className="text-emerald-650">Đã trả: {sizeGroup.paidStock}</span>
                                   {' · '}
-                                  <span className="text-amber-650">Chưa trả: {sizeGroup.unpaidStock}</span>
+                                  <span className="text-orange-650">Mới SX chưa trả: {sizeGroup.newProducedUnpaidStock}</span>
+                                  {' · '}
+                                  <span className="text-amber-650">Ký gửi chưa trả: {sizeGroup.unpaidStock}</span>
                                 </span>
                               )}
                               {reservedQuantity > 0 && <span className="block text-[9px] text-blue-600">Đã giữ trong giỏ: {reservedQuantity}</span>}
