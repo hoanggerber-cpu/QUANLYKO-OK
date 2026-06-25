@@ -7,210 +7,21 @@ const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbG
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Define Mock Data to make the app look stunning and professional immediately
-const MOCK_PRODUCTS: Product[] = [
-  {
-    id: 'p1_m',
-    name: 'Áo thun Cotton Premium 100%',
-    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Đen (Black)',
-    size: 'M',
-    stock: 65,
-    importPrice: 45000,
-    salePrice: 95000,
-    source: 'self_produced',
-    createdAt: '2026-05-15T08:00:00Z'
-  },
-  {
-    id: 'p1_l',
-    name: 'Áo thun Cotton Premium 100%',
-    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Đen (Black)',
-    size: 'L',
-    stock: 87,
-    importPrice: 45000,
-    salePrice: 95000,
-    source: 'self_produced',
-    createdAt: '2026-05-15T08:00:00Z'
-  },
-  {
-    id: 'p1_xl',
-    name: 'Áo thun Cotton Premium 100%',
-    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Đen (Black)',
-    size: 'XL',
-    stock: 12,
-    importPrice: 45000,
-    salePrice: 95000,
-    source: 'self_produced',
-    createdAt: '2026-05-15T08:00:00Z'
-  },
-  {
-    id: 'p2_m',
-    name: 'Áo Polo Basic Slimfit',
-    image: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Xanh Navy (Navy Blue)',
-    size: 'M',
-    stock: 45,
-    importPrice: 62000,
-    salePrice: 125000,
-    source: 'external',
-    createdAt: '2026-05-16T09:30:00Z'
-  },
-  {
-    id: 'p2_l',
-    name: 'Áo Polo Basic Slimfit',
-    image: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Xanh Navy (Navy Blue)',
-    size: 'L',
-    stock: 35,
-    importPrice: 62000,
-    salePrice: 125000,
-    source: 'external',
-    createdAt: '2026-05-16T09:30:00Z'
-  },
-  {
-    id: 'p3_l',
-    name: 'Áo Oversize Streetwear Heavyweight',
-    image: 'https://images.unsplash.com/photo-1562157873-818bc0726f68?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Trắng (White)',
-    size: 'L',
-    stock: 8,
-    importPrice: 55000,
-    salePrice: 110000,
-    source: 'self_produced',
-    createdAt: '2026-05-18T14:15:00Z'
-  },
-  {
-    id: 'p3_xl',
-    name: 'Áo Oversize Streetwear Heavyweight',
-    image: 'https://images.unsplash.com/photo-1562157873-818bc0726f68?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Trắng (White)',
-    size: 'XL',
-    stock: 15,
-    importPrice: 55000,
-    salePrice: 110000,
-    source: 'self_produced',
-    createdAt: '2026-05-18T14:15:00Z'
-  },
-  {
-    id: 'p4_m',
-    name: 'Áo thun Raglan Sporty',
-    image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Xám Phối Đỏ',
-    size: 'M',
-    stock: 25,
-    importPrice: 48000,
-    salePrice: 98000,
-    source: 'external',
-    createdAt: '2026-05-20T10:00:00Z'
-  },
-  {
-    id: 'p4_l',
-    name: 'Áo thun Raglan Sporty',
-    image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=300&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
-    color: 'Xám Phối Đỏ',
-    size: 'L',
-    stock: 20,
-    importPrice: 48000,
-    salePrice: 98000,
-    source: 'external',
-    createdAt: '2026-05-20T10:00:00Z'
-  }
-];
+// Frontend must not initialize business records. Empty storage should render
+// empty states and only real Supabase/localStorage/backup data should be shown.
+const SUPPRESSED_LEGACY_PRODUCT_IDS = new Set([
+  'p1_m',
+  'p1_l',
+  'p1_xl',
+  'p2_m',
+  'p2_l',
+  'p3_l',
+  'p3_xl',
+  'p4_m',
+  'p4_l'
+]);
 
-const MOCK_ORDERS: Order[] = [
-  {
-    id: 'o1',
-    orderCode: 'ORD-DTF-001',
-    customerName: 'In Ấn Hoàng Nam',
-    type: 'dtf',
-    productName: 'Cuộn Pet DTF Khổ 60cm x 100m',
-    color: 'Chuyển sắc',
-    quantity: 4,
-    unitPrice: 150000,
-    totalPrice: 600000,
-    paidAmount: 400000,
-    debtAmount: 200000,
-    status: 'completed',
-    createdAt: '2026-05-19T08:30:00Z'
-  },
-  {
-    id: 'o2',
-    orderCode: 'ORD-TS-002',
-    customerName: 'Đồng Phục Phương Vy',
-    type: 'tshirt',
-    productName: 'Áo thun Cotton Premium 100% - Đen (Black)',
-    color: 'Đen (Black)',
-    quantity: 50,
-    unitPrice: 95000,
-    totalPrice: 4750000,
-    paidAmount: 4750000,
-    debtAmount: 0,
-    status: 'completed',
-    createdAt: '2026-05-20T11:15:00Z'
-  },
-  {
-    id: 'o3',
-    orderCode: 'ORD-DTF-003',
-    customerName: 'Xưởng In Ấn Minh Anh',
-    type: 'dtf',
-    productName: 'Hình In Pet Áo Đọc Thêm 30x30cm',
-    color: 'Nhiều màu',
-    quantity: 120,
-    unitPrice: 25000,
-    totalPrice: 3000000,
-    paidAmount: 1800000,
-    debtAmount: 1200000,
-    status: 'pending',
-    createdAt: '2026-05-21T15:40:00Z'
-  },
-  {
-    id: 'o4',
-    orderCode: 'ORD-TS-004',
-    customerName: 'Local Brand Hades Studio',
-    type: 'tshirt',
-    productName: 'Áo Oversize Streetwear Heavyweight - Trắng (White)',
-    color: 'Trắng (White)',
-    quantity: 20,
-    unitPrice: 110000,
-    totalPrice: 2200000,
-    paidAmount: 1000000,
-    debtAmount: 1200000,
-    status: 'pending',
-    createdAt: '2026-05-22T09:00:00Z'
-  },
-  {
-    id: 'o5',
-    orderCode: 'ORD-DTF-005',
-    customerName: 'Quảng Cáo Đại Nam',
-    type: 'dtf',
-    productName: 'Pet DTF Logo Thương Hiệu Nhỏ',
-    color: 'Vàng Kim',
-    quantity: 500,
-    unitPrice: 3000,
-    totalPrice: 1500000,
-    paidAmount: 1500000,
-    debtAmount: 0,
-    status: 'completed',
-    createdAt: '2026-05-22T16:20:00Z'
-  },
-  {
-    id: 'o6',
-    orderCode: 'ORD-TS-006',
-    customerName: 'Đồng Phục Shop Ánh Dương',
-    type: 'tshirt',
-    productName: 'Áo Polo Basic Slimfit - Xanh Navy',
-    color: 'Xanh Navy (Navy Blue)',
-    quantity: 15,
-    unitPrice: 125000,
-    totalPrice: 1875000,
-    paidAmount: 1000000,
-    debtAmount: 875000,
-    status: 'pending',
-    createdAt: '2026-05-23T05:10:00Z'
-  }
-];
+const SUPPRESSED_LEGACY_ORDER_IDS = new Set(['o1', 'o2', 'o3', 'o4', 'o5', 'o6']);
 
 export class StorageManager {
   private static STORAGE_PREFIX = 'petshirt_admin_';
@@ -846,7 +657,9 @@ export class StorageManager {
       if (prodError) {
         console.warn('Cannot fetch products from Supabase:', prodError.message);
       } else if (dbProducts && dbProducts.length > 0) {
-        const mappedProducts: Product[] = dbProducts.map(p => {
+        const mappedProducts: Product[] = dbProducts
+          .filter(p => !SUPPRESSED_LEGACY_PRODUCT_IDS.has(String(p.id)))
+          .map(p => {
           const isLegacyDeleted = p.source === '__deleted__';
           const createdAt = p.created_at || new Date().toISOString();
           return {
@@ -864,7 +677,7 @@ export class StorageManager {
             deletedAt: p.deleted_at || p.deletedAt || (isLegacyDeleted ? createdAt : null),
             syncVersion: Number(p.sync_version ?? p.syncVersion ?? 1)
           };
-        });
+          });
         const mergedProducts = this.mergeProductsByUpdatedAt(mappedProducts, this.getProducts());
         this.saveLocalBackup('products', this.getProducts());
         this.saveProducts(mergedProducts);
@@ -901,7 +714,9 @@ export class StorageManager {
           });
         }
 
-        const mappedOrders: Order[] = dbOrders.map(o => {
+        const mappedOrders: Order[] = dbOrders
+          .filter(o => !SUPPRESSED_LEGACY_ORDER_IDS.has(String(o.id)))
+          .map(o => {
           const type = o.type;
           const items = itemsGroupedByOrder.get(o.id) || undefined;
           const rawQty = o.quantity ?? 1;
@@ -1009,13 +824,13 @@ export class StorageManager {
   static getProducts(): Product[] {
     const raw = localStorage.getItem(this.STORAGE_PREFIX + 'products');
     if (!raw) {
-      const normalizedMockProducts = MOCK_PRODUCTS.map(product => this.normalizeProduct(product));
-      this.saveProducts(normalizedMockProducts);
-      return normalizedMockProducts;
+      return [];
     }
-    return (JSON.parse(raw) as Product[]).map(product => ({
-      ...this.normalizeProduct(product)
-    }));
+    return (JSON.parse(raw) as Product[])
+      .filter(product => !SUPPRESSED_LEGACY_PRODUCT_IDS.has(String(product.id)))
+      .map(product => ({
+        ...this.normalizeProduct(product)
+      }));
   }
 
   static async addProduct(product: Omit<Product, 'id' | 'createdAt'>): Promise<Product> {
@@ -1159,12 +974,13 @@ export class StorageManager {
   static getOrders(): Order[] {
     const raw = localStorage.getItem(this.STORAGE_PREFIX + 'orders');
     if (!raw) {
-      this.saveOrders(MOCK_ORDERS);
-      return MOCK_ORDERS;
+      return [];
     }
     try {
       const parsed = JSON.parse(raw) as Order[];
-      return parsed.map(o => {
+      return parsed
+        .filter(o => !SUPPRESSED_LEGACY_ORDER_IDS.has(String(o.id)))
+        .map(o => {
         const qty = o.type === 'dtf' ? this.extractLengthFromOrder(o) : o.quantity;
         return {
           ...o,
