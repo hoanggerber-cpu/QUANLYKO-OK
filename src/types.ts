@@ -8,6 +8,7 @@ export interface User {
 export type ProductSource =
   | 'self_produced'
   | 'external'
+  | 'new_produced_unpaid'
   | 'consignment_unpaid'
   | 'consignment_paid';
 
@@ -22,6 +23,9 @@ export interface Product {
   salePrice: number;
   source: ProductSource;
   createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
+  syncVersion?: number;
 }
 
 export type OrderType = 'dtf' | 'tshirt' | 'mixed';
