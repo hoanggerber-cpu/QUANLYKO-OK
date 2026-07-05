@@ -191,6 +191,7 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
   ` : '';
 
   const typeText = order.type === 'dtf' ? 'In PET DTF gia công' : order.type === 'tshirt' ? 'Bán Sỉ Áo Thun phôi' : 'Đơn hàng tổng hợp gộp';
+  const isTemporary = Boolean(order.isTemporary);
   const surcharge = order.surcharge || 0;
   const productSubtotal = Math.max(0, order.totalPrice - surcharge);
   const statusColor = order.status === 'completed' ? '#047857' : order.status === 'pending' ? '#b45309' : '#4b5563';
@@ -206,8 +207,8 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
         <p style="margin: 2px 0 0 0; font-size: 9.5px; color: #94a3b8; font-family: 'JetBrains Mono', monospace;">Đ/C: 557/51A Hương Lộ 3, Bình Tân, TP. HCM | SĐT: 0931325512 - 0941727079</p>
       </div>
       <div style="text-align: right;">
-        <h2 style="margin: 0; font-size: 16px; font-weight: 950; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;">HÓA ĐƠN BÁN HÀNG</h2>
-        <span style="display: inline-block; padding: 4.5px 12px; border-radius: 8px; font-size: 10px; font-weight: 800; background-color: ${statusBg}; color: ${statusColor}; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${statusText}</span>
+        <h2 style="margin: 0; font-size: 16px; font-weight: 950; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;">${isTemporary ? 'BILL TẠM - KHÁCH KIỂM TRA' : 'HÓA ĐƠN BÁN HÀNG'}</h2>
+        <span style="display: inline-block; padding: 4.5px 12px; border-radius: 8px; font-size: 10px; font-weight: 800; background-color: ${isTemporary ? '#dbeafe' : statusBg}; color: ${isTemporary ? '#1d4ed8' : statusColor}; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px;">${isTemporary ? 'Không ghi nhận công nợ' : statusText}</span>
       </div>
     </div>
 
@@ -261,6 +262,10 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
           <span style="color: #0f172a;">Tổng cộng:</span>
           <strong style="color: #0f172a; font-family: 'JetBrains Mono', monospace;">${order.totalPrice.toLocaleString('vi-VN')} đ</strong>
         </div>
+        ${isTemporary ? `
+        <div style="margin-top: 8px; padding: 8px; border-radius: 8px; background: #dbeafe; color: #1d4ed8; font-size: 10px; font-weight: 800; text-align: center;">
+          SỐ TIỀN DỰ KIẾN - BILL NÀY KHÔNG VÀO DÒNG TIỀN/CÔNG NỢ
+        </div>` : `
         <div style="display: flex; justify-content: space-between; margin-bottom: 6px; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 6px; font-weight: 600;">
           <span style="color: #059669;">Khách dã trả:</span>
           <strong style="color: #059669; font-family: 'JetBrains Mono', monospace;">${order.paidAmount.toLocaleString('vi-VN')} đ</strong>
@@ -268,7 +273,7 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
         <div style="display: flex; justify-content: space-between; font-size: 13.5px;">
           <span style="color: #e11d48; font-weight: 850;">Khách còn nợ lại:</span>
           <strong style="color: #e11d48; font-family: 'JetBrains Mono', monospace; font-weight: 900;">${order.debtAmount.toLocaleString('vi-VN')} đ</strong>
-        </div>
+        </div>`}
       </div>
       <div style="clear: both;"></div>
     </div>
@@ -279,7 +284,7 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
     </div>
   `;
 
-  await renderHtmlToPdf(container, `Hoa_Don_${order.orderCode}.pdf`, true);
+  await renderHtmlToPdf(container, `${isTemporary ? 'Bill_Tam' : 'Hoa_Don'}_${order.orderCode}.pdf`, true);
 }
 
 // 2. FORMAL RECONCILIATION STATEMENT (A4) WITH GRID DETAILS & IMAGE PROFILES

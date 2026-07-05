@@ -7,6 +7,7 @@ import InventoryManager from './components/InventoryManager';
 import SalesManager from './components/SalesManager';
 import DebtManager from './components/DebtManager';
 import PublicTracking from './components/PublicTracking';
+import TemporaryBillManager from './components/TemporaryBillManager';
 import {
   ShieldCheck,
   TrendingUp,
@@ -370,6 +371,18 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => { setActiveSection('temporary-bills'); setSidebarOpen(false); }}
+            className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
+              activeSection === 'temporary-bills'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/10'
+                : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <AppWindow className="w-4.5 h-4.5" />
+            <span>Bill tạm</span>
+          </button>
+
+          <button
             onClick={() => { setActiveSection('debts'); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
               activeSection === 'debts'
@@ -440,6 +453,8 @@ export default function App() {
                 ? 'Giao dịch bán hàng & In hĐ'
                 : activeSection === 'inventory'
                 ? 'Nhập xuất kho mảng Áo thun'
+                : activeSection === 'temporary-bills'
+                ? 'Bill tạm gửi khách kiểm tra'
                 : 'Kiểm soát số nợ khách lẻ'}
             </h3>
           </div>
@@ -525,6 +540,7 @@ export default function App() {
                   onDeleteProduct={handleDeleteProduct}
                 />
               )}
+              {activeSection === 'temporary-bills' && <TemporaryBillManager />}
               {activeSection === 'debts' && (
                 <DebtManager 
                   customers={customers} 

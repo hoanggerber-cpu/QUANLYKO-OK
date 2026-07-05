@@ -66,6 +66,19 @@ export interface Order {
   items?: OrderItem[];
   notes?: string;
   surcharge?: number;
+  isTemporary?: boolean;
+}
+
+export interface TemporaryBill {
+  id: string;
+  billCode: string;
+  customerName: string;
+  type: 'dtf' | 'tshirt';
+  items: OrderItem[];
+  surcharge: number;
+  totalPrice: number;
+  notes?: string;
+  createdAt: string;
 }
 
 export interface Customer {

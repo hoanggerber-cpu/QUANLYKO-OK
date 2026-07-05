@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory } from '../types';
+import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory, TemporaryBill } from '../types';
 import { getOrderProductSummary } from '../utils/orderSummary';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://ykbsykqqdjqgnpslemsw.supabase.co';
@@ -27,6 +27,35 @@ export class StorageManager {
   private static STORAGE_PREFIX = 'petshirt_admin_';
   private static isSupabaseActive = false;
   private static backupAssetUrls = new Map<string, string>();
+
+  static getTemporaryBills(): TemporaryBill[] {
+    const raw = localStorage.getItem(this.STORAGE_PREFIX + 'temporary_bills');
+    if (!raw) return [];
+    try {
+      return (JSON.parse(raw) as TemporaryBill[])
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch (error) {
+      console.error('Error parsing temporary bills:', error);
+      return [];
+    }
+  }
+
+  static saveTemporaryBill(input: Omit<TemporaryBill, 'id' | 'billCode'>): TemporaryBill {
+    const bills = this.getTemporaryBills();
+    const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const bill: TemporaryBill = {
+      ...input,
+      id: `tmp_${Date.now()}_${suffix}`,
+      billCode: `TAM-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${suffix}`
+    };
+    localStorage.setItem(this.STORAGE_PREFIX + 'temporary_bills', JSON.stringify([bill, ...bills]));
+    return bill;
+  }
+
+  static deleteTemporaryBill(id: string): void {
+    const bills = this.getTemporaryBills().filter(bill => bill.id !== id);
+    localStorage.setItem(this.STORAGE_PREFIX + 'temporary_bills', JSON.stringify(bills));
+  }
 
   private static openBackupAssetDb(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {

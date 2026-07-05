@@ -165,7 +165,7 @@ export default function Overview({ stats, onNavigate, onBackup, onRestore }: Ove
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <div className="flex items-center gap-2">
                 <Layers className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-slate-800 text-sm tracking-wide">Phân đoạn Doanh nghiệp In PET DTF</h3>
+                <h3 className="font-bold text-slate-800 text-sm tracking-wide">Dòng tiền riêng: In PET DTF</h3>
               </div>
               <span className="text-[10px] uppercase font-mono bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md font-bold">Kỹ thuật số</span>
             </div>
@@ -203,7 +203,7 @@ export default function Overview({ stats, onNavigate, onBackup, onRestore }: Ove
         <div className="md:col-span-2 bg-white rounded-2xl border border-slate-200/60 p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-              <h3 className="font-bold text-slate-800 text-sm tracking-wide">Công nợ sỉ Áo thun</h3>
+              <h3 className="font-bold text-slate-800 text-sm tracking-wide">Dòng tiền riêng: Bán Áo thun</h3>
               <span className="text-[10px] uppercase font-mono bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md font-bold">Quản lý</span>
             </div>
 
@@ -219,6 +219,12 @@ export default function Overview({ stats, onNavigate, onBackup, onRestore }: Ove
                 <div>
                   <span className="text-[10px] text-rose-500 uppercase font-bold tracking-wider font-semibold">Khách sỉ đang nợ</span>
                   <span className="block text-sm font-bold text-rose-600 font-mono mt-0.5">{formatVND(stats.tshirtDebt)}</span>
+                </div>
+              </div>
+              <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-emerald-600 uppercase font-bold tracking-wider">Đã thu tiền áo</span>
+                  <span className="block text-sm font-bold text-emerald-700 font-mono mt-0.5">{formatVND(stats.tshirtRevenue - stats.tshirtDebt)}</span>
                 </div>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import { Order, Product, OrderType, OrderStatus, OrderItem } from '../types';
 import { generateInvoicePDF, formatCurrency } from '../utils/pdfGenerator';

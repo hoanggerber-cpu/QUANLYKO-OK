@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Customer, OrderType, Order, PaymentHistory } from '../types';
 import { formatCurrency, generateReconciliationPDF } from '../utils/pdfGenerator';
 import { getOrderProductSummary } from '../utils/orderSummary';
+import { getPublicAppUrl } from '../utils/publicUrl';
 import { exportCustomerProfile } from '../utils/customerExport';
 import { StorageManager } from '../lib/storage';
 import { 
@@ -566,7 +567,7 @@ export default function DebtManager({
 
     const handleCopyTrackingLink = () => {
       const slug = StorageManager.getTrackingSlugForCustomer(currentCustomer.name, currentCustomer.type);
-      const link = `${window.location.origin}/c/${slug}`;
+      const link = `${getPublicAppUrl()}/c/${slug}`;
       navigator.clipboard.writeText(link).then(() => {
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2500);
