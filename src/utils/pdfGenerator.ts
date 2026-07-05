@@ -126,9 +126,10 @@ async function renderHtmlToPdf(
 // 1. COMPACT A5 SALE RECEIPT WITH GRAPHICS (unicode & thumbnails fully supported!)
 export async function generateInvoicePDF(order: Order): Promise<void> {
   const container = document.createElement('div');
+  const isTemporary = Boolean(order.isTemporary);
   
   // Outer template styling mimicking luxurious commercial invoice paper
-  container.style.width = '555px'; // Perfect aspect ratio fit for A5
+  container.style.width = isTemporary ? '755px' : '555px';
   container.style.padding = '35px';
   container.style.boxSizing = 'border-box';
   container.style.backgroundColor = '#ffffff';
@@ -191,7 +192,6 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
   ` : '';
 
   const typeText = order.type === 'dtf' ? 'In PET DTF gia công' : order.type === 'tshirt' ? 'Bán Sỉ Áo Thun phôi' : 'Đơn hàng tổng hợp gộp';
-  const isTemporary = Boolean(order.isTemporary);
   const surcharge = order.surcharge || 0;
   const productSubtotal = Math.max(0, order.totalPrice - surcharge);
   const statusColor = order.status === 'completed' ? '#047857' : order.status === 'pending' ? '#b45309' : '#4b5563';
@@ -284,7 +284,13 @@ export async function generateInvoicePDF(order: Order): Promise<void> {
     </div>
   `;
 
-  await renderHtmlToPdf(container, `${isTemporary ? 'Bill_Tam' : 'Hoa_Don'}_${order.orderCode}.pdf`, true);
+  // Temporary bills may contain many review rows, so keep their natural aspect
+  // ratio and paginate across A4 pages instead of squeezing everything into A5.
+  await renderHtmlToPdf(
+    container,
+    `${isTemporary ? 'Bill_Tam' : 'Hoa_Don'}_${order.orderCode}.pdf`,
+    !isTemporary
+  );
 }
 
 // 2. FORMAL RECONCILIATION STATEMENT (A4) WITH GRID DETAILS & IMAGE PROFILES
