@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Product, Order, Customer, DashboardStats, OrderType } from './types';
+import { Product, Order, Customer, OrderType } from './types';
 import { StorageManager, supabase } from './lib/storage';
 import Login from './components/Login';
-import Overview from './components/Overview';
 import SalesManager from './components/SalesManager';
 import DebtManager from './components/DebtManager';
 import PublicTracking from './components/PublicTracking';
-import TemporaryBillManager from './components/TemporaryBillManager';
 import {
   ShieldCheck,
   TrendingUp,
@@ -15,8 +13,6 @@ import {
   Database,
   Coins,
   LogOut,
-  AppWindow,
-  Activity,
   User,
   Menu,
   X,
@@ -58,7 +54,7 @@ ON order_items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState('');
-  const [activeSection, setActiveSection] = useState<string>('overview');
+  const [activeSection, setActiveSection] = useState<string>('sales');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [trackingId, setTrackingId] = useState<string | null>(null);
 
@@ -66,7 +62,6 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
 
   // Status flags
   const [isSupabaseOnline, setIsSupabaseOnline] = useState(false);
@@ -144,13 +139,9 @@ export default function App() {
     initData();
   }, []);
 
-  // 2. Reactively derive client debts and statistical widgets
+  // Derive customer records without mutating persisted data.
   useEffect(() => {
-    // Recalculate derived customers and dashboard metrics whenever orders or products update
-    const c = StorageManager.getCustomers();
-    const s = StorageManager.getDashboardStats();
-    setCustomers(c);
-    setStats(s);
+    setCustomers(StorageManager.getCustomers());
   }, [orders, products]);
 
   // 3. Listen to Realtime updates from Supabase to auto-sync cross-device actions
@@ -275,6 +266,10 @@ export default function App() {
     }
   };
 
+
+  const petOrders = orders.filter(order => order.type === 'dtf');
+  const petCustomers = customers.filter(customer => customer.type === 'dtf');
+
   if (trackingId) {
     return <PublicTracking trackingId={trackingId} />;
   }
@@ -294,7 +289,7 @@ export default function App() {
               <Boxes className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-white font-bold leading-none tracking-tight">Xưởng In & May</h2>
+              <h2 className="text-white font-bold leading-none tracking-tight">Xưởng In PET</h2>
               <span className="text-[10px] text-slate-500 font-mono">Quản Trị Admin Portal</span>
             </div>
           </div>
@@ -305,17 +300,6 @@ export default function App() {
 
         {/* Sidebar Navigation Items */}
         <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-          <button
-            onClick={() => { setActiveSection('overview'); setSidebarOpen(false); }}
-            className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
-              activeSection === 'overview'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/10'
-                : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Activity className="w-4.5 h-4.5" />
-            <span>Tổng quan</span>
-          </button>
 
           <button
             onClick={() => { setActiveSection('sales'); setSidebarOpen(false); }}
@@ -326,21 +310,10 @@ export default function App() {
             }`}
           >
             <TrendingUp className="w-4.5 h-4.5" />
-            <span>Quản lý Bán Hàng</span>
+            <span>Quản lý In PET</span>
           </button>
 
 
-          <button
-            onClick={() => { setActiveSection('temporary-bills'); setSidebarOpen(false); }}
-            className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
-              activeSection === 'temporary-bills'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/10'
-                : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <AppWindow className="w-4.5 h-4.5" />
-            <span>Bill tạm</span>
-          </button>
 
           <button
             onClick={() => { setActiveSection('debts'); setSidebarOpen(false); }}
@@ -351,7 +324,7 @@ export default function App() {
             }`}
           >
             <Coins className="w-4.5 h-4.5" />
-            <span>Quản lý Công nợ</span>
+            <span>Khách hàng In PET</span>
           </button>
         </nav>
 
@@ -407,13 +380,7 @@ export default function App() {
               <Menu className="w-5.5 h-5.5" />
             </button>
             <h3 className="text-sm font-bold text-slate-800 font-mono capitalize tracking-wide">
-              {activeSection === 'overview'
-                ? 'Màn hình chính / Doanh số chung'
-                : activeSection === 'sales'
-                ? 'Giao dịch bán hàng & In hĐ'
-                : activeSection === 'temporary-bills'
-                ? 'Bill tạm gửi khách kiểm tra'
-                : 'Kiểm soát số nợ khách lẻ'}
+              {activeSection === 'sales' ? 'Giao dịch bán hàng In PET' : 'Quản lý khách hàng In PET'}
             </h3>
           </div>
 
@@ -436,65 +403,19 @@ export default function App() {
             </div>
           ) : (
             <>
-              {activeSection === 'overview' && stats && (
-                <Overview
-                  stats={stats}
-                  onNavigate={setActiveSection}
-                  onBackup={async () => {
-                    try {
-                      const result = await StorageManager.downloadFullBackup();
-                      alert(
-                        result.failedImages.length === 0
-                          ? `Đã tạo gói backup portable hoàn chỉnh, nhúng ${result.embeddedImages} hình ảnh thật. Gói này sẵn sàng restore trên web hoặc bản setup Windows/macOS.`
-                          : `Đã tạo backup với ${result.embeddedImages} hình ảnh thật. Có ${result.failedImages.length} ảnh không tải được; danh sách lỗi đã được ghi trong tệp backup.`
-                      );
-                    } catch (error: any) {
-                      alert(error?.message || 'Không thể tạo bản backup đầy đủ.');
-                    }
-                  }}
-                  onRestore={async (file) => {
-                    try {
-                      const inspection = await StorageManager.inspectFullBackup(file);
-                      if (!inspection.integrityValid) {
-                        alert('Tệp backup không vượt qua kiểm tra toàn vẹn. Không thể restore.');
-                        return;
-                      }
-                      const confirmation = [
-                        'Restore sẽ thay thế TOÀN BỘ dữ liệu hiện tại bằng danh mục gốc trong backup.',
-                        `Kho áo: ${inspection.products} sản phẩm`,
-                        `Hóa đơn: ${inspection.orders}`,
-                        `Thanh toán: ${inspection.paymentHistory}`,
-                        `Ảnh nhúng thật: ${inspection.embeddedImages}`,
-                        inspection.failedImages > 0 ? `Cảnh báo: ${inspection.failedImages} ảnh bị thiếu trong lúc tạo backup.` : 'Ảnh: đầy đủ, không có lỗi được ghi nhận.',
-                        '',
-                        'Bạn có chắc chắn muốn tiếp tục?'
-                      ].join('\n');
-                      if (!window.confirm(confirmation)) return;
-                      const restored = await StorageManager.restoreFullBackup(file);
-                      setProducts(StorageManager.getProducts());
-                      setOrders(StorageManager.getOrders());
-                      setIsSupabaseOnline(false);
-                      alert(`Đã khôi phục thành công: ${restored.products} sản phẩm kho, ${restored.orders} hóa đơn, ${restored.paymentHistory} giao dịch thanh toán và ${restored.embeddedImages} hình ảnh nhúng. Dữ liệu đang được bảo vệ ở chế độ Local Backup trong 1 giờ.`);
-                    } catch (error: any) {
-                      alert(error?.message || 'Không thể khôi phục tệp sao lưu.');
-                    }
-                  }}
-                />
-              )}
               {activeSection === 'sales' && (
                 <SalesManager 
-                  orders={orders} 
+                  orders={petOrders} 
                   products={products} 
                   onAddOrder={handleAddOrder} 
                   onUpdateOrder={handleUpdateOrder}
                   onDeleteOrder={handleDeleteOrder}
                 />
               )}
-              {activeSection === 'temporary-bills' && <TemporaryBillManager />}
               {activeSection === 'debts' && (
                 <DebtManager 
-                  customers={customers} 
-                  orders={orders} 
+                  customers={petCustomers} 
+                  orders={petOrders} 
                   onRecordPayment={handleRecordPayment} 
                   onUndoPayment={handleUndoPayment}
                   onRecordOrderPayment={handleRecordOrderPayment}
