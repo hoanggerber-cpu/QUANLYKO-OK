@@ -246,13 +246,28 @@ async function renderReconciliationPages(source: HTMLElement, fileName: string):
         currentTable!.tBodies[0].appendChild(clonedRow);
         if (!fits()) {
           currentTable!.tBodies[0].removeChild(clonedRow);
-          if (currentTable!.tBodies[0].rows.length === 0) {
-            throw new Error('One order row exceeds an A4 page');
-          }
           page = makePage();
           startTable();
           currentTable!.tBodies[0].appendChild(clonedRow);
-          if (!fits()) throw new Error('One order row exceeds an A4 page');
+          if (!fits()) {
+            // Extremely long notes or product descriptions can exceed one A4.
+            // Preserve the original record in the database; limit only its PDF
+            // presentation and keep the full value in the source order.
+            clonedRow.querySelectorAll('td').forEach(cell => {
+              cell.style.paddingTop = '6px';
+              cell.style.paddingBottom = '6px';
+              cell.style.overflowWrap = 'anywhere';
+              cell.style.wordBreak = 'break-word';
+              cell.style.fontSize = '9px';
+              cell.querySelectorAll('img').forEach(img => {
+                img.style.maxWidth = '24px';
+                img.style.maxHeight = '24px';
+              });
+            });
+            if (!fits()) {
+              throw new Error('Order ' + (rows.indexOf(row) + 1) + ' exceeds A4 even in compact mode');
+            }
+          }
         }
       }
     }
