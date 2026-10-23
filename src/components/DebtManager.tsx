@@ -596,8 +596,7 @@ export default function DebtManager({
         filteredCustomerOrders,
         { totalQty, totalAmount, totalPaid, totalDebt },
         { totalAmount: cumulativeAmount, totalPaid: cumulativePaid, totalDebt: cumulativeAmount - cumulativePaid },
-        paymentHistory
-      );
+        paymentHistory,\n        cumulativeOrders\n      );
     };
 
     const handleExportCustomerProfile = async () => {
