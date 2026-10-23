@@ -174,7 +174,11 @@ async function renderReconciliationPages(source: HTMLElement, fileName: string):
       return page;
     };
     let page = makePage();
-    const fits = () => page.scrollHeight <= pageContentLimit;
+    const fits = (): boolean => {
+      const last = page.lastElementChild as HTMLElement | null;
+      if (!last) return true;
+      return last.getBoundingClientRect().bottom - page.getBoundingClientRect().top <= pageContentLimit;
+    };
     const appendBlock = (block: HTMLElement): void => {
       page.appendChild(block);
       if (!fits() && page.childElementCount > 2) {
