@@ -7,6 +7,15 @@ const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbG
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+export type DtfBackfillResult = {
+  localPetOrders: number;
+  missingOrders: number;
+  syncedOrders: number;
+  existingOrders: number;
+  failedOrders: number;
+  errors: string[];
+};
+
 // Frontend must not initialize business records. Empty storage should render
 // empty states and only real Supabase/localStorage/backup data should be shown.
 const SUPPRESSED_LEGACY_PRODUCT_IDS = new Set([
@@ -244,16 +253,26 @@ export class StorageManager {
     return Array.from(merged.values());
   }
 
-  private static async backfillMissingDtfOrders(localOrders: Order[], remoteOrders: any[]): Promise<number> {
+  private static isPetOnlyOrder(order: Order): boolean {
+    if (order.type === 'dtf') return true;
+    if (order.type !== 'mixed' || !order.items?.length) return false;
+    return order.items.every(item => item.type === 'dtf');
+  }
+
+  private static async backfillMissingDtfOrders(localOrders: Order[], remoteOrders: any[]): Promise<DtfBackfillResult> {
     const remoteIds = new Set(remoteOrders.map(order => String(order.id)));
-    const missingOrders = localOrders.filter(order =>
-      order.type === 'dtf' &&
-      !SUPPRESSED_LEGACY_ORDER_IDS.has(String(order.id)) &&
-      !remoteIds.has(String(order.id))
+    const localPetOrders = localOrders.filter(order =>
+      this.isPetOnlyOrder(order) && !SUPPRESSED_LEGACY_ORDER_IDS.has(String(order.id))
     );
+    const missingOrders = localPetOrders.filter(order => !remoteIds.has(String(order.id)));
 
     let syncedCount = 0;
+    let existingCount = localPetOrders.length - missingOrders.length;
+    const errors: string[] = [];
     for (const order of missingOrders) {
+      // Keep the parent record deliberately small. Old local orders can contain
+      // large base64 previews which make the Supabase request fail before the
+      // accounting data reaches the cloud.
       const payload: any = {
         id: order.id,
         order_code: order.orderCode,
@@ -267,39 +286,38 @@ export class StorageManager {
         paid_amount: order.paidAmount,
         debt_amount: order.debtAmount,
         status: order.status,
-        created_at: order.createdAt,
-        order_images: JSON.stringify({
-          images: order.orderImages || [],
-          notes: order.notes || '',
-          surcharge: order.surcharge || 0
-        })
+        created_at: order.createdAt
       };
 
       try {
-        let { error } = await supabase.from('orders').insert([payload]);
+        const { error } = await supabase.from('orders').insert([payload]);
         if (error?.code === '23505') {
           remoteIds.add(String(order.id));
-          continue;
-        }
-        if (error) {
-          const legacyPayload = { ...payload };
-          delete legacyPayload.order_images;
-          const retry = await supabase.from('orders').insert([legacyPayload]);
-          error = retry.error;
-        }
-        if (error?.code === '23505') {
-          remoteIds.add(String(order.id));
+          existingCount += 1;
           continue;
         }
         if (error) throw error;
 
-        if (order.items?.length) {
-          await this.syncOrderItems(order.id, order.items);
-        }
-        remoteIds.add(String(order.id));
+        // The parent order is already safely stored at this point. Item/image
+        // failures must not turn a successful accounting sync into a false loss.
         syncedCount += 1;
-      } catch (error) {
+        remoteIds.add(String(order.id));
+        if (order.items?.length) {
+          const safeItems = order.items
+            .filter(item => item.type === 'dtf')
+            .map(item => ({
+              ...item,
+              image: item.image && !/^(data:|blob:|backup-asset:)/i.test(item.image) ? item.image : undefined
+            }));
+          try {
+            await this.syncOrderItems(order.id, safeItems);
+          } catch (itemError: any) {
+            console.warn('Order synced but PET line items could not be copied:', order.id, itemError);
+          }
+        }
+      } catch (error: any) {
         console.error('Supabase DTF backlog sync failed for order:', order.id, error);
+        errors.push(`${order.orderCode || order.id}: ${error?.message || 'Lỗi không xác định'}`);
       }
     }
 
@@ -307,7 +325,23 @@ export class StorageManager {
       console.info(`Synced ${syncedCount} missing DTF order(s) to Supabase.`);
       window.dispatchEvent(new Event('supabase_sync_success'));
     }
-    return syncedCount;
+    return {
+      localPetOrders: localPetOrders.length,
+      missingOrders: missingOrders.length,
+      syncedOrders: syncedCount,
+      existingOrders: existingCount,
+      failedOrders: errors.length,
+      errors
+    };
+  }
+
+  static async syncLocalDtfOrdersToSupabase(): Promise<DtfBackfillResult> {
+    const isOnline = await this.checkSupabaseConnection();
+    if (!isOnline) throw new Error('Không thể kết nối Supabase.');
+
+    const { data: remoteOrders, error } = await supabase.from('orders').select('id');
+    if (error) throw error;
+    return this.backfillMissingDtfOrders(this.getOrders(), remoteOrders || []);
   }
 
   private static saveOrders(orders: Order[]): void {

@@ -193,18 +193,25 @@ export default function DebtManager({
     try {
       const isOnline = await StorageManager.checkSupabaseConnection();
       if (isOnline) {
+        const report = await StorageManager.syncLocalDtfOrdersToSupabase();
         const success = await StorageManager.syncAllDataFromSupabase();
         if (success) {
-          showToast("Đã đồng bộ hóa dữ liệu từ Supabase thành công!", "success");
+          if (report.failedOrders > 0) {
+            showToast(`Đã đưa ${report.syncedOrders} đơn PET lên cloud; ${report.failedOrders} đơn lỗi. Vui lòng chụp thông báo này.`, "error");
+          } else if (report.syncedOrders > 0) {
+            showToast(`Đồng bộ thành công ${report.syncedOrders} đơn PET còn thiếu lên Supabase.`, "success");
+          } else {
+            showToast(`Không có đơn PET cục bộ nào cần tải lên (${report.existingOrders}/${report.localPetOrders} đơn đã có trên cloud).`, "info");
+          }
           window.dispatchEvent(new CustomEvent('supabase_sync_success'));
         } else {
-          showToast("Lỗi đồng bộ dữ liệu từ Supabase!", "error");
+          showToast("Đã thử tải đơn PET lên nhưng không thể làm mới dữ liệu từ Supabase.", "error");
         }
       } else {
         showToast("Không thể kết nối đến Supabase. Hệ thống đang chạy chế độ Local Backup.", "error");
       }
-    } catch (error) {
-      showToast("Lỗi đồng bộ dữ liệu từ Supabase!", "error");
+    } catch (error: any) {
+      showToast(`Lỗi đồng bộ Supabase: ${error?.message || 'không xác định'}`, "error");
     } finally {
       setIsSyncing(false);
     }
