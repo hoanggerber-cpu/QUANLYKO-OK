@@ -335,6 +335,28 @@ export class StorageManager {
     };
   }
 
+  static async inspectDtfDebtSync(): Promise<{
+    localCount: number; cloudCount: number; missing: Array<{ id: string; code: string; customer: string; date: string; debt: number }>; missingDebt: number;
+  }> {
+    if (!(await this.checkSupabaseConnection())) throw new Error('Không thể kết nối Supabase.');
+    const cloudOrders = await this.fetchAllSupabaseRows('orders');
+    const cloudIds = new Set(cloudOrders.map(order => String(order.id)));
+    const local = this.getOrders().filter(order =>
+      this.isPetOnlyOrder(order) && !SUPPRESSED_LEGACY_ORDER_IDS.has(String(order.id))
+    );
+    const missing = local.filter(order => !cloudIds.has(String(order.id))).map(order => ({
+      id: String(order.id), code: order.orderCode || String(order.id),
+      customer: order.customerName, date: order.createdAt,
+      debt: Number(order.debtAmount) || 0
+    }));
+    return {
+      localCount: local.length,
+      cloudCount: cloudOrders.filter(order => order.type === 'dtf').length,
+      missing,
+      missingDebt: missing.reduce((sum, order) => sum + order.debt, 0)
+    };
+  }
+
   static async syncLocalDtfOrdersToSupabase(): Promise<DtfBackfillResult> {
     const isOnline = await this.checkSupabaseConnection();
     if (!isOnline) throw new Error('Không thể kết nối Supabase.');
