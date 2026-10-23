@@ -399,7 +399,7 @@ export async function generateReconciliationPDF(
       </div>
       <div style="text-align: right;">
         <h2 style="margin: 0; font-size: 14px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 1px;">statement of accounts</h2>
-        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #64748b; display: block; margin-top: 4px;">Chào biên: ${new Date().toLocaleDateString('vi-VN')}</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #64748b; display: block; margin-top: 12px; white-space: nowrap;">Ngày lập báo cáo: ${new Date().toLocaleDateString('vi-VN')}</span>
       </div>
     </div>
 
