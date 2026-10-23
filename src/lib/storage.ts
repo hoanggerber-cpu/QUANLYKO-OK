@@ -336,23 +336,36 @@ export class StorageManager {
   }
 
   static async inspectDtfDebtSync(): Promise<{
-    localCount: number; cloudCount: number; missing: Array<{ id: string; code: string; customer: string; date: string; debt: number }>; missingDebt: number;
+    localCount: number; cloudCount: number;
+    missing: Array<{ id: string; code: string; customer: string; date: string; debt: number }>;
+    mismatched: Array<{ id: string; code: string; customer: string; localDebt: number; cloudDebt: number }>;
+    missingDebt: number;
   }> {
     if (!(await this.checkSupabaseConnection())) throw new Error('Không thể kết nối Supabase.');
     const cloudOrders = await this.fetchAllSupabaseRows('orders');
-    const cloudIds = new Set(cloudOrders.map(order => String(order.id)));
+    const cloudById = new Map(cloudOrders.map(order => [String(order.id), order]));
     const local = this.getOrders().filter(order =>
       this.isPetOnlyOrder(order) && !SUPPRESSED_LEGACY_ORDER_IDS.has(String(order.id))
     );
-    const missing = local.filter(order => !cloudIds.has(String(order.id))).map(order => ({
+    const missing = local.filter(order => !cloudById.has(String(order.id))).map(order => ({
       id: String(order.id), code: order.orderCode || String(order.id),
       customer: order.customerName, date: order.createdAt,
       debt: Number(order.debtAmount) || 0
     }));
+    const mismatched = local.flatMap(order => {
+      const remote = cloudById.get(String(order.id));
+      if (!remote) return [];
+      const localDebt = Number(order.debtAmount) || 0;
+      const cloudDebt = Number(remote.debt_amount) || 0;
+      if (localDebt === cloudDebt && Number(order.totalPrice) === Number(remote.total_price)
+        && Number(order.paidAmount) === Number(remote.paid_amount)) return [];
+      return [{ id: String(order.id), code: order.orderCode || String(order.id),
+        customer: order.customerName, localDebt, cloudDebt }];
+    });
     return {
       localCount: local.length,
       cloudCount: cloudOrders.filter(order => order.type === 'dtf').length,
-      missing,
+      missing, mismatched,
       missingDebt: missing.reduce((sum, order) => sum + order.debt, 0)
     };
   }
@@ -361,6 +374,8 @@ export class StorageManager {
     const isOnline = await this.checkSupabaseConnection();
     if (!isOnline) throw new Error('Không thể kết nối Supabase.');
 
+    const audit = await this.inspectDtfDebtSync();
+    if (audit.mismatched.length) throw new Error('Có đơn sai lệch tiền giữa máy và cloud. Cần kiểm tra trước khi đồng bộ.');
     const remoteOrders = await this.fetchAllSupabaseRows('orders');
     return this.backfillMissingDtfOrders(this.getOrders(), remoteOrders);
   }
@@ -915,9 +930,7 @@ export class StorageManager {
           };
         });
         const localOrders = this.getOrders();
-        // Retry local-only PET orders that a previous best-effort sync could not upload.
-        // Existing remote rows are never updated or deleted.
-        await this.backfillMissingDtfOrders(localOrders, dbOrders);
+        // Read-only refresh: uploading local-only orders requires explicit confirmation.
         const localOrdersById = new Map(localOrders.map(order => [order.id, order]));
         const protectedRemoteOrders = mappedOrders.map(order => {
           const localOrder = localOrdersById.get(order.id);
