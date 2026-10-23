@@ -293,7 +293,21 @@ async function renderReconciliationPages(source: HTMLElement, fileName: string):
       }
       if (paymentNote) appendBlock(paymentNote.cloneNode(true) as HTMLElement);
     }
-    appendBlock(signatures.cloneNode(true) as HTMLElement);
+    // Keep signatures with the final reconciliation summary whenever possible.
+    // Reduce only decorative spacing before moving signatures to a new A4 page.
+    const signatureBlock = signatures.cloneNode(true) as HTMLElement;
+    const signaturePanel = signatureBlock.firstElementChild as HTMLElement | null;
+    if (signaturePanel) signaturePanel.style.marginTop = '16px';
+    page.appendChild(signatureBlock);
+    if (!fits()) {
+      if (signaturePanel) signaturePanel.style.marginTop = '0px';
+      if (!fits()) {
+        page.removeChild(signatureBlock);
+        page = makePage();
+        page.appendChild(signatureBlock);
+        if (!fits()) throw new Error('Signature block exceeds A4 page');
+      }
+    }
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     for (let i = 0; i < pages.length; i++) {
