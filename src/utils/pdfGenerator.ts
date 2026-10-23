@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Order } from '../types';
+import { Order, PaymentHistory } from '../types';
 import { getOrderProductSummary } from './orderSummary';
 
 // Utility to remove Vietnamese accents for safe plain-text printing if needed
@@ -305,9 +305,23 @@ export async function generateReconciliationPDF(
     totalAmount: number;
     totalPaid: number;
     totalDebt: number;
-  }
+  },
+  cumulativeStats?: { totalAmount: number; totalPaid: number; totalDebt: number },
+  paymentHistory: PaymentHistory[] = []
 ): Promise<void> {
   const container = document.createElement('div');
+  const cumulative = cumulativeStats ?? {
+    totalAmount: stats.totalAmount,
+    totalPaid: stats.totalPaid,
+    totalDebt: stats.totalDebt
+  };
+  const paymentsHtml = paymentHistory.length
+    ? paymentHistory.map(payment => `<tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:6px;">${new Date(payment.createdAt).toLocaleDateString('vi-VN')}</td>
+        <td style="padding:6px;">${payment.paymentMethod || 'Thanh toán'}</td>
+        <td style="padding:6px;text-align:right;font-weight:700;color:#047857;">${payment.amount.toLocaleString('vi-VN')} đ</td>
+      </tr>`).join('')
+    : '';
   
   // Outer specifications for A4 dimensions
   container.style.width = '755px'; // Exact viewport fitting nicely on A4 vertical space
@@ -430,27 +444,32 @@ export async function generateReconciliationPDF(
       </table>
     </div>
 
-    <!-- Multi-stage Cumulative Balances and Chot No signatures -->
-    <div style="margin-top: 30px; page-break-inside: avoid;">
-      <div style="width: 100%; margin-bottom: 20px; border-top: 1.5px solid #cbd5e1; padding-top: 15px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 850; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;">TỔNG HỢP GIAO DỊCH CHỐT LŨY KẾ:</h3>
-        <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; padding-left: 2px;">
-          <div>• Tổng tiền hàng trong kỳ: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${totalProductAmount.toLocaleString('vi-VN')} đ</strong></div>
-          ${totalSurcharge > 0 ? `<div>• Tổng phụ thu của các đơn: <strong style="color: #b45309; font-family: 'JetBrains Mono', monospace; font-size: 12px;">${totalSurcharge.toLocaleString('vi-VN')} đ</strong></div>` : ''}
-          <div>• Tổng doanh số gồm phụ thu: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
-          <div>• Tổng cộng số tiền bên Khách đã nộp: <strong style="color: #059669; font-family: 'JetBrains Mono', monospace; font-size: 12px;">${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
+    <!-- Reporting period totals and cumulative customer balances -->
+    <div style="margin-top:25px;page-break-inside:avoid;">
+      <h3 style="font-size:13px;color:#0f172a;">PHÁT SINH TRONG KỲ ĐỐI SOÁT</h3>
+      <div style="font-size:12px;">Tiền hàng và phụ thu trong kỳ: <strong>${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
+      <div style="font-size:12px;">Số tiền đã phân bổ thanh toán cho đơn trong kỳ: <strong>${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
+      <h3 style="margin-top:18px;font-size:14px;color:#1e3a8a;">TỔNG HỢP CÔNG NỢ LŨY KẾ ĐẾN CUỐI KỲ</h3>
+      <div style="display:flex;gap:12px;margin:10px 0;">
+        <div style="width:50%;background:#f1f5f9;padding:14px;border-radius:10px;">
+          <div style="font-size:10px;color:#64748b;">TỔNG TIỀN HÀNG LŨY KẾ (GỒM PHỤ THU)</div>
+          <strong style="font-size:18px;color:#0f172a;">${cumulative.totalAmount.toLocaleString('vi-VN')} đ</strong>
+        </div>
+        <div style="width:50%;background:#ecfdf5;padding:14px;border-radius:10px;">
+          <div style="font-size:10px;color:#047857;">TỔNG ĐÃ THANH TOÁN LŨY KẾ</div>
+          <strong style="font-size:18px;color:#047857;">${cumulative.totalPaid.toLocaleString('vi-VN')} đ</strong>
         </div>
       </div>
-
-      <div style="background-color: #fff1f2; border: 1.5px solid #fda4af; border-radius: 12px; padding: 15px 22px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-        <div>
-          <span style="font-size: 11.5px; font-weight: 800; color: #be123c; text-transform: uppercase; letter-spacing: 1px; display: block;">DƯ NỢ CÔNG NỢ CHỐT CUỐI KỲ PHẢI THU (CHỐT SỐ):</span>
-          <span style="font-size: 10px; color: #f43f5e; display: block; margin-top: 1px;">(Đề nghị quý khách đối chiếu rà soát và thực hiện thanh toán như hợp đồng thỏa ước)</span>
-        </div>
-        <div style="font-size: 19.5px; font-weight: 950; color: #e11d48; font-family: 'JetBrains Mono', monospace;">
-          ${stats.totalDebt.toLocaleString('vi-VN')} đ
-        </div>
+      <div style="background:#fff1f2;border:1px solid #fda4af;border-radius:10px;padding:15px;display:flex;justify-content:space-between;align-items:center;">
+        <strong style="font-size:12px;color:#be123c;">CÔNG NỢ CÒN PHẢI THU ĐẾN CUỐI KỲ</strong>
+        <strong style="font-size:20px;color:#e11d48;">${cumulative.totalDebt.toLocaleString('vi-VN')} đ</strong>
       </div>
+      <div style="font-size:10px;color:#64748b;margin-top:7px;">Lũy kế được tính từ các đơn hàng đã ghi nhận đến hết kỳ đối soát, không xóa nợ khi chuyển tháng. Tiền thanh toán lấy từ số đã phân bổ vào đơn hàng.</div>
+    </div>
+    <div style="margin-top:20px;page-break-inside:avoid;">
+      <h3 style="font-size:13px;color:#0f172a;">LỊCH SỬ THANH TOÁN ĐÃ GHI NHẬN ĐẾN CUỐI KỲ</h3>
+      ${paymentsHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#f8fafc;"><th style="text-align:left;padding:6px;">Ngày</th><th style="text-align:left;padding:6px;">Phương thức</th><th style="text-align:right;padding:6px;">Số tiền</th></tr></thead><tbody>${paymentsHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có lịch sử thanh toán riêng được ghi nhận.</div>'}
+      <div style="font-size:10px;color:#64748b;margin-top:6px;">Lịch sử dùng để đối chiếu, không cộng lần thứ hai vào tổng đã thanh toán.</div>
     </div>
 
     <!-- Hand Signature Block Panel -->
