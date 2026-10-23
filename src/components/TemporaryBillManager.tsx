@@ -39,7 +39,7 @@ const toPrintableOrder = (bill: TemporaryBill): Order => ({
 });
 
 export default function TemporaryBillManager() {
-  const [bills, setBills] = useState<TemporaryBill[]>(() => StorageManager.getTemporaryBills());
+  const [bills, setBills] = useState<TemporaryBill[]>(() => StorageManager.getTemporaryBills().filter(b => b.type === 'dtf'));
   const [showForm, setShowForm] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [type, setType] = useState<'dtf' | 'tshirt'>('dtf');
@@ -82,14 +82,14 @@ export default function TemporaryBillManager() {
 
     StorageManager.saveTemporaryBill({
       customerName: customerName.trim(),
-      type,
+      type: 'dtf',
       items,
       surcharge: Math.max(0, surcharge),
       totalPrice,
       notes: notes.trim(),
       createdAt: new Date(`${createdAt}T12:00:00`).toISOString()
     });
-    setBills(StorageManager.getTemporaryBills());
+    setBills(StorageManager.getTemporaryBills().filter(b => b.type === 'dtf'));
     resetForm();
     setShowForm(false);
   };
@@ -176,14 +176,6 @@ export default function TemporaryBillManager() {
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-500 mb-1.5">Ngày lập bill</label>
                   <input type="date" value={createdAt} onChange={e => setCreatedAt(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 font-bold" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Nguồn tiền dự kiến</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setType('dtf')} className={`py-3 rounded-xl border font-black cursor-pointer ${type === 'dtf' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>PET DTF</button>
-                  <button onClick={() => setType('tshirt')} className={`py-3 rounded-xl border font-black cursor-pointer ${type === 'tshirt' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>Bán áo thun</button>
                 </div>
               </div>
 
