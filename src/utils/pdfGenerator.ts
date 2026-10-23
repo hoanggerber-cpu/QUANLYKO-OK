@@ -508,7 +508,7 @@ export async function generateReconciliationPDF(
   // Only explicit legacy-debt descriptions are grouped as carry-forward entries.
   // No monetary values are changed and payments mentioned in notes are not deducted again.
   const isCarryForward = (order: Order): boolean =>
-    /(?:^|\\s)nợ\\s*cũ|công\\s*nợ\\s*(?:đầu\\s*kỳ|chuyển\\s*kỳ)|số\\s*dư\\s*đầu\\s*kỳ/i
+    /(?:^|\s)nợ\s*cũ|công\s*nợ\s*(?:đầu\s*kỳ|chuyển\s*kỳ)|số\s*dư\s*đầu\s*kỳ/i
       .test([order.notes, order.productName].filter(Boolean).join(' '));
   const periodCarry = ordersList.filter(isCarryForward);
   const periodProduction = ordersList.filter(order => !isCarryForward(order));
