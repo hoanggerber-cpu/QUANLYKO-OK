@@ -188,13 +188,37 @@ export default function DebtManager({
     }, 4000);
   };
 
+  const [syncAudit, setSyncAudit] = useState<Awaited<ReturnType<typeof StorageManager.inspectDtfDebtSync>> | null>(null);
+  const [syncAuditBusy, setSyncAuditBusy] = useState(false);
+  const handleInspectSync = async () => {
+    setSyncAuditBusy(true);
+    setSyncAudit(null);
+    try {
+      setSyncAudit(await StorageManager.inspectDtfDebtSync());
+    } catch (error: any) {
+      showToast(`Không thể kiểm tra: ${error?.message || 'Lỗi không xác định'}`, 'error');
+    } finally {
+      setSyncAuditBusy(false);
+    }
+  };
+
   const handleSyncSupabase = async () => {
+    if (!syncAudit) {
+      showToast('Hãy kiểm tra đồng bộ công nợ trước.', 'error');
+      return;
+    }
+    if (syncAudit.mismatched.length) {
+      showToast('Có đơn sai lệch tiền. Không thể tự động đồng bộ.', 'error');
+      return;
+    }
+    if (!window.confirm(`Xác nhận tải ${syncAudit.missing.length} đơn PET đang thiếu lên Supabase? Không sửa các đơn đã tồn tại.`)) return;
     setIsSyncing(true);
     try {
       const isOnline = await StorageManager.checkSupabaseConnection();
       if (isOnline) {
         const report = await StorageManager.syncLocalDtfOrdersToSupabase();
         const success = await StorageManager.syncAllDataFromSupabase();
+        setSyncAudit(null);
         if (success) {
           if (report.failedOrders > 0) {
             showToast(`Đã đưa ${report.syncedOrders} đơn PET lên cloud; ${report.failedOrders} đơn lỗi. Vui lòng chụp thông báo này.`, "error");
@@ -1160,6 +1184,28 @@ export default function DebtManager({
         </div>
       </div>
 
+      <section className="bg-white border border-blue-100 rounded-2xl p-5 space-y-3">
+        <h3 className="font-bold text-slate-800">Kiểm tra đồng bộ công nợ PET</h3>
+        <p className="text-xs text-slate-500">So sánh đơn PET trên máy này với Supabase. Chỉ kiểm tra, không ghi hoặc sửa dữ liệu.</p>
+        <button type="button" onClick={handleInspectSync} disabled={syncAuditBusy}
+          className="rounded-xl bg-blue-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50">
+          {syncAuditBusy ? 'Đang kiểm tra...' : 'Kiểm tra đồng bộ công nợ'}
+        </button>
+        {syncAudit && <div className="space-y-2 text-sm">
+          <p>Đơn PET trên máy: <strong>{syncAudit.localCount}</strong> | Đơn PET trên cloud: <strong>{syncAudit.cloudCount}</strong></p>
+          <p>Đơn trên máy chưa tìm thấy trên cloud: <strong>{syncAudit.missing.length}</strong></p>
+          <p>Tổng dư nợ của các đơn thiếu: <strong>{syncAudit.missingDebt.toLocaleString('vi-VN')} đ</strong></p>
+          <p>Đơn có sai lệch tiền với cloud: <strong>{syncAudit.mismatched.length}</strong></p>
+          {syncAudit.mismatched.map(order => <p key={order.id} className="text-xs text-red-700">{order.code} · {order.customer}: Máy {order.localDebt.toLocaleString('vi-VN')} đ / Cloud {order.cloudDebt.toLocaleString('vi-VN')} đ</p>)}
+          <div className="max-h-56 overflow-y-auto space-y-1">
+            {syncAudit.missing.map(order => <div key={order.id} className="border-b py-1 text-xs">
+              {order.code} · {order.customer} · {new Date(order.date).toLocaleDateString('vi-VN')} · {order.debt.toLocaleString('vi-VN')} đ
+            </div>)}
+          </div>
+          <p className="text-xs text-amber-700">Chỉ so sánh theo ID. Chưa kiểm tra sai lệch số tiền ở các đơn đã có trên cloud.</p>
+        </div>}
+      </section>
+
       {/* Box Cấu hình Trạng thái hệ thống */}
       <div className="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm font-sans max-w-xl mx-auto">
         <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
@@ -1177,7 +1223,7 @@ export default function DebtManager({
 
           <button
             onClick={handleSyncSupabase}
-            disabled={isSyncing}
+            disabled={isSyncing || syncAuditBusy || !syncAudit || syncAudit.mismatched.length > 0}
             className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all uppercase flex items-center gap-2 cursor-pointer text-white shadow-sm hover:shadow-md ${
               isSyncing ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
             }`}
@@ -1192,7 +1238,7 @@ export default function DebtManager({
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18" />
                 </svg>
-                <span>Đồng bộ ngay</span>
+                <span>Đồng bộ đơn thiếu đã kiểm tra</span>
               </>
             )}
           </button>
@@ -1207,13 +1253,13 @@ export default function DebtManager({
             <span className="text-slate-500 font-medium">Trạng thái đồng bộ:</span>
             <span className="font-bold text-emerald-600 flex items-center gap-1.5 bg-emerald-50 px-2.5 py-0.5 rounded">
               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse text-xs"></span>
-              Thời gian thực (Real-time)
+              Kết nối cloud (cần kiểm tra đồng bộ)
             </span>
           </div>
         </div>
 
         <p className="text-[11px] text-slate-400 mt-4 italic text-center leading-relaxed">
-          * Hệ thống đã tự động cấu hình và đồng bộ hóa, không cần can thiệp bằng lệnh SQL thủ công.
+          * Kết nối Supabase không bảo đảm mọi đơn đã đồng bộ. Hãy dùng chức năng kiểm tra trước khi tải đơn thiếu.
         </p>
       </div>
 

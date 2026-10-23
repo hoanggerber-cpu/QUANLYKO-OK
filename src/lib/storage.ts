@@ -335,13 +335,49 @@ export class StorageManager {
     };
   }
 
+  static async inspectDtfDebtSync(): Promise<{
+    localCount: number; cloudCount: number;
+    missing: Array<{ id: string; code: string; customer: string; date: string; debt: number }>;
+    mismatched: Array<{ id: string; code: string; customer: string; localDebt: number; cloudDebt: number }>;
+    missingDebt: number;
+  }> {
+    if (!(await this.checkSupabaseConnection())) throw new Error('Không thể kết nối Supabase.');
+    const cloudOrders = await this.fetchAllSupabaseRows('orders');
+    const cloudById = new Map(cloudOrders.map(order => [String(order.id), order]));
+    const local = this.getOrders().filter(order =>
+      this.isPetOnlyOrder(order) && !SUPPRESSED_LEGACY_ORDER_IDS.has(String(order.id))
+    );
+    const missing = local.filter(order => !cloudById.has(String(order.id))).map(order => ({
+      id: String(order.id), code: order.orderCode || String(order.id),
+      customer: order.customerName, date: order.createdAt,
+      debt: Number(order.debtAmount) || 0
+    }));
+    const mismatched = local.flatMap(order => {
+      const remote = cloudById.get(String(order.id));
+      if (!remote) return [];
+      const localDebt = Number(order.debtAmount) || 0;
+      const cloudDebt = Number(remote.debt_amount) || 0;
+      if (localDebt === cloudDebt && Number(order.totalPrice) === Number(remote.total_price)
+        && Number(order.paidAmount) === Number(remote.paid_amount)) return [];
+      return [{ id: String(order.id), code: order.orderCode || String(order.id),
+        customer: order.customerName, localDebt, cloudDebt }];
+    });
+    return {
+      localCount: local.length,
+      cloudCount: cloudOrders.filter(order => order.type === 'dtf').length,
+      missing, mismatched,
+      missingDebt: missing.reduce((sum, order) => sum + order.debt, 0)
+    };
+  }
+
   static async syncLocalDtfOrdersToSupabase(): Promise<DtfBackfillResult> {
     const isOnline = await this.checkSupabaseConnection();
     if (!isOnline) throw new Error('Không thể kết nối Supabase.');
 
-    const { data: remoteOrders, error } = await supabase.from('orders').select('id');
-    if (error) throw error;
-    return this.backfillMissingDtfOrders(this.getOrders(), remoteOrders || []);
+    const audit = await this.inspectDtfDebtSync();
+    if (audit.mismatched.length) throw new Error('Có đơn sai lệch tiền giữa máy và cloud. Cần kiểm tra trước khi đồng bộ.');
+    const remoteOrders = await this.fetchAllSupabaseRows('orders');
+    return this.backfillMissingDtfOrders(this.getOrders(), remoteOrders);
   }
 
   private static saveOrders(orders: Order[]): void {
@@ -769,6 +805,21 @@ export class StorageManager {
     return 0;
   }
 
+  private static async fetchAllSupabaseRows(table: 'orders' | 'order_items' | 'payment_history'): Promise<any[]> {
+    const pageSize = 500;
+    const result: any[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase.from(table)
+        .select('*')
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw new Error(`Failed to fetch ${table} at offset ${offset}: ${error.message}`);
+      const rows = data || [];
+      result.push(...rows);
+      if (rows.length < pageSize) return result;
+    }
+  }
+
   static async syncAllDataFromSupabase(): Promise<boolean> {
     if (this.isRestoreProtectionActive()) {
       console.warn('Supabase sync skipped because restored data is temporarily protected.');
@@ -813,15 +864,14 @@ export class StorageManager {
       }
 
       // Fetch orders from Supabase
-      const { data: dbOrders, error: orderError } = await supabase
-        .from('orders')
-        .select('*');
+      const dbOrders = await this.fetchAllSupabaseRows('orders');
+      const orderError = null;
 
       if (orderError) {
         console.warn('Cannot fetch orders from Supabase:', orderError.message);
       } else if (dbOrders) {
         // Fetch order items to reconstruct orders perfectly
-        const { data: dbItems } = await supabase.from('order_items').select('*');
+        const dbItems = await this.fetchAllSupabaseRows('order_items');
         const itemsGroupedByOrder = new Map<string, any[]>();
         if (dbItems) {
           dbItems.forEach(item => {
@@ -880,9 +930,7 @@ export class StorageManager {
           };
         });
         const localOrders = this.getOrders();
-        // Retry local-only PET orders that a previous best-effort sync could not upload.
-        // Existing remote rows are never updated or deleted.
-        await this.backfillMissingDtfOrders(localOrders, dbOrders);
+        // Read-only refresh: uploading local-only orders requires explicit confirmation.
         const localOrdersById = new Map(localOrders.map(order => [order.id, order]));
         const protectedRemoteOrders = mappedOrders.map(order => {
           const localOrder = localOrdersById.get(order.id);
@@ -901,9 +949,8 @@ export class StorageManager {
       }
 
       // Fetch payment_history from Supabase
-      const { data: dbPayments, error: payError } = await supabase
-        .from('payment_history')
-        .select('*');
+      const dbPayments = await this.fetchAllSupabaseRows('payment_history');
+      const payError = null;
 
       if (payError) {
         console.warn('Cannot fetch payment history from Supabase:', payError.message);
