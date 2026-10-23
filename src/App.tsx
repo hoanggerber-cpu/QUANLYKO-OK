@@ -5,6 +5,7 @@ import Login from './components/Login';
 import SalesManager from './components/SalesManager';
 import DebtManager from './components/DebtManager';
 import PublicTracking from './components/PublicTracking';
+import TemporaryBillManager from './components/TemporaryBillManager';
 import {
   ShieldCheck,
   TrendingUp,
@@ -54,7 +55,7 @@ ON order_items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState('');
-  const [activeSection, setActiveSection] = useState<string>('sales');
+  const [activeSection, setActiveSection] = useState<string>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [trackingId, setTrackingId] = useState<string | null>(null);
 
@@ -300,6 +301,9 @@ export default function App() {
 
         {/* Sidebar Navigation Items */}
         <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
+          <button onClick={() => { setActiveSection('overview'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-colors ${activeSection === 'overview' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800/60 text-slate-400'}`}><ShieldCheck className="w-4.5 h-4.5" /><span>Tổng quan</span></button>
+          <button onClick={() => { setActiveSection('temporary'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-colors ${activeSection === 'temporary' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800/60 text-slate-400'}`}><Copy className="w-4.5 h-4.5" /><span>Bill tạm</span></button>
+
 
           <button
             onClick={() => { setActiveSection('sales'); setSidebarOpen(false); }}
@@ -380,7 +384,7 @@ export default function App() {
               <Menu className="w-5.5 h-5.5" />
             </button>
             <h3 className="text-sm font-bold text-slate-800 font-mono capitalize tracking-wide">
-              {activeSection === 'sales' ? 'Giao dịch bán hàng In PET' : 'Quản lý khách hàng In PET'}
+              {activeSection === 'overview' ? 'Tổng quan In PET' : activeSection === 'temporary' ? 'Bill tạm In PET' : activeSection === 'sales' ? 'Giao dịch In PET' : 'Quản lý khách hàng In PET'}
             </h3>
           </div>
 
@@ -403,6 +407,24 @@ export default function App() {
             </div>
           ) : (
             <>
+              {activeSection === 'overview' && (() => {
+                const total = petOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+                const paid = petOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
+                const debt = petOrders.reduce((sum, o) => sum + (Number(o.debtAmount) || 0), 0);
+                const money = (n: number) => n.toLocaleString('vi-VN') + ' đ';
+                return <div className="space-y-6">
+                  <div className="bg-slate-900 text-white p-6 rounded-2xl"><h1 className="text-2xl font-bold">Hệ Thống Tổng Quan</h1><p className="text-sm text-slate-400 mt-2">Doanh thu, công nợ và hoạt động in PET DTF</p></div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="bg-white rounded-2xl border p-6"><p className="text-slate-500 text-sm">Tổng doanh thu PET</p><p className="text-2xl font-bold mt-2">{money(total)}</p></div>
+                    <div className="bg-white rounded-2xl border p-6"><p className="text-slate-500 text-sm">Đã thu</p><p className="text-2xl font-bold mt-2 text-emerald-700">{money(paid)}</p></div>
+                    <div className="bg-white rounded-2xl border p-6"><p className="text-slate-500 text-sm">Công nợ PET</p><p className="text-2xl font-bold mt-2 text-rose-700">{money(debt)}</p></div>
+                    <div className="bg-white rounded-2xl border p-6"><p className="text-slate-500 text-sm">Số đơn PET</p><p className="text-2xl font-bold mt-2">{petOrders.length}</p></div>
+                    <div className="bg-white rounded-2xl border p-6"><p className="text-slate-500 text-sm">Khách hàng PET</p><p className="text-2xl font-bold mt-2">{petCustomers.length}</p></div>
+                  </div>
+                  <div className="flex gap-3 flex-wrap"><button onClick={() => setActiveSection('sales')} className="bg-blue-600 text-white px-5 py-3 rounded-xl font-semibold">Quản lý đơn in PET</button><button onClick={() => setActiveSection('temporary')} className="bg-slate-800 text-white px-5 py-3 rounded-xl font-semibold">Bill tạm</button><button onClick={() => setActiveSection('debts')} className="bg-white border px-5 py-3 rounded-xl font-semibold">Công nợ khách PET</button></div>
+                </div>;
+              })()}
+              {activeSection === 'temporary' && <TemporaryBillManager />}
               {activeSection === 'sales' && (
                 <SalesManager 
                   orders={petOrders} 
