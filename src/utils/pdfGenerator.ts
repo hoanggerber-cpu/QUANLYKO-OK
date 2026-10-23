@@ -123,6 +123,157 @@ async function renderHtmlToPdf(
   }
 }
 
+// Reconciliation reports are measured as real DOM rows before rendering. Each A4
+// page is captured independently, so neither tables nor signatures are sliced.
+async function renderReconciliationPages(source: HTMLElement, fileName: string): Promise<void> {
+  const pageWidth = 755;
+  const pageHeight = Math.floor(pageWidth * 297 / 210);
+  const bottomReserve = 44;
+  const pageContentLimit = pageHeight - bottomReserve;
+  const originalStyle = source.getAttribute('style') || '';
+  source.style.width = pageWidth + 'px';
+  source.style.height = 'auto';
+  source.style.minHeight = '0';
+  document.body.appendChild(source);
+  try {
+    await document.fonts.ready;
+    const images = Array.from(source.querySelectorAll('img'));
+    await Promise.all(images.map(img => img.complete ? Promise.resolve() : new Promise<void>(resolve => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+    })));
+
+    const header = source.querySelector<HTMLElement>('[data-report-header]');
+    const intro = source.querySelector<HTMLElement>('[data-report-intro]');
+    const ledger = source.querySelector<HTMLElement>('[data-report-ledger]');
+    const summary = source.querySelector<HTMLElement>('[data-report-summary]');
+    const payments = source.querySelector<HTMLElement>('[data-report-payments]');
+    const signatures = source.querySelector<HTMLElement>('[data-report-signatures]');
+    if (!header || !intro || !ledger || !summary || !payments || !signatures) {
+      throw new Error('Missing reconciliation report sections');
+    }
+
+    const pages: HTMLElement[] = [];
+    const makePage = (): HTMLElement => {
+      const page = document.createElement('div');
+      page.style.cssText = originalStyle;
+      page.style.position = 'relative';
+      page.style.left = 'auto';
+      page.style.top = 'auto';
+      page.style.width = pageWidth + 'px';
+      page.style.height = pageHeight + 'px';
+      page.style.minHeight = pageHeight + 'px';
+      page.style.overflow = 'hidden';
+      page.style.boxSizing = 'border-box';
+      page.style.paddingBottom = '55px';
+      const heading = header.cloneNode(true) as HTMLElement;
+      heading.style.marginBottom = '16px';
+      page.appendChild(heading);
+      source.appendChild(page);
+      pages.push(page);
+      return page;
+    };
+    let page = makePage();
+    const fits = () => page.scrollHeight <= pageContentLimit;
+    const appendBlock = (block: HTMLElement): void => {
+      page.appendChild(block);
+      if (!fits() && page.childElementCount > 2) {
+        page.removeChild(block);
+        page = makePage();
+        page.appendChild(block);
+      }
+    };
+    appendBlock(intro.cloneNode(true) as HTMLElement);
+
+    const table = ledger.querySelector('table');
+    if (table) {
+      const tableHeader = table.querySelector('thead');
+      const rows = Array.from(table.querySelectorAll('tbody > tr'));
+      let currentTable: HTMLTableElement | null = null;
+      const startTable = (): void => {
+        const wrapper = document.createElement('div');
+        wrapper.style.marginTop = '18px';
+        currentTable = document.createElement('table');
+        currentTable.style.cssText = table.getAttribute('style') || '';
+        if (tableHeader) currentTable.appendChild(tableHeader.cloneNode(true));
+        currentTable.appendChild(document.createElement('tbody'));
+        wrapper.appendChild(currentTable);
+        page.appendChild(wrapper);
+      };
+      startTable();
+      for (const row of rows) {
+        const clonedRow = row.cloneNode(true) as HTMLTableRowElement;
+        currentTable!.tBodies[0].appendChild(clonedRow);
+        if (!fits()) {
+          currentTable!.tBodies[0].removeChild(clonedRow);
+          if (currentTable!.tBodies[0].rows.length === 0) {
+            throw new Error('One order row exceeds an A4 page');
+          }
+          page = makePage();
+          startTable();
+          currentTable!.tBodies[0].appendChild(clonedRow);
+          if (!fits()) throw new Error('One order row exceeds an A4 page');
+        }
+      }
+    }
+    appendBlock(summary.cloneNode(true) as HTMLElement);
+
+    const paymentTable = payments.querySelector('table');
+    if (!paymentTable) {
+      appendBlock(payments.cloneNode(true) as HTMLElement);
+    } else {
+      const paymentHeading = payments.querySelector('h3');
+      const paymentNote = payments.querySelector('div:last-child');
+      const paymentRows = Array.from(paymentTable.querySelectorAll('tbody > tr'));
+      const paymentHeader = paymentTable.querySelector('thead');
+      let paymentBody: HTMLTableSectionElement | null = null;
+      const startPaymentTable = (): void => {
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-top:25px;padding-top:15px;border-top:1px solid #e2e8f0;';
+        if (paymentHeading) section.appendChild(paymentHeading.cloneNode(true));
+        const t = document.createElement('table');
+        t.style.cssText = paymentTable.getAttribute('style') || '';
+        if (paymentHeader) t.appendChild(paymentHeader.cloneNode(true));
+        paymentBody = document.createElement('tbody');
+        t.appendChild(paymentBody);
+        section.appendChild(t);
+        page.appendChild(section);
+      };
+      startPaymentTable();
+      for (const paymentRow of paymentRows) {
+        const clone = paymentRow.cloneNode(true) as HTMLTableRowElement;
+        paymentBody!.appendChild(clone);
+        if (!fits()) {
+          paymentBody!.removeChild(clone);
+          if (paymentBody!.rows.length === 0) throw new Error('One payment row exceeds an A4 page');
+          page = makePage();
+          startPaymentTable();
+          paymentBody!.appendChild(clone);
+          if (!fits()) throw new Error('One payment row exceeds an A4 page');
+        }
+      }
+      if (paymentNote) appendBlock(paymentNote.cloneNode(true) as HTMLElement);
+    }
+    appendBlock(signatures.cloneNode(true) as HTMLElement);
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    for (let i = 0; i < pages.length; i++) {
+      const footer = document.createElement('div');
+      footer.style.cssText = 'position:absolute;bottom:18px;left:48px;right:48px;text-align:right;color:#64748b;font:11px Inter,Arial,sans-serif;';
+      footer.textContent = 'Trang ' + (i + 1) + '/' + pages.length;
+      pages[i].appendChild(footer);
+      const canvas = await html2canvas(pages[i], {
+        scale: 1.7, useCORS: true, logging: false, backgroundColor: '#ffffff'
+      });
+      if (i) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    }
+    pdf.save(fileName);
+  } finally {
+    if (source.parentNode) source.parentNode.removeChild(source);
+  }
+}
+
 // 1. COMPACT A5 SALE RECEIPT WITH GRAPHICS (unicode & thumbnails fully supported!)
 export async function generateInvoicePDF(order: Order): Promise<void> {
   const container = document.createElement('div');
@@ -390,7 +541,7 @@ export async function generateReconciliationPDF(
   }).join('');
 
   container.innerHTML = `
-    <!-- Top A4 Commercial Header banner -->
+    <div data-report-header>\n    <!-- Top A4 Commercial Header banner -->
     <div style="border-bottom: 2px solid #0f172a; padding-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start;">
       <div>
         <h1 style="margin: 0; font-size: 20px; font-weight: 950; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.5px;">CƠ SỞ IN ẤN HOÀNG UYÊN</h1>
@@ -403,7 +554,7 @@ export async function generateReconciliationPDF(
       </div>
     </div>
 
-    <!-- Context Intro and Title -->
+    </div>\n    <div data-report-intro>\n    <!-- Context Intro and Title -->
     <div style="margin-top: 25px;">
       <h2 style="margin: 0; font-size: 18px; font-weight: 900; color: #1e3a8a; text-transform: uppercase;">BIÊN BẢN ĐỐI SOÁT & CHỐT DƯ NỢ CÔNG NỢ</h2>
       <p style="margin: 5px 0 0 0; font-weight: 800; color: #0f172a; text-transform: uppercase; font-size: 14px; border-left: 3.5px solid #2563eb; padding-left: 10px; margin-top: 8px;">QUÝ ĐỐI TÁC KHÁCH HÀNG: ${customerName.toUpperCase()}</p>
@@ -423,7 +574,7 @@ export async function generateReconciliationPDF(
       </div>
     </div>
 
-    <!-- Detailed Ledger Accounts Grid -->
+    </div>\n    <div data-report-ledger>\n    <!-- Detailed Ledger Accounts Grid -->
     <div style="margin-top: 25px;">
       <table style="width: 100%; border-collapse: collapse; text-align: left;">
         <thead>
@@ -444,7 +595,7 @@ export async function generateReconciliationPDF(
       </table>
     </div>
 
-    <!-- Reporting period totals and cumulative customer balances -->
+    </div>\n    <div data-report-summary>\n    <!-- Reporting period totals and cumulative customer balances -->
     <div style="margin-top:36px;page-break-inside:avoid;">
       <h3 style="font-size:13px;color:#0f172a;margin:0 0 12px;letter-spacing:0.35px;">PHÁT SINH TRONG KỲ ĐỐI SOÁT</h3>
       <div style="font-size:12px;line-height:1.9;margin:6px 0;">Tiền hàng và phụ thu trong kỳ: <strong>${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
@@ -466,13 +617,13 @@ export async function generateReconciliationPDF(
       </div>
       <div style="font-size:10px;color:#64748b;margin-top:14px;line-height:1.9;">Lũy kế được tính từ các đơn hàng đã ghi nhận đến hết kỳ đối soát, không xóa nợ khi chuyển tháng. Tiền thanh toán lấy từ số đã phân bổ vào đơn hàng.</div>
     </div>
-    <div style="margin-top:34px;padding-top:18px;border-top:1px solid #e2e8f0;page-break-inside:avoid;">
+    </div>\n    <div data-report-payments style="margin-top:34px;padding-top:18px;border-top:1px solid #e2e8f0;page-break-inside:avoid;">
       <h3 style="font-size:13px;color:#0f172a;margin:0 0 15px;letter-spacing:0.35px;">LỊCH SỬ THANH TOÁN ĐÃ GHI NHẬN ĐẾN CUỐI KỲ</h3>
       ${paymentsHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#f8fafc;"><th style="text-align:left;padding:11px 8px;">Ngày</th><th style="text-align:left;padding:11px 8px;">Phương thức</th><th style="text-align:right;padding:11px 8px;">Số tiền</th></tr></thead><tbody>${paymentsHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có lịch sử thanh toán riêng được ghi nhận.</div>'}
       <div style="font-size:10px;color:#64748b;margin-top:14px;line-height:1.8;">Lịch sử dùng để đối chiếu, không cộng lần thứ hai vào tổng đã thanh toán.</div>
     </div>
 
-    <!-- Hand Signature Block Panel -->
+    </div>\n    <div data-report-signatures>\n    <!-- Hand Signature Block Panel -->
     <div style="margin-top: 60px; page-break-inside: avoid; border-top: 1.5px solid #f1f5f9; padding-top: 20px;">
       <div style="float: left; width: 45%; text-align: center;">
         <div style="font-weight: 800; color: #4b5563; font-size: 11.5px; text-transform: uppercase;">ĐẠI DIỆN KHÁCH HÀNG ĐỐI TÁC</div>
@@ -487,5 +638,5 @@ export async function generateReconciliationPDF(
   `;
 
   const safeCustomerName = customerName.replace(/\s+/g, '_');
-  await renderHtmlToPdf(container, `Doi_Soat_Cong_No_${safeCustomerName}_${month}_${year}.pdf`, false, true);
+  await renderReconciliationPages(container, `Doi_Soat_Cong_No_${safeCustomerName}_${month}_${year}.pdf`);
 }
