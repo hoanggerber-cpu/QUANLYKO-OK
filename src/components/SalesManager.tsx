@@ -1469,19 +1469,6 @@ export default function SalesManager({
           <span className="w-1.5 h-1.5 bg-blue-650 rounded-full"></span>
           Đơn hàng In Pet DTF ({orders.filter(o => o.type === 'dtf').length})
         </button>
-        <button
-          onClick={() => {
-            setActiveTab('tshirt');
-          }}
-          className={`px-6 py-2.5 font-black text-xs rounded-xl tracking-wider transition-all duration-150 uppercase cursor-pointer flex items-center gap-1.5 ${
-            activeTab === 'tshirt'
-              ? 'bg-white text-blue-700 shadow-sm'
-              : 'text-slate-500 hover:text-slate-850'
-          }`}
-        >
-          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
-          Đơn hàng Áo thun ({orders.filter(o => o.type === 'tshirt').length})
-        </button>
       </div>
 
       {/* Real-time statistics summaries */}
@@ -1622,7 +1609,7 @@ export default function SalesManager({
           </span>
           <input
             type="text"
-            placeholder={`Gõ để tìm nhanh tên khách, mã hóa đơn (Vd: ORD-DTF-...) hoặc tên tóm tắt thiết kế mặt hàng ${activeTab === 'dtf' ? 'In Pet' : 'Áo thun'}...`}
+            placeholder="Tìm tên khách, mã hóa đơn PET hoặc tên thiết kế..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/15 focus:border-blue-500 transition-all text-sm font-semibold text-slate-800"
@@ -2474,7 +2461,7 @@ export default function SalesManager({
               {/* Product Category tab selector */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Loại sản phẩm thêm vào giỏ</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -2489,24 +2476,6 @@ export default function SalesManager({
                     }`}
                   >
                     In Phim PET DTF
-                  </button>
-                  <button
-                    type="button"
-                    disabled={availableTshirtProducts.length === 0}
-                    onClick={() => {
-                      setSelectedProductType('tshirt');
-                      if (tshirtGroups.length > 0 && !selectedTshirtGroup) {
-                        setSelectedTshirtGroup(tshirtGroups[0].key);
-                      }
-                      setQuantity(1);
-                    }}
-                    className={`p-3 text-sm font-bold border rounded-xl cursor-pointer text-center disabled:opacity-40 disabled:cursor-not-allowed ${
-                      selectedProductType === 'tshirt'
-                        ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
-                    }`}
-                  >
-                    Bán Áo thun Có Sẵn {availableTshirtProducts.length === 0 && '(Hết hàng)'}
                   </button>
                 </div>
               </div>
@@ -3464,7 +3433,7 @@ export default function SalesManager({
                       CƠ SỞ IN ẤN HOÀNG UYÊN
                     </h4>
                     <p className="text-[9px] text-slate-500 font-medium">
-                      Gia Công In PET DTF & Áo Thun Sỉ Toàn Quốc
+                      Gia Công In PET DTF
                     </p>
                     <p className="text-[8px] text-slate-400 font-mono">
                       Hotline: 0931325512 - 0941727079 — Đ/C: 557/51A Hương Lộ 3, Bình Tân, TP.HCM

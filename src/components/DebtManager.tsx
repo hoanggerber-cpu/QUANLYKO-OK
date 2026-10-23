@@ -976,7 +976,7 @@ export default function DebtManager({
     <div className="space-y-6 animate-fade-in text-slate-700">
       {selectedCustomer && currentCustomer ? renderDetailView() : (
         <>
-          {/* Category Tabs */}
+          {/* PET customer section */}
       <div className="flex border-b border-slate-200">
         <button
           onClick={() => setActiveTab('dtf')}
@@ -987,16 +987,6 @@ export default function DebtManager({
           }`}
         >
           Khách hàng In Pet DTF
-        </button>
-        <button
-          onClick={() => setActiveTab('tshirt')}
-          className={`px-5 py-3 font-bold text-sm tracking-wide border-b-2 cursor-pointer transition-colors ${
-            activeTab === 'tshirt'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          Khách hàng Áo thun
         </button>
       </div>
 
