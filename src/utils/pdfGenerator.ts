@@ -146,7 +146,8 @@ async function renderReconciliationPages(source: HTMLElement, fileName: string):
     const header = source.querySelector<HTMLElement>('[data-report-header]');
     const intro = source.querySelector<HTMLElement>('[data-report-intro]');
     const ledger = source.querySelector<HTMLElement>('[data-report-ledger]');
-    const carry = source.querySelector<HTMLElement>('[data-report-carry]');\n    const summary = source.querySelector<HTMLElement>('[data-report-summary]');
+    const carry = source.querySelector<HTMLElement>('[data-report-carry]');
+    const summary = source.querySelector<HTMLElement>('[data-report-summary]');
     const payments = source.querySelector<HTMLElement>('[data-report-payments]');
     const signatures = source.querySelector<HTMLElement>('[data-report-signatures]');
     if (!header || !intro || !ledger || !carry || !summary || !payments || !signatures) {
@@ -597,7 +598,8 @@ export async function generateReconciliationPDF(
   }).join('');
 
   container.innerHTML = `
-    <div data-report-header>\n    <!-- Top A4 Commercial Header banner -->
+    <div data-report-header>
+    <!-- Top A4 Commercial Header banner -->
     <div style="border-bottom: 2px solid #0f172a; padding-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start;">
       <div>
         <h1 style="margin: 0; font-size: 20px; font-weight: 950; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.5px;">CƠ SỞ IN ẤN HOÀNG UYÊN</h1>
@@ -610,7 +612,9 @@ export async function generateReconciliationPDF(
       </div>
     </div>
 
-    </div>\n    <div data-report-intro>\n    <!-- Context Intro and Title -->
+    </div>
+    <div data-report-intro>
+    <!-- Context Intro and Title -->
     <div style="margin-top: 25px;">
       <h2 style="margin: 0; font-size: 18px; font-weight: 900; color: #1e3a8a; text-transform: uppercase;">BIÊN BẢN ĐỐI SOÁT & CHỐT DƯ NỢ CÔNG NỢ</h2>
       <p style="margin: 5px 0 0 0; font-weight: 800; color: #0f172a; text-transform: uppercase; font-size: 14px; border-left: 3.5px solid #2563eb; padding-left: 10px; margin-top: 8px;">QUÝ ĐỐI TÁC KHÁCH HÀNG: ${customerName.toUpperCase()}</p>
@@ -630,9 +634,12 @@ export async function generateReconciliationPDF(
       </div>
     </div>
 
-    </div>\n    <div data-report-ledger>\n    <!-- Detailed Ledger Accounts Grid -->
+    </div>
+    <div data-report-ledger>
+    <!-- Detailed Ledger Accounts Grid -->
     <div style="margin-top: 25px;">
-      <h3 style="font-size:13px;color:#1e3a8a;margin:0 0 12px;">I. ĐƠN HÀNG PET PHÁT SINH TRONG KỲ</h3>\n      <table style="width: 100%; border-collapse: collapse; text-align: left;">
+      <h3 style="font-size:13px;color:#1e3a8a;margin:0 0 12px;">I. ĐƠN HÀNG PET PHÁT SINH TRONG KỲ</h3>
+      <table style="width: 100%; border-collapse: collapse; text-align: left;">
         <thead>
           <tr style="border-bottom: 2.5px solid #0f172a; background-color: #f8fafc; font-size: 11.5px;">
             <th style="padding: 14px 0; text-align: center; font-weight: 800; color: #0F172A; width: 40px;">STT</th>
@@ -651,13 +658,25 @@ export async function generateReconciliationPDF(
       </table>
     </div>
 
-    </div>\n    <div data-report-carry>\n      <div style="margin-top:24px;">\n        <h3 style="font-size:13px;color:#92400e;margin:0 0 12px;">II. CÔNG NỢ CŨ / SỐ DƯ CHUYỂN KỲ GHI NHẬN TRONG KỲ</h3>\n        ${carryHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr><th style="text-align:left;padding:9px;">Ngày ghi nhận</th><th style="text-align:left;padding:9px;">Diễn giải gốc</th><th style="text-align:right;padding:9px;">Giá trị</th></tr></thead><tbody>${carryHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có khoản nợ cũ được nhận diện trong các giao dịch của kỳ này.</div>'}\n        <div style="font-size:10px;color:#64748b;margin-top:10px;line-height:1.7;">Phân loại theo mô tả đã lưu, không làm thay đổi tổng nợ. Khoản nợ cũ được ghi nhận như giao dịch lịch sử; không phải mét phim PET mới in.</div>\n      </div>\n    </div>\n    <div data-report-summary>\n    <!-- Reporting period totals and cumulative customer balances -->
+    </div>
+    <div data-report-carry>
+      <div style="margin-top:24px;">
+        <h3 style="font-size:13px;color:#92400e;margin:0 0 12px;">II. CÔNG NỢ CŨ / SỐ DƯ CHUYỂN KỲ GHI NHẬN TRONG KỲ</h3>
+        ${carryHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr><th style="text-align:left;padding:9px;">Ngày ghi nhận</th><th style="text-align:left;padding:9px;">Diễn giải gốc</th><th style="text-align:right;padding:9px;">Giá trị</th></tr></thead><tbody>${carryHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có khoản nợ cũ được nhận diện trong các giao dịch của kỳ này.</div>'}
+        <div style="font-size:10px;color:#64748b;margin-top:10px;line-height:1.7;">Phân loại theo mô tả đã lưu, không làm thay đổi tổng nợ. Khoản nợ cũ được ghi nhận như giao dịch lịch sử; không phải mét phim PET mới in.</div>
+      </div>
+    </div>
+    <div data-report-summary>
+    <!-- Reporting period totals and cumulative customer balances -->
     <div style="margin-top:36px;page-break-inside:avoid;">
       <h3 style="font-size:13px;color:#0f172a;margin:0 0 12px;letter-spacing:0.35px;">III. PHÁT SINH TRONG KỲ ĐỐI SOÁT</h3>
       <div style="font-size:12px;line-height:1.9;margin:6px 0;">Đơn PET và phụ thu trong kỳ: <strong>${periodProductionAmount.toLocaleString('vi-VN')} đ</strong></div>
-      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Nợ cũ ghi nhận trong kỳ: <strong>${periodCarryAmount.toLocaleString('vi-VN')} đ</strong></div>\n      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Tổng phát sinh được ghi nhận: <strong>${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>\n      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Số tiền đã phân bổ thanh toán cho đơn trong kỳ: <strong>${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
+      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Nợ cũ ghi nhận trong kỳ: <strong>${periodCarryAmount.toLocaleString('vi-VN')} đ</strong></div>
+      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Tổng phát sinh được ghi nhận: <strong>${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
+      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Số tiền đã phân bổ thanh toán cho đơn trong kỳ: <strong>${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
       <h3 style="margin:28px 0 15px;font-size:14px;color:#1e3a8a;letter-spacing:0.35px;">IV. TỔNG HỢP CÔNG NỢ LŨY KẾ ĐẾN CUỐI KỲ</h3>
-      <div style="font-size:11px;line-height:1.9;margin:10px 0;">Tổng giao dịch PET lũy kế: <strong>${productionAmount.toLocaleString('vi-VN')} đ</strong> · Nợ cũ được ghi nhận lũy kế: <strong>${carryAmount.toLocaleString('vi-VN')} đ</strong></div>\n      <div style="display:flex;gap:16px;margin:15px 0 18px;">
+      <div style="font-size:11px;line-height:1.9;margin:10px 0;">Tổng giao dịch PET lũy kế: <strong>${productionAmount.toLocaleString('vi-VN')} đ</strong> · Nợ cũ được ghi nhận lũy kế: <strong>${carryAmount.toLocaleString('vi-VN')} đ</strong></div>
+      <div style="display:flex;gap:16px;margin:15px 0 18px;">
         <div style="width:50%;background:#f1f5f9;padding:18px;border-radius:10px;">
           <div style="font-size:10px;color:#64748b;line-height:1.7;margin-bottom:8px;">TỔNG GIÁ TRỊ GHI NHẬN (PET + NỢ CŨ)</div>
           <strong style="font-size:18px;color:#0f172a;">${cumulative.totalAmount.toLocaleString('vi-VN')} đ</strong>
@@ -673,13 +692,16 @@ export async function generateReconciliationPDF(
       </div>
       <div style="font-size:10px;color:#64748b;margin-top:14px;line-height:1.9;">Lũy kế được tính từ các đơn hàng đã ghi nhận đến hết kỳ đối soát, không xóa nợ khi chuyển tháng. Tiền thanh toán lấy từ số đã phân bổ vào đơn hàng.</div>
     </div>
-    </div>\n    <div data-report-payments style="margin-top:34px;padding-top:18px;border-top:1px solid #e2e8f0;page-break-inside:avoid;">
+    </div>
+    <div data-report-payments style="margin-top:34px;padding-top:18px;border-top:1px solid #e2e8f0;page-break-inside:avoid;">
       <h3 style="font-size:13px;color:#0f172a;margin:0 0 15px;letter-spacing:0.35px;">V. LỊCH SỬ THANH TOÁN ĐẾN CUỐI KỲ</h3>
       ${paymentsHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#f8fafc;"><th style="text-align:left;padding:11px 8px;">Ngày</th><th style="text-align:left;padding:11px 8px;">Phương thức</th><th style="text-align:right;padding:11px 8px;">Số tiền</th></tr></thead><tbody>${paymentsHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có lịch sử thanh toán riêng được ghi nhận.</div>'}
       <div style="font-size:10px;color:#64748b;margin-top:14px;line-height:1.8;">Lịch sử dùng để đối chiếu, không cộng lần thứ hai vào tổng đã thanh toán.</div>
     </div>
 
-    </div>\n    <div data-report-signatures>\n    <!-- Hand Signature Block Panel -->
+    </div>
+    <div data-report-signatures>
+    <!-- Hand Signature Block Panel -->
     <div style="margin-top: 60px; page-break-inside: avoid; border-top: 1.5px solid #f1f5f9; padding-top: 20px;">
       <div style="float: left; width: 45%; text-align: center;">
         <div style="font-weight: 800; color: #4b5563; font-size: 11.5px; text-transform: uppercase;">ĐẠI DIỆN KHÁCH HÀNG ĐỐI TÁC</div>
