@@ -361,9 +361,8 @@ export class StorageManager {
     const isOnline = await this.checkSupabaseConnection();
     if (!isOnline) throw new Error('Không thể kết nối Supabase.');
 
-    const { data: remoteOrders, error } = await supabase.from('orders').select('id');
-    if (error) throw error;
-    return this.backfillMissingDtfOrders(this.getOrders(), remoteOrders || []);
+    const remoteOrders = await this.fetchAllSupabaseRows('orders');
+    return this.backfillMissingDtfOrders(this.getOrders(), remoteOrders);
   }
 
   private static saveOrders(orders: Order[]): void {
