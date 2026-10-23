@@ -145,12 +145,13 @@ async function renderReconciliationPages(source: HTMLElement, fileName: string):
 
     const header = source.querySelector<HTMLElement>('[data-report-header]');
     const intro = source.querySelector<HTMLElement>('[data-report-intro]');
+    const monthly = source.querySelector<HTMLElement>('[data-report-monthly]');
     const ledger = source.querySelector<HTMLElement>('[data-report-ledger]');
     const carry = source.querySelector<HTMLElement>('[data-report-carry]');
     const summary = source.querySelector<HTMLElement>('[data-report-summary]');
     const payments = source.querySelector<HTMLElement>('[data-report-payments]');
     const signatures = source.querySelector<HTMLElement>('[data-report-signatures]');
-    if (!header || !intro || !ledger || !carry || !summary || !payments || !signatures) {
+    if (!header || !intro || !monthly || !ledger || !carry || !summary || !payments || !signatures) {
       throw new Error('Missing reconciliation report sections');
     }
 
@@ -190,6 +191,40 @@ async function renderReconciliationPages(source: HTMLElement, fileName: string):
     };
     appendBlock(intro.cloneNode(true) as HTMLElement);
 
+    const monthlyTable = monthly.querySelector('table');
+    if (monthlyTable) {
+      const monthlyRows = Array.from(monthlyTable.querySelectorAll('tbody > tr'));
+      const monthlyHead = monthlyTable.querySelector('thead');
+      let monthlyBody: HTMLTableSectionElement | null = null;
+      const startMonthlyTable = (): void => {
+        const section = document.createElement('div');
+        section.style.marginTop = '22px';
+        const heading = monthly.querySelector('h3');
+        if (heading) section.appendChild(heading.cloneNode(true));
+        const t = document.createElement('table');
+        t.style.cssText = monthlyTable.getAttribute('style') || '';
+        if (monthlyHead) t.appendChild(monthlyHead.cloneNode(true));
+        monthlyBody = document.createElement('tbody');
+        t.appendChild(monthlyBody);
+        section.appendChild(t);
+        page.appendChild(section);
+      };
+      startMonthlyTable();
+      for (const row of monthlyRows) {
+        const clone = row.cloneNode(true) as HTMLTableRowElement;
+        monthlyBody!.appendChild(clone);
+        if (!fits()) {
+          monthlyBody!.removeChild(clone);
+          if (monthlyBody!.rows.length === 0) throw new Error('Monthly summary row exceeds A4');
+          page = makePage();
+          startMonthlyTable();
+          monthlyBody!.appendChild(clone);
+          if (!fits()) throw new Error('Monthly summary row exceeds A4');
+        }
+      }
+      const note = monthly.querySelector<HTMLElement>('[data-monthly-note]');
+      if (note) appendBlock(note.cloneNode(true) as HTMLElement);
+    }
     const table = ledger.querySelector('table');
     if (table) {
       const tableHeader = table.querySelector('thead');
@@ -537,6 +572,54 @@ export async function generateReconciliationPDF(
     <td style="padding:11px 8px;line-height:1.7;overflow-wrap:anywhere;">${order.notes || order.productName || order.orderCode}</td>
     <td style="padding:11px 8px;text-align:right;white-space:nowrap;font-weight:700;">${order.totalPrice.toLocaleString('vi-VN')} đ</td>
   </tr>`).join('');
+  // Monthly cash flow uses the actual payment date, never the date of an order
+  // to which a payment was later allocated.
+  const reportOrders = [...cumulativeOrders].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const reportingYear = year === 'all' ? null : Number(year);
+  const reportingMonth = month === 'all' ? null : Number(month);
+  const monthKeys = reportingYear === null
+    ? [...new Set(reportOrders.map(o => o.createdAt.slice(0, 7)))].sort()
+    : Array.from({ length: reportingMonth === null ? 12 : 1 }, (_, i) =>
+        String(reportingYear) + '-' + String(reportingMonth === null ? i + 1 : reportingMonth).padStart(2, '0'));
+  const periodStart = monthKeys.length ? monthKeys[0] : '';
+  const allPayments = paymentHistory.filter(p => Number.isFinite(p.amount) && p.amount > 0);
+  const totalAllocatedPaid = cumulativeOrders.reduce((sum, o) => sum + o.paidAmount, 0);
+  const recordedPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
+  const paymentDifference = totalAllocatedPaid - recordedPaid;
+  const beforePeriod = reportOrders.filter(o => o.createdAt.slice(0, 7) < periodStart);
+  const openingRecorded = beforePeriod.reduce((sum, o) => sum + o.totalPrice, 0);
+  const openingPayments = allPayments.filter(p => p.createdAt.slice(0, 7) < periodStart)
+    .reduce((sum, p) => sum + p.amount, 0);
+  let runningRecordedBalance = openingRecorded - openingPayments;
+  const money = (amount: number): string => Math.round(amount).toLocaleString('vi-VN');
+  const monthlyRowsHtml = monthKeys.map(key => {
+    const monthOrders = reportOrders.filter(o => o.createdAt.slice(0, 7) === key);
+    const petOrders = monthOrders.filter(o => !isCarryForward(o));
+    const oldOrders = monthOrders.filter(isCarryForward);
+    const metres = petOrders.reduce((sum, o) => sum + o.quantity, 0);
+    const petAmount = petOrders.reduce((sum, o) => sum + o.totalPrice, 0);
+    const oldAmount = oldOrders.reduce((sum, o) => sum + o.totalPrice, 0);
+    const paid = allPayments.filter(p => p.createdAt.slice(0, 7) === key)
+      .reduce((sum, p) => sum + p.amount, 0);
+    runningRecordedBalance += petAmount + oldAmount - paid;
+    const label = key.slice(5) + '/' + key.slice(0, 4);
+    return `<tr style="border-bottom:1px solid #e2e8f0;">
+      <td style="padding:9px 4px;white-space:nowrap;">${label}</td>
+      <td style="padding:9px 4px;text-align:right;">${metres.toLocaleString('vi-VN',{maximumFractionDigits:2})}</td>
+      <td style="padding:9px 4px;text-align:right;">${money(petAmount)}</td>
+      <td style="padding:9px 4px;text-align:right;">${money(oldAmount)}</td>
+      <td style="padding:9px 4px;text-align:right;color:#047857;">${money(paid)}</td>
+      <td style="padding:9px 4px;text-align:right;font-weight:700;">${money(runningRecordedBalance)}</td>
+    </tr>`;
+  }).join('');
+  const reconciliationWarning = Math.abs(paymentDifference) >= 1
+    ? `<div style="color:#9a3412;background:#fff7ed;padding:10px;line-height:1.7;margin-top:10px;font-size:10px;">
+       CẦN ĐỐI CHIẾU: Đã thanh toán phân bổ vào đơn đến cuối kỳ là ${money(totalAllocatedPaid)} đ,
+       nhưng lịch sử nhận tiền ghi nhận ${money(recordedPaid)} đ.
+       Chênh lệch ${money(paymentDifference)} đ có thể do thanh toán trực tiếp khi tạo đơn,
+       điều chỉnh thủ công hoặc thiếu lịch sử. Không tự động phân bổ hay sửa dữ liệu.
+      </div>`
+    : '';
   const paymentsHtml = paymentHistory.length
     ? paymentHistory.map(payment => `<tr style="border-bottom:1px solid #e2e8f0;">
         <td style="padding:11px 8px;">${new Date(payment.createdAt).toLocaleDateString('vi-VN')}</td>
@@ -648,6 +731,28 @@ export async function generateReconciliationPDF(
       </div>
     </div>
 
+    </div>
+    <div data-report-monthly>
+      <div style="margin-top:24px;">
+        <h3 style="font-size:13px;color:#1e3a8a;margin:0 0 12px;">TỔNG HỢP PET VÀ CÔNG NỢ THEO THÁNG</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:9px;line-height:1.6;">
+          <thead><tr style="background:#f1f5f9;color:#334155;">
+            <th style="padding:9px 4px;text-align:left;">Tháng</th>
+            <th style="padding:9px 4px;text-align:right;">Mét PET</th>
+            <th style="padding:9px 4px;text-align:right;">Tiền PET</th>
+            <th style="padding:9px 4px;text-align:right;">Nợ cũ ghi nhận</th>
+            <th style="padding:9px 4px;text-align:right;">Tiền nhận</th>
+            <th style="padding:9px 4px;text-align:right;">Dư nợ theo sổ thu</th>
+          </tr></thead>
+          <tbody>${monthlyRowsHtml}</tbody>
+        </table>
+        <div data-monthly-note style="font-size:10px;color:#64748b;line-height:1.8;margin-top:12px;">
+          Dư đầu kỳ theo giao dịch và lịch sử thu: ${money(openingRecorded - openingPayments)} đ.
+          Tiền nhận được xếp theo ngày thực thu; nợ cũ chỉ ghi một lần tại tháng phát sinh.
+          Dư nợ theo sổ thu có thể khác dư nợ phân bổ vào đơn nếu lịch sử thanh toán chưa đầy đủ.
+          ${reconciliationWarning}
+        </div>
+      </div>
     </div>
     <div data-report-ledger>
     <!-- Detailed Ledger Accounts Grid -->
