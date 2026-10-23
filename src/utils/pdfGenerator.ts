@@ -146,10 +146,10 @@ async function renderReconciliationPages(source: HTMLElement, fileName: string):
     const header = source.querySelector<HTMLElement>('[data-report-header]');
     const intro = source.querySelector<HTMLElement>('[data-report-intro]');
     const ledger = source.querySelector<HTMLElement>('[data-report-ledger]');
-    const summary = source.querySelector<HTMLElement>('[data-report-summary]');
+    const carry = source.querySelector<HTMLElement>('[data-report-carry]');\n    const summary = source.querySelector<HTMLElement>('[data-report-summary]');
     const payments = source.querySelector<HTMLElement>('[data-report-payments]');
     const signatures = source.querySelector<HTMLElement>('[data-report-signatures]');
-    if (!header || !intro || !ledger || !summary || !payments || !signatures) {
+    if (!header || !intro || !ledger || !carry || !summary || !payments || !signatures) {
       throw new Error('Missing reconciliation report sections');
     }
 
@@ -219,6 +219,40 @@ async function renderReconciliationPages(source: HTMLElement, fileName: string):
           if (!fits()) throw new Error('One order row exceeds an A4 page');
         }
       }
+    }
+    const carryTable = carry.querySelector('table');
+    if (carryTable) {
+      const carryHeader = carryTable.querySelector('thead');
+      const carryRows = Array.from(carryTable.querySelectorAll('tbody > tr'));
+      let carryBody: HTMLTableSectionElement | null = null;
+      const startCarryTable = (): void => {
+        const section = document.createElement('div');
+        section.style.marginTop = '22px';
+        const heading = carry.querySelector('h3');
+        if (heading) section.appendChild(heading.cloneNode(true));
+        const t = document.createElement('table');
+        t.style.cssText = carryTable.getAttribute('style') || '';
+        if (carryHeader) t.appendChild(carryHeader.cloneNode(true));
+        carryBody = document.createElement('tbody');
+        t.appendChild(carryBody);
+        section.appendChild(t);
+        page.appendChild(section);
+      };
+      startCarryTable();
+      for (const carryRow of carryRows) {
+        const clone = carryRow.cloneNode(true) as HTMLTableRowElement;
+        carryBody!.appendChild(clone);
+        if (!fits()) {
+          carryBody!.removeChild(clone);
+          if (carryBody!.rows.length === 0) throw new Error('Carry-forward row exceeds A4');
+          page = makePage();
+          startCarryTable();
+          carryBody!.appendChild(clone);
+          if (!fits()) throw new Error('Carry-forward row exceeds A4');
+        }
+      }
+    } else {
+      appendBlock(carry.cloneNode(true) as HTMLElement);
     }
     appendBlock(summary.cloneNode(true) as HTMLElement);
 
@@ -462,7 +496,8 @@ export async function generateReconciliationPDF(
     totalDebt: number;
   },
   cumulativeStats?: { totalAmount: number; totalPaid: number; totalDebt: number },
-  paymentHistory: PaymentHistory[] = []
+  paymentHistory: PaymentHistory[] = [],
+  cumulativeOrders: Order[] = ordersList
 ): Promise<void> {
   const container = document.createElement('div');
   const cumulative = cumulativeStats ?? {
@@ -470,6 +505,23 @@ export async function generateReconciliationPDF(
     totalPaid: stats.totalPaid,
     totalDebt: stats.totalDebt
   };
+  // Only explicit legacy-debt descriptions are grouped as carry-forward entries.
+  // No monetary values are changed and payments mentioned in notes are not deducted again.
+  const isCarryForward = (order: Order): boolean =>
+    /(?:^|\\s)nợ\\s*cũ|công\\s*nợ\\s*(?:đầu\\s*kỳ|chuyển\\s*kỳ)|số\\s*dư\\s*đầu\\s*kỳ/i
+      .test([order.notes, order.productName].filter(Boolean).join(' '));
+  const periodCarry = ordersList.filter(isCarryForward);
+  const periodProduction = ordersList.filter(order => !isCarryForward(order));
+  const cumulativeCarry = cumulativeOrders.filter(isCarryForward);
+  const carryAmount = cumulativeCarry.reduce((sum, order) => sum + order.totalPrice, 0);
+  const productionAmount = cumulative.totalAmount - carryAmount;
+  const periodProductionAmount = periodProduction.reduce((sum, order) => sum + order.totalPrice, 0);
+  const periodCarryAmount = periodCarry.reduce((sum, order) => sum + order.totalPrice, 0);
+  const carryHtml = periodCarry.map(order => `<tr style="border-bottom:1px solid #e2e8f0;">
+    <td style="padding:11px 8px;">${new Date(order.createdAt).toLocaleDateString('vi-VN')}</td>
+    <td style="padding:11px 8px;line-height:1.7;overflow-wrap:anywhere;">${order.notes || order.productName || order.orderCode}</td>
+    <td style="padding:11px 8px;text-align:right;white-space:nowrap;font-weight:700;">${order.totalPrice.toLocaleString('vi-VN')} đ</td>
+  </tr>`).join('');
   const paymentsHtml = paymentHistory.length
     ? paymentHistory.map(payment => `<tr style="border-bottom:1px solid #e2e8f0;">
         <td style="padding:11px 8px;">${new Date(payment.createdAt).toLocaleDateString('vi-VN')}</td>
@@ -496,7 +548,7 @@ export async function generateReconciliationPDF(
   const totalSurcharge = ordersList.reduce((sum, order) => sum + Math.max(0, order.surcharge || 0), 0);
   const totalProductAmount = Math.max(0, stats.totalAmount - totalSurcharge);
 
-  const ordersHtml = ordersList.map((order, idx) => {
+  const ordersHtml = periodProduction.map((order, idx) => {
     const productSummary = getOrderProductSummary(order);
     const surcharge = Math.max(0, order.surcharge || 0);
     const productSubtotal = Math.max(0, order.totalPrice - surcharge);
@@ -571,8 +623,8 @@ export async function generateReconciliationPDF(
         </div>
         <div style="float: right; width: 55%; text-align: right; font-size: 11.5px;">
           <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; margin-bottom: 5px;">THỐNG KÊ LƯỢT LƯU</div>
-          <div>Tổng giao dịch chốt sổ: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${ordersList.length}</strong> đơn hàng</div>
-          <div style="margin-top: 2.5px;">Tổng khối lượng giao dịch: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${Number(stats.totalQty.toFixed(2)).toLocaleString('vi-VN')}</strong> mẫu / áo</div>
+          <div>Số đơn PET trong kỳ: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${periodProduction.length}</strong> đơn hàng</div>
+          <div style="margin-top: 2.5px;">Tổng khối lượng giao dịch: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${Number(periodProduction.reduce((sum, order) => sum + order.quantity, 0).toFixed(2)).toLocaleString('vi-VN')}</strong> mẫu / áo</div>
         </div>
         <div style="clear: both;"></div>
       </div>
@@ -580,7 +632,7 @@ export async function generateReconciliationPDF(
 
     </div>\n    <div data-report-ledger>\n    <!-- Detailed Ledger Accounts Grid -->
     <div style="margin-top: 25px;">
-      <table style="width: 100%; border-collapse: collapse; text-align: left;">
+      <h3 style="font-size:13px;color:#1e3a8a;margin:0 0 12px;">I. ĐƠN HÀNG PET PHÁT SINH TRONG KỲ</h3>\n      <table style="width: 100%; border-collapse: collapse; text-align: left;">
         <thead>
           <tr style="border-bottom: 2.5px solid #0f172a; background-color: #f8fafc; font-size: 11.5px;">
             <th style="padding: 14px 0; text-align: center; font-weight: 800; color: #0F172A; width: 40px;">STT</th>
@@ -599,15 +651,15 @@ export async function generateReconciliationPDF(
       </table>
     </div>
 
-    </div>\n    <div data-report-summary>\n    <!-- Reporting period totals and cumulative customer balances -->
+    </div>\n    <div data-report-carry>\n      <div style="margin-top:24px;">\n        <h3 style="font-size:13px;color:#92400e;margin:0 0 12px;">II. CÔNG NỢ CŨ / SỐ DƯ CHUYỂN KỲ GHI NHẬN TRONG KỲ</h3>\n        ${carryHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr><th style="text-align:left;padding:9px;">Ngày ghi nhận</th><th style="text-align:left;padding:9px;">Diễn giải gốc</th><th style="text-align:right;padding:9px;">Giá trị</th></tr></thead><tbody>${carryHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có khoản nợ cũ được nhận diện trong các giao dịch của kỳ này.</div>'}\n        <div style="font-size:10px;color:#64748b;margin-top:10px;line-height:1.7;">Phân loại theo mô tả đã lưu, không làm thay đổi tổng nợ. Khoản nợ cũ được ghi nhận như giao dịch lịch sử; không phải mét phim PET mới in.</div>\n      </div>\n    </div>\n    <div data-report-summary>\n    <!-- Reporting period totals and cumulative customer balances -->
     <div style="margin-top:36px;page-break-inside:avoid;">
-      <h3 style="font-size:13px;color:#0f172a;margin:0 0 12px;letter-spacing:0.35px;">PHÁT SINH TRONG KỲ ĐỐI SOÁT</h3>
-      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Tiền hàng và phụ thu trong kỳ: <strong>${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
-      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Số tiền đã phân bổ thanh toán cho đơn trong kỳ: <strong>${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
-      <h3 style="margin:28px 0 15px;font-size:14px;color:#1e3a8a;letter-spacing:0.35px;">TỔNG HỢP CÔNG NỢ LŨY KẾ ĐẾN CUỐI KỲ</h3>
-      <div style="display:flex;gap:16px;margin:15px 0 18px;">
+      <h3 style="font-size:13px;color:#0f172a;margin:0 0 12px;letter-spacing:0.35px;">III. PHÁT SINH TRONG KỲ ĐỐI SOÁT</h3>
+      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Đơn PET và phụ thu trong kỳ: <strong>${periodProductionAmount.toLocaleString('vi-VN')} đ</strong></div>
+      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Nợ cũ ghi nhận trong kỳ: <strong>${periodCarryAmount.toLocaleString('vi-VN')} đ</strong></div>\n      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Tổng phát sinh được ghi nhận: <strong>${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>\n      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Số tiền đã phân bổ thanh toán cho đơn trong kỳ: <strong>${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
+      <h3 style="margin:28px 0 15px;font-size:14px;color:#1e3a8a;letter-spacing:0.35px;">IV. TỔNG HỢP CÔNG NỢ LŨY KẾ ĐẾN CUỐI KỲ</h3>
+      <div style="font-size:11px;line-height:1.9;margin:10px 0;">Tổng giao dịch PET lũy kế: <strong>${productionAmount.toLocaleString('vi-VN')} đ</strong> · Nợ cũ được ghi nhận lũy kế: <strong>${carryAmount.toLocaleString('vi-VN')} đ</strong></div>\n      <div style="display:flex;gap:16px;margin:15px 0 18px;">
         <div style="width:50%;background:#f1f5f9;padding:18px;border-radius:10px;">
-          <div style="font-size:10px;color:#64748b;line-height:1.7;margin-bottom:8px;">TỔNG TIỀN HÀNG LŨY KẾ (GỒM PHỤ THU)</div>
+          <div style="font-size:10px;color:#64748b;line-height:1.7;margin-bottom:8px;">TỔNG GIÁ TRỊ GHI NHẬN (PET + NỢ CŨ)</div>
           <strong style="font-size:18px;color:#0f172a;">${cumulative.totalAmount.toLocaleString('vi-VN')} đ</strong>
         </div>
         <div style="width:50%;background:#ecfdf5;padding:18px;border-radius:10px;">
@@ -622,7 +674,7 @@ export async function generateReconciliationPDF(
       <div style="font-size:10px;color:#64748b;margin-top:14px;line-height:1.9;">Lũy kế được tính từ các đơn hàng đã ghi nhận đến hết kỳ đối soát, không xóa nợ khi chuyển tháng. Tiền thanh toán lấy từ số đã phân bổ vào đơn hàng.</div>
     </div>
     </div>\n    <div data-report-payments style="margin-top:34px;padding-top:18px;border-top:1px solid #e2e8f0;page-break-inside:avoid;">
-      <h3 style="font-size:13px;color:#0f172a;margin:0 0 15px;letter-spacing:0.35px;">LỊCH SỬ THANH TOÁN ĐÃ GHI NHẬN ĐẾN CUỐI KỲ</h3>
+      <h3 style="font-size:13px;color:#0f172a;margin:0 0 15px;letter-spacing:0.35px;">V. LỊCH SỬ THANH TOÁN ĐẾN CUỐI KỲ</h3>
       ${paymentsHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#f8fafc;"><th style="text-align:left;padding:11px 8px;">Ngày</th><th style="text-align:left;padding:11px 8px;">Phương thức</th><th style="text-align:right;padding:11px 8px;">Số tiền</th></tr></thead><tbody>${paymentsHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có lịch sử thanh toán riêng được ghi nhận.</div>'}
       <div style="font-size:10px;color:#64748b;margin-top:14px;line-height:1.8;">Lịch sử dùng để đối chiếu, không cộng lần thứ hai vào tổng đã thanh toán.</div>
     </div>
