@@ -769,6 +769,21 @@ export class StorageManager {
     return 0;
   }
 
+  private static async fetchAllSupabaseRows(table: 'orders' | 'order_items' | 'payment_history'): Promise<any[]> {
+    const pageSize = 500;
+    const result: any[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase.from(table)
+        .select('*')
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw new Error(`Failed to fetch ${table} at offset ${offset}: ${error.message}`);
+      const rows = data || [];
+      result.push(...rows);
+      if (rows.length < pageSize) return result;
+    }
+  }
+
   static async syncAllDataFromSupabase(): Promise<boolean> {
     if (this.isRestoreProtectionActive()) {
       console.warn('Supabase sync skipped because restored data is temporarily protected.');
@@ -813,15 +828,14 @@ export class StorageManager {
       }
 
       // Fetch orders from Supabase
-      const { data: dbOrders, error: orderError } = await supabase
-        .from('orders')
-        .select('*');
+      const dbOrders = await this.fetchAllSupabaseRows('orders');
+      const orderError = null;
 
       if (orderError) {
         console.warn('Cannot fetch orders from Supabase:', orderError.message);
       } else if (dbOrders) {
         // Fetch order items to reconstruct orders perfectly
-        const { data: dbItems } = await supabase.from('order_items').select('*');
+        const dbItems = await this.fetchAllSupabaseRows('order_items');
         const itemsGroupedByOrder = new Map<string, any[]>();
         if (dbItems) {
           dbItems.forEach(item => {
@@ -901,9 +915,8 @@ export class StorageManager {
       }
 
       // Fetch payment_history from Supabase
-      const { data: dbPayments, error: payError } = await supabase
-        .from('payment_history')
-        .select('*');
+      const dbPayments = await this.fetchAllSupabaseRows('payment_history');
+      const payError = null;
 
       if (payError) {
         console.warn('Cannot fetch payment history from Supabase:', payError.message);
