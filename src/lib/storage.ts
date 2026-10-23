@@ -244,6 +244,72 @@ export class StorageManager {
     return Array.from(merged.values());
   }
 
+  private static async backfillMissingDtfOrders(localOrders: Order[], remoteOrders: any[]): Promise<number> {
+    const remoteIds = new Set(remoteOrders.map(order => String(order.id)));
+    const missingOrders = localOrders.filter(order =>
+      order.type === 'dtf' &&
+      !SUPPRESSED_LEGACY_ORDER_IDS.has(String(order.id)) &&
+      !remoteIds.has(String(order.id))
+    );
+
+    let syncedCount = 0;
+    for (const order of missingOrders) {
+      const payload: any = {
+        id: order.id,
+        order_code: order.orderCode,
+        customer_name: order.customerName,
+        type: order.type,
+        product_name: order.productName,
+        color: (order.color || '').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim(),
+        quantity: order.quantity,
+        unit_price: order.unitPrice,
+        total_price: order.totalPrice,
+        paid_amount: order.paidAmount,
+        debt_amount: order.debtAmount,
+        status: order.status,
+        created_at: order.createdAt,
+        order_images: JSON.stringify({
+          images: order.orderImages || [],
+          notes: order.notes || '',
+          surcharge: order.surcharge || 0
+        })
+      };
+
+      try {
+        let { error } = await supabase.from('orders').insert([payload]);
+        if (error?.code === '23505') {
+          remoteIds.add(String(order.id));
+          continue;
+        }
+        if (error) {
+          const legacyPayload = { ...payload };
+          delete legacyPayload.order_images;
+          const retry = await supabase.from('orders').insert([legacyPayload]);
+          error = retry.error;
+        }
+        if (error?.code === '23505') {
+          remoteIds.add(String(order.id));
+          continue;
+        }
+        if (error) throw error;
+
+        if (order.items?.length) {
+          await this.syncOrderItems(order.id, order.items);
+        }
+        remoteIds.add(String(order.id));
+        syncedCount += 1;
+      } catch (error) {
+        console.error('Supabase DTF backlog sync failed for order:', order.id, error);
+      }
+    }
+
+    if (syncedCount > 0) {
+      console.info(`Synced ${syncedCount} missing DTF order(s) to Supabase.`);
+      window.dispatchEvent(new Event('supabase_sync_success'));
+    }
+    return syncedCount;
+  }
+
   private static saveOrders(orders: Order[]): void {
     const key = this.STORAGE_PREFIX + 'orders';
     try {
@@ -780,6 +846,9 @@ export class StorageManager {
           };
         });
         const localOrders = this.getOrders();
+        // Retry local-only PET orders that a previous best-effort sync could not upload.
+        // Existing remote rows are never updated or deleted.
+        await this.backfillMissingDtfOrders(localOrders, dbOrders);
         const localOrdersById = new Map(localOrders.map(order => [order.id, order]));
         const protectedRemoteOrders = mappedOrders.map(order => {
           const localOrder = localOrdersById.get(order.id);
