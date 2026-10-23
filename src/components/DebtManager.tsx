@@ -188,6 +188,19 @@ export default function DebtManager({
     }, 4000);
   };
 
+  const [syncAudit, setSyncAudit] = useState<Awaited<ReturnType<typeof StorageManager.inspectDtfDebtSync>> | null>(null);
+  const [syncAuditBusy, setSyncAuditBusy] = useState(false);
+  const handleInspectSync = async () => {
+    setSyncAuditBusy(true);
+    try {
+      setSyncAudit(await StorageManager.inspectDtfDebtSync());
+    } catch (error: any) {
+      showToast(`Không thể kiểm tra: ${error?.message || 'Lỗi không xác định'}`, 'error');
+    } finally {
+      setSyncAuditBusy(false);
+    }
+  };
+
   const handleSyncSupabase = async () => {
     setIsSyncing(true);
     try {
@@ -1159,6 +1172,26 @@ export default function DebtManager({
           </table>
         </div>
       </div>
+
+      <section className="bg-white border border-blue-100 rounded-2xl p-5 space-y-3">
+        <h3 className="font-bold text-slate-800">Kiểm tra đồng bộ công nợ PET</h3>
+        <p className="text-xs text-slate-500">So sánh đơn PET trên máy này với Supabase. Chỉ kiểm tra, không ghi hoặc sửa dữ liệu.</p>
+        <button type="button" onClick={handleInspectSync} disabled={syncAuditBusy}
+          className="rounded-xl bg-blue-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50">
+          {syncAuditBusy ? 'Đang kiểm tra...' : 'Kiểm tra đồng bộ công nợ'}
+        </button>
+        {syncAudit && <div className="space-y-2 text-sm">
+          <p>Đơn PET trên máy: <strong>{syncAudit.localCount}</strong> | Đơn PET trên cloud: <strong>{syncAudit.cloudCount}</strong></p>
+          <p>Đơn trên máy chưa tìm thấy trên cloud: <strong>{syncAudit.missing.length}</strong></p>
+          <p>Tổng dư nợ của các đơn thiếu: <strong>{syncAudit.missingDebt.toLocaleString('vi-VN')} đ</strong></p>
+          <div className="max-h-56 overflow-y-auto space-y-1">
+            {syncAudit.missing.map(order => <div key={order.id} className="border-b py-1 text-xs">
+              {order.code} · {order.customer} · {new Date(order.date).toLocaleDateString('vi-VN')} · {order.debt.toLocaleString('vi-VN')} đ
+            </div>)}
+          </div>
+          <p className="text-xs text-amber-700">Chỉ so sánh theo ID. Chưa kiểm tra sai lệch số tiền ở các đơn đã có trên cloud.</p>
+        </div>}
+      </section>
 
       {/* Box Cấu hình Trạng thái hệ thống */}
       <div className="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm font-sans max-w-xl mx-auto">
