@@ -3,7 +3,6 @@ import { Product, Order, Customer, DashboardStats, OrderType } from './types';
 import { StorageManager, supabase } from './lib/storage';
 import Login from './components/Login';
 import Overview from './components/Overview';
-import InventoryManager from './components/InventoryManager';
 import SalesManager from './components/SalesManager';
 import DebtManager from './components/DebtManager';
 import PublicTracking from './components/PublicTracking';
@@ -195,34 +194,6 @@ export default function App() {
   };
 
   // --- ACTIONS ---
-  const handleAddProduct = async (newProd: Omit<Product, 'id' | 'createdAt'>) => {
-    try {
-      await StorageManager.addProduct(newProd);
-      // Reload products list
-      setProducts(StorageManager.getProducts());
-    } catch (error) {
-      alert("Lỗi: Không thể thêm sản phẩm mới vào hệ thống, vui lòng kiểm tra lại kết nối mạng!");
-    }
-  };
-
-  const handleUpdateProduct = async (id: string, updatedFields: Partial<Product>) => {
-    try {
-      await StorageManager.updateProduct(id, updatedFields);
-      setProducts(StorageManager.getProducts());
-    } catch (error) {
-      alert("Lỗi: Không thể lưu sản phẩm vào hệ thống, vui lòng thử lại!");
-    }
-  };
-
-  const handleDeleteProduct = async (id: string) => {
-    try {
-      await StorageManager.deleteProduct(id);
-      setProducts(StorageManager.getProducts());
-    } catch (error) {
-      alert("Lỗi: Không thể xóa sản phẩm khỏi hệ thống!");
-    }
-  };
-
   const handleAddOrder = async (newOrder: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }) => {
     try {
       await StorageManager.addOrder(newOrder);
@@ -358,17 +329,6 @@ export default function App() {
             <span>Quản lý Bán Hàng</span>
           </button>
 
-          <button
-            onClick={() => { setActiveSection('inventory'); setSidebarOpen(false); }}
-            className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
-              activeSection === 'inventory'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/10'
-                : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Boxes className="w-4.5 h-4.5" />
-            <span>Quản lý Kho áo</span>
-          </button>
 
           <button
             onClick={() => { setActiveSection('temporary-bills'); setSidebarOpen(false); }}
@@ -451,8 +411,6 @@ export default function App() {
                 ? 'Màn hình chính / Doanh số chung'
                 : activeSection === 'sales'
                 ? 'Giao dịch bán hàng & In hĐ'
-                : activeSection === 'inventory'
-                ? 'Nhập xuất kho mảng Áo thun'
                 : activeSection === 'temporary-bills'
                 ? 'Bill tạm gửi khách kiểm tra'
                 : 'Kiểm soát số nợ khách lẻ'}
@@ -530,14 +488,6 @@ export default function App() {
                   onAddOrder={handleAddOrder} 
                   onUpdateOrder={handleUpdateOrder}
                   onDeleteOrder={handleDeleteOrder}
-                />
-              )}
-              {activeSection === 'inventory' && (
-                <InventoryManager 
-                  products={products} 
-                  onAddProduct={handleAddProduct} 
-                  onUpdateProduct={handleUpdateProduct}
-                  onDeleteProduct={handleDeleteProduct}
                 />
               )}
               {activeSection === 'temporary-bills' && <TemporaryBillManager />}
