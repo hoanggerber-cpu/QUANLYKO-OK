@@ -711,41 +711,16 @@ export async function generateReconciliationPDF(
 
   container.innerHTML = `
     <div data-report-header>
-    <!-- Top A4 Commercial Header banner -->
-    <div style="border-bottom: 2px solid #0f172a; padding-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <h1 style="margin: 0; font-size: 20px; font-weight: 950; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.5px;">CƠ SỞ IN ẤN HOÀNG UYÊN</h1>
-        <p style="margin: 3px 0 0 0; font-size: 11.5px; color: #475569; font-weight: 500;">Chuyên Gia In PET DTF Kỹ Thuật Số & Áo Sỉ Hàng Đầu Việt Nam</p>
-        <p style="margin: 2.5px 0 0 0; font-size: 10px; color: #94a3b8; font-family: 'JetBrains Mono', monospace;">Địa chỉ: 557/51A Hương Lộ 3, Bình Tân, TP. HCM | Đường dây nóng: 0931325512 - 0941727079</p>
+      <div style="border-bottom:2px solid #0f172a;padding-bottom:10px;">
+        <h1 style="margin:0;font-size:19px;font-weight:850;color:#1e3a8a;">CƠ SỞ IN ẤN HOÀNG UYÊN</h1>
       </div>
-      <div style="text-align: right;">
-        <h2 style="margin: 0; font-size: 14px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 1px;">statement of accounts</h2>
-        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #64748b; display: block; margin-top: 12px; white-space: nowrap;">Ngày lập báo cáo: ${new Date().toLocaleDateString('vi-VN')}</span>
-      </div>
-    </div>
-
     </div>
     <div data-report-intro>
-    <!-- Context Intro and Title -->
-    <div style="margin-top: 25px;">
-      <h2 style="margin: 0; font-size: 18px; font-weight: 900; color: #1e3a8a; text-transform: uppercase;">BIÊN BẢN ĐỐI SOÁT & CHỐT DƯ NỢ CÔNG NỢ</h2>
-      <p style="margin: 5px 0 0 0; font-weight: 800; color: #0f172a; text-transform: uppercase; font-size: 14px; border-left: 3.5px solid #2563eb; padding-left: 10px; margin-top: 8px;">QUÝ ĐỐI TÁC KHÁCH HÀNG: ${customerName.toUpperCase()}</p>
-      
-      <div style="margin-top: 15px; display: grid; grid-template-cols: 1fr 1.2fr; gap: 20px; font-size: 12px; background-color: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #f1f5f9;">
-        <div style="float: left; width: 45%;">
-          <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; margin-bottom: 5px;">MỤC TIÊU NIÊN ĐỘ</div>
-          <div>Mô hình hợp tác: <strong>${typeText}</strong></div>
-          <div style="margin-top: 2px;">Thời kỳ báo cáo: <strong>${periodText}</strong></div>
-        </div>
-        <div style="float: right; width: 55%; text-align: right; font-size: 11.5px;">
-          <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; margin-bottom: 5px;">THỐNG KÊ LƯỢT LƯU</div>
-          <div>Số đơn PET trong kỳ: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${periodProduction.length}</strong> đơn hàng</div>
-          <div style="margin-top: 2.5px;">Tổng khối lượng giao dịch: <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${Number(periodProduction.reduce((sum, order) => sum + order.quantity, 0).toFixed(2)).toLocaleString('vi-VN')}</strong> mẫu / áo</div>
-        </div>
-        <div style="clear: both;"></div>
+      <div style="margin-top:14px;">
+        <h2 style="margin:0;font-size:18px;font-weight:850;color:#1e3a8a;">ĐỐI SOÁT CÔNG NỢ</h2>
+        <p style="margin:7px 0 0;font-size:15px;font-weight:800;color:#0f172a;">KHÁCH HÀNG: ${customerName.toUpperCase()}</p>
+        <p style="margin:5px 0 0;font-size:13px;color:#475569;">${periodText} · ${periodProduction.length} đơn PET · ${Number(periodProduction.reduce((sum, order) => sum + order.quantity, 0).toFixed(2)).toLocaleString('vi-VN')} m</p>
       </div>
-    </div>
-
     </div>
     <div data-report-monthly>
       <div style="margin-top:24px;">
