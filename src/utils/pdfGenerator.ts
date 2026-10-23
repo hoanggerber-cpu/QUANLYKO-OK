@@ -317,21 +317,21 @@ export async function generateReconciliationPDF(
   };
   const paymentsHtml = paymentHistory.length
     ? paymentHistory.map(payment => `<tr style="border-bottom:1px solid #e2e8f0;">
-        <td style="padding:6px;">${new Date(payment.createdAt).toLocaleDateString('vi-VN')}</td>
-        <td style="padding:6px;">${payment.paymentMethod || 'Thanh toán'}</td>
-        <td style="padding:6px;text-align:right;font-weight:700;color:#047857;">${payment.amount.toLocaleString('vi-VN')} đ</td>
+        <td style="padding:11px 8px;">${new Date(payment.createdAt).toLocaleDateString('vi-VN')}</td>
+        <td style="padding:11px 8px;">${payment.paymentMethod || 'Thanh toán'}</td>
+        <td style="padding:11px 8px;text-align:right;font-weight:700;color:#047857;">${payment.amount.toLocaleString('vi-VN')} đ</td>
       </tr>`).join('')
     : '';
   
   // Outer specifications for A4 dimensions
   container.style.width = '755px'; // Exact viewport fitting nicely on A4 vertical space
-  container.style.padding = '42px';
+  container.style.padding = '48px';
   container.style.boxSizing = 'border-box';
   container.style.backgroundColor = '#ffffff';
   container.style.fontFamily = "'Inter', system-ui, Arial, sans-serif";
   container.style.color = '#334155';
   container.style.fontSize = '12px';
-  container.style.lineHeight = '1.5';
+  container.style.lineHeight = '1.7';
   container.style.position = 'fixed';
   container.style.left = '-10000px';
   container.style.top = '-10000px';
@@ -366,19 +366,19 @@ export async function generateReconciliationPDF(
 
     return `
       <tr style="border-bottom: 1px solid #f1f5f9; font-size: 11px;">
-        <td style="padding: 10px 0; text-align: center; color: #64748b; font-family: 'JetBrains Mono', monospace; width: 40px;">${idx + 1}</td>
-        <td style="padding: 10px 0; font-family: 'JetBrains Mono', monospace; color: #475569; width: 80px;">${new Date(order.createdAt).toLocaleDateString('vi-VN')}</td>
-        <td style="padding: 10px 0; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #1e3a8a; width: 100px;">${order.notes || order.orderCode}</td>
-        <td style="padding: 10px 10px 10px 0; text-align: center; width: 45px;">${thumbnailHtml}</td>
-        <td style="padding: 10px 0; font-weight: 700; color: #0f172a;">
+        <td style="padding: 14px 0; text-align: center; color: #64748b; font-family: 'JetBrains Mono', monospace; width: 40px;">${idx + 1}</td>
+        <td style="padding: 14px 0; font-family: 'JetBrains Mono', monospace; color: #475569; width: 80px;">${new Date(order.createdAt).toLocaleDateString('vi-VN')}</td>
+        <td style="padding: 14px 0; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #1e3a8a; width: 100px;">${order.notes || order.orderCode}</td>
+        <td style="padding: 14px 10px 14px 0; text-align: center; width: 45px;">${thumbnailHtml}</td>
+        <td style="padding: 14px 0; font-weight: 700; color: #0f172a;">
           <div>${productSummary}</div>
           <div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 1.5px;">${classification}</div>
           ${sizeDetails ? `<div style="font-size: 10px; color: #2563eb; font-weight: bold; margin-top: 3px; background: #eff6ff; padding: 2px 6px; border-radius: 4px; display: inline-block;">${sizeDetails}</div>` : ''}
           ${surcharge > 0 ? `<div style="font-size: 10px; color: #b45309; font-weight: 800; margin-top: 4px; background: #fffbeb; border: 1px solid #fcd34d; padding: 3px 6px; border-radius: 4px; display: inline-block;">PHỤ THU RIÊNG CỦA ĐƠN NÀY: ${surcharge.toLocaleString('vi-VN')} đ</div>` : ''}
         </td>
-        <td style="padding: 10px 0; text-align: center; font-weight: 700; color: #0f172a; width: 45px;">${order.quantity}</td>
-        <td style="padding: 10px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #475569; width: 90px;">${order.unitPrice.toLocaleString('vi-VN')}</td>
-        <td style="padding: 10px 0; text-align: right; font-family: 'JetBrains Mono', monospace; width: 110px;">
+        <td style="padding: 14px 0; text-align: center; font-weight: 700; color: #0f172a; width: 45px;">${order.quantity}</td>
+        <td style="padding: 14px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #475569; width: 90px;">${order.unitPrice.toLocaleString('vi-VN')}</td>
+        <td style="padding: 14px 0; text-align: right; font-family: 'JetBrains Mono', monospace; width: 110px;">
           ${surcharge > 0 ? `
             <div style="font-size: 9px; color: #64748b;">Hàng: ${productSubtotal.toLocaleString('vi-VN')}</div>
             <div style="font-size: 9px; color: #b45309; font-weight: 700;">Phụ thu: +${surcharge.toLocaleString('vi-VN')}</div>
@@ -428,14 +428,14 @@ export async function generateReconciliationPDF(
       <table style="width: 100%; border-collapse: collapse; text-align: left;">
         <thead>
           <tr style="border-bottom: 2.5px solid #0f172a; background-color: #f8fafc; font-size: 11.5px;">
-            <th style="padding: 10px 0; text-align: center; font-weight: 800; color: #0F172A; width: 40px;">STT</th>
-            <th style="padding: 10px 0; font-weight: 800; color: #0F172A; width: 80px;">NGÀY GHI REC</th>
-            <th style="padding: 10px 0; font-weight: 800; color: #0F172A; width: 100px;">MÃ ĐƠN HÀNG</th>
-            <th style="padding: 10px 10px 10px 0; text-align: center; font-weight: 800; color: #0F172A; width: 45px;">MẪU</th>
-            <th style="padding: 10px 0; font-weight: 800; color: #0F172A;">NỘI DUNG SẢN PHẨM PHÁT SINH</th>
-            <th style="padding: 10px 0; text-align: center; font-weight: 800; color: #0F172A; width: 45px;">SL</th>
-            <th style="padding: 10px 0; text-align: right; font-weight: 800; color: #0F172A; width: 90px;">ĐƠN GIÁ</th>
-            <th style="padding: 10px 0; text-align: right; font-weight: 800; color: #0F172A; width: 110px;">THÀNH TIỀN (VND)</th>
+            <th style="padding: 14px 0; text-align: center; font-weight: 800; color: #0F172A; width: 40px;">STT</th>
+            <th style="padding: 14px 0; font-weight: 800; color: #0F172A; width: 80px;">NGÀY GHI REC</th>
+            <th style="padding: 14px 0; font-weight: 800; color: #0F172A; width: 100px;">MÃ ĐƠN HÀNG</th>
+            <th style="padding: 14px 10px 14px 0; text-align: center; font-weight: 800; color: #0F172A; width: 45px;">MẪU</th>
+            <th style="padding: 14px 0; font-weight: 800; color: #0F172A;">NỘI DUNG SẢN PHẨM PHÁT SINH</th>
+            <th style="padding: 14px 0; text-align: center; font-weight: 800; color: #0F172A; width: 45px;">SL</th>
+            <th style="padding: 14px 0; text-align: right; font-weight: 800; color: #0F172A; width: 90px;">ĐƠN GIÁ</th>
+            <th style="padding: 14px 0; text-align: right; font-weight: 800; color: #0F172A; width: 110px;">THÀNH TIỀN (VND)</th>
           </tr>
         </thead>
         <tbody>
@@ -445,35 +445,35 @@ export async function generateReconciliationPDF(
     </div>
 
     <!-- Reporting period totals and cumulative customer balances -->
-    <div style="margin-top:25px;page-break-inside:avoid;">
-      <h3 style="font-size:13px;color:#0f172a;">PHÁT SINH TRONG KỲ ĐỐI SOÁT</h3>
-      <div style="font-size:12px;">Tiền hàng và phụ thu trong kỳ: <strong>${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
-      <div style="font-size:12px;">Số tiền đã phân bổ thanh toán cho đơn trong kỳ: <strong>${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
-      <h3 style="margin-top:18px;font-size:14px;color:#1e3a8a;">TỔNG HỢP CÔNG NỢ LŨY KẾ ĐẾN CUỐI KỲ</h3>
-      <div style="display:flex;gap:12px;margin:10px 0;">
-        <div style="width:50%;background:#f1f5f9;padding:14px;border-radius:10px;">
-          <div style="font-size:10px;color:#64748b;">TỔNG TIỀN HÀNG LŨY KẾ (GỒM PHỤ THU)</div>
+    <div style="margin-top:36px;page-break-inside:avoid;">
+      <h3 style="font-size:13px;color:#0f172a;margin:0 0 12px;letter-spacing:0.35px;">PHÁT SINH TRONG KỲ ĐỐI SOÁT</h3>
+      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Tiền hàng và phụ thu trong kỳ: <strong>${stats.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
+      <div style="font-size:12px;line-height:1.9;margin:6px 0;">Số tiền đã phân bổ thanh toán cho đơn trong kỳ: <strong>${stats.totalPaid.toLocaleString('vi-VN')} đ</strong></div>
+      <h3 style="margin:28px 0 15px;font-size:14px;color:#1e3a8a;letter-spacing:0.35px;">TỔNG HỢP CÔNG NỢ LŨY KẾ ĐẾN CUỐI KỲ</h3>
+      <div style="display:flex;gap:16px;margin:15px 0 18px;">
+        <div style="width:50%;background:#f1f5f9;padding:18px;border-radius:10px;">
+          <div style="font-size:10px;color:#64748b;line-height:1.7;margin-bottom:8px;">TỔNG TIỀN HÀNG LŨY KẾ (GỒM PHỤ THU)</div>
           <strong style="font-size:18px;color:#0f172a;">${cumulative.totalAmount.toLocaleString('vi-VN')} đ</strong>
         </div>
-        <div style="width:50%;background:#ecfdf5;padding:14px;border-radius:10px;">
-          <div style="font-size:10px;color:#047857;">TỔNG ĐÃ THANH TOÁN LŨY KẾ</div>
+        <div style="width:50%;background:#ecfdf5;padding:18px;border-radius:10px;">
+          <div style="font-size:10px;color:#047857;line-height:1.7;margin-bottom:8px;">TỔNG ĐÃ THANH TOÁN LŨY KẾ</div>
           <strong style="font-size:18px;color:#047857;">${cumulative.totalPaid.toLocaleString('vi-VN')} đ</strong>
         </div>
       </div>
-      <div style="background:#fff1f2;border:1px solid #fda4af;border-radius:10px;padding:15px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="background:#fff1f2;border:1px solid #fda4af;border-radius:10px;padding:20px;display:flex;justify-content:space-between;align-items:center;">
         <strong style="font-size:12px;color:#be123c;">CÔNG NỢ CÒN PHẢI THU ĐẾN CUỐI KỲ</strong>
         <strong style="font-size:20px;color:#e11d48;">${cumulative.totalDebt.toLocaleString('vi-VN')} đ</strong>
       </div>
-      <div style="font-size:10px;color:#64748b;margin-top:7px;">Lũy kế được tính từ các đơn hàng đã ghi nhận đến hết kỳ đối soát, không xóa nợ khi chuyển tháng. Tiền thanh toán lấy từ số đã phân bổ vào đơn hàng.</div>
+      <div style="font-size:10px;color:#64748b;margin-top:14px;line-height:1.9;">Lũy kế được tính từ các đơn hàng đã ghi nhận đến hết kỳ đối soát, không xóa nợ khi chuyển tháng. Tiền thanh toán lấy từ số đã phân bổ vào đơn hàng.</div>
     </div>
-    <div style="margin-top:20px;page-break-inside:avoid;">
-      <h3 style="font-size:13px;color:#0f172a;">LỊCH SỬ THANH TOÁN ĐÃ GHI NHẬN ĐẾN CUỐI KỲ</h3>
-      ${paymentsHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#f8fafc;"><th style="text-align:left;padding:6px;">Ngày</th><th style="text-align:left;padding:6px;">Phương thức</th><th style="text-align:right;padding:6px;">Số tiền</th></tr></thead><tbody>${paymentsHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có lịch sử thanh toán riêng được ghi nhận.</div>'}
-      <div style="font-size:10px;color:#64748b;margin-top:6px;">Lịch sử dùng để đối chiếu, không cộng lần thứ hai vào tổng đã thanh toán.</div>
+    <div style="margin-top:34px;padding-top:18px;border-top:1px solid #e2e8f0;page-break-inside:avoid;">
+      <h3 style="font-size:13px;color:#0f172a;margin:0 0 15px;letter-spacing:0.35px;">LỊCH SỬ THANH TOÁN ĐÃ GHI NHẬN ĐẾN CUỐI KỲ</h3>
+      ${paymentsHtml ? `<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#f8fafc;"><th style="text-align:left;padding:11px 8px;">Ngày</th><th style="text-align:left;padding:11px 8px;">Phương thức</th><th style="text-align:right;padding:11px 8px;">Số tiền</th></tr></thead><tbody>${paymentsHtml}</tbody></table>` : '<div style="font-size:11px;color:#64748b;">Không có lịch sử thanh toán riêng được ghi nhận.</div>'}
+      <div style="font-size:10px;color:#64748b;margin-top:14px;line-height:1.8;">Lịch sử dùng để đối chiếu, không cộng lần thứ hai vào tổng đã thanh toán.</div>
     </div>
 
     <!-- Hand Signature Block Panel -->
-    <div style="margin-top: 50px; page-break-inside: avoid; border-top: 1.5px solid #f1f5f9; padding-top: 20px;">
+    <div style="margin-top: 60px; page-break-inside: avoid; border-top: 1.5px solid #f1f5f9; padding-top: 20px;">
       <div style="float: left; width: 45%; text-align: center;">
         <div style="font-weight: 800; color: #4b5563; font-size: 11.5px; text-transform: uppercase;">ĐẠI DIỆN KHÁCH HÀNG ĐỐI TÁC</div>
         <div style="font-size: 10px; color: #94a3b8; font-style: italic; margin-top: 4.5px;">(Ký, ghi rõ họ tên và đóng dấu hờ)</div>
