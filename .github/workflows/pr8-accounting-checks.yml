@@ -12,6 +12,7 @@ on:
   push:
     branches:
       - security/owner-auth-staging-20261024
+      - integration/stability-staging-20261024
 
 permissions:
   contents: read
