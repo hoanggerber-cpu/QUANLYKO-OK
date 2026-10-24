@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory, TemporaryBill } from '../types';
 import { getOrderProductSummary } from '../utils/orderSummary';
 import { assertPersistentOrderImages } from './orderImageSafety';
+import { matchesOrderImageReadback } from './orderImageReadback';
 import { mergeProductRecordsByUpdatedAt } from './productImageMerge';
 import {
   commitNewReceipt, commitNewReversal,
@@ -187,6 +188,16 @@ export class StorageManager {
               throw new Error('Chi tiết hàng trên cloud khác hóa đơn. Giữ nguyên hàng đợi để đối soát.');
             }
           }
+          // Confirm the precise image references rather than only the amount.
+          const { data: cloudImageOrder, error: cloudImageOrderError } = await supabase
+            .from('orders').select('order_images').eq('id', entry.id).maybeSingle();
+          if (cloudImageOrderError) throw cloudImageOrderError;
+          const { data: cloudImageItems, error: cloudImageItemsError } = await supabase
+            .from('order_items').select('id,image').eq('order_id', entry.id);
+          if (cloudImageItemsError) throw cloudImageItemsError;
+          if (!matchesOrderImageReadback(localOrder, cloudImageOrder, cloudImageItems || [])) {
+            throw new Error('Ảnh trên Supabase chưa khớp đơn gốc. Đơn vẫn chờ đồng bộ.');
+          }
           confirmOrderSync(entry.id);
           continue;
         }
@@ -255,6 +266,16 @@ export class StorageManager {
             }
           }
         }
+          // Confirm the precise image references rather than only the amount.
+          const { data: cloudImageOrder, error: cloudImageOrderError } = await supabase
+            .from('orders').select('order_images').eq('id', entry.id).maybeSingle();
+          if (cloudImageOrderError) throw cloudImageOrderError;
+          const { data: cloudImageItems, error: cloudImageItemsError } = await supabase
+            .from('order_items').select('id,image').eq('order_id', entry.id);
+          if (cloudImageItemsError) throw cloudImageItemsError;
+          if (!matchesOrderImageReadback(localOrder, cloudImageOrder, cloudImageItems || [])) {
+            throw new Error('Ảnh trên Supabase chưa khớp đơn gốc. Đơn vẫn chờ đồng bộ.');
+          }
         confirmOrderSync(entry.id);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
