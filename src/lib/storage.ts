@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory, TemporaryBill } from '../types';
 import { getOrderProductSummary } from '../utils/orderSummary';
+import { mergeProductRecordsByUpdatedAt } from './productImageMerge';
 import {
   commitNewReceipt, commitNewReversal,
   getPendingFinanceOperation as readPendingFinance,
@@ -366,6 +367,126 @@ export class StorageManager {
     }
     return url;
   }
+  private static usableProductImage(image?: string): string {
+    const value = (image || '').trim();
+    if (!value || /^(null|undefined)$/i.test(value)) return '';
+
+    if (value.startsWith('backup-asset://')) {
+      const resolved = this.resolveBackupAsset(value);
+      return resolved !== value ? this.usableProductImage(resolved) : '';
+    }
+    if (value.startsWith('blob:')) {
+      return Array.from(this.backupAssetUrls.values()).includes(value) ? value : '';
+    }
+    if (/^data:image\//i.test(value) || /^https?:\/\//i.test(value)) return value;
+    return '';
+  }
+
+  private static serializeProductsForLocalBackup(products: Product[]): Product[] {
+    return products.map(product => {
+      const image = this.serializeBackupAsset(product.image) || '';
+      return { ...product, image: this.usableProductImage(image) ? image : '' };
+    });
+  }
+
+  private static parseProductsFromLocalBackup(raw: string | null): Product[] {
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      const rows = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.data)
+          ? parsed.data
+          : Array.isArray(parsed?.products)
+            ? parsed.products
+            : [];
+      return rows
+        .filter((product: any) => product && typeof product.id === 'string')
+        .map((product: Product) => this.normalizeProduct(product));
+    } catch {
+      return [];
+    }
+  }
+
+  private static countProductsWithUsableImages(products: Product[]): number {
+    return products.filter(product => Boolean(this.usableProductImage(product.image))).length;
+  }
+
+  private static saveProductImageRecoverySnapshot(products: Product[]): void {
+    const serialized = this.serializeProductsForLocalBackup(products);
+    const imageCount = this.countProductsWithUsableImages(serialized);
+    if (imageCount === 0) return;
+
+    const key = this.STORAGE_PREFIX + 'product_image_recovery_snapshot';
+    const existing = this.parseProductsFromLocalBackup(localStorage.getItem(key));
+    if (this.countProductsWithUsableImages(existing) > imageCount) return;
+
+    try {
+      localStorage.setItem(key, JSON.stringify({
+        createdAt: new Date().toISOString(),
+        data: serialized
+      }));
+    } catch (error) {
+      console.warn('Unable to preserve product-image recovery snapshot:', error);
+    }
+  }
+
+  private static saveLocalProductsBackupSafely(key: string, products: Product[]): void {
+    const serialized = this.serializeProductsForLocalBackup(products);
+    const newImageCount = this.countProductsWithUsableImages(serialized);
+    const existing = this.parseProductsFromLocalBackup(
+      localStorage.getItem(this.STORAGE_PREFIX + 'backup_' + key)
+    );
+    if (this.countProductsWithUsableImages(existing) > newImageCount) return;
+    this.saveLocalBackup(key, serialized);
+  }
+
+  static recoverMissingProductImagesFromLocalBackup(): {
+    recovered: number;
+    imagesStillMissing: number;
+    backupFound: boolean;
+  } {
+    const current = this.getProducts();
+    const candidates = [
+      'product_image_recovery_snapshot',
+      'backup_products_before_cache_clear',
+      'backup_products'
+    ];
+    const imageByProductId = new Map<string, string>();
+    let backupFound = false;
+
+    for (const candidate of candidates) {
+      const raw = localStorage.getItem(this.STORAGE_PREFIX + candidate);
+      if (!raw) continue;
+      backupFound = true;
+      for (const product of this.parseProductsFromLocalBackup(raw)) {
+        if (imageByProductId.has(product.id)) continue;
+        const image = this.usableProductImage(product.image);
+        if (image) imageByProductId.set(product.id, image);
+      }
+    }
+
+    let recovered = 0;
+    const restored = current.map(product => {
+      if (this.usableProductImage(product.image)) return product;
+      const image = imageByProductId.get(product.id);
+      if (!image) return product;
+      recovered += 1;
+      return { ...product, image };
+    });
+
+    if (recovered > 0) {
+      this.saveProducts(restored);
+      this.saveProductImageRecoverySnapshot(restored);
+    }
+
+    return {
+      recovered,
+      imagesStillMissing: restored.filter(product => !this.usableProductImage(product.image)).length,
+      backupFound
+    };
+  }
+
 
   private static saveProducts(products: Product[]): void {
     localStorage.setItem(this.STORAGE_PREFIX + 'products', JSON.stringify(products.map(product => ({
@@ -387,23 +508,12 @@ export class StorageManager {
   }
 
   private static mergeProductsByUpdatedAt(remote: Product[], local: Product[]): Product[] {
-    const merged = new Map<string, Product>();
-    const putNewer = (product: Product) => {
-      const normalized = this.normalizeProduct(product);
-      const current = merged.get(normalized.id);
-      if (!current) {
-        merged.set(normalized.id, normalized);
-        return;
-      }
-      const currentTime = new Date(current.updatedAt || current.createdAt).getTime();
-      const nextTime = new Date(normalized.updatedAt || normalized.createdAt).getTime();
-      if (nextTime >= currentTime) merged.set(normalized.id, normalized);
-    };
-
-    remote.forEach(putNewer);
-    local.forEach(putNewer);
-    return Array.from(merged.values()).sort((a, b) =>
-      new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+    const normalizedRemote = remote.map(product => this.normalizeProduct(product));
+    const normalizedLocal = local.map(product => this.normalizeProduct(product));
+    return mergeProductRecordsByUpdatedAt(
+      normalizedRemote,
+      normalizedLocal,
+      image => Boolean(this.usableProductImage(image))
     );
   }
 
@@ -1105,9 +1215,13 @@ export class StorageManager {
             syncVersion: Number(p.sync_version ?? p.syncVersion ?? 1)
           };
           });
-        const mergedProducts = this.mergeProductsByUpdatedAt(mappedProducts, this.getProducts());
-        this.saveLocalBackup('products', this.getProducts());
+        const localProductsBeforeSync = this.getProducts();
+        // Preserve image bytes/references before a cloud refresh can replace the local cache.
+        this.saveProductImageRecoverySnapshot(localProductsBeforeSync);
+        this.saveLocalProductsBackupSafely('products', localProductsBeforeSync);
+        const mergedProducts = this.mergeProductsByUpdatedAt(mappedProducts, localProductsBeforeSync);
         this.saveProducts(mergedProducts);
+        this.saveProductImageRecoverySnapshot(mergedProducts);
       }
 
       // Fetch orders from Supabase
@@ -1402,8 +1516,28 @@ export class StorageManager {
   }
 
   static async clearLocalProductCacheAndReloadFromSupabase(): Promise<boolean> {
-    localStorage.removeItem(this.STORAGE_PREFIX + 'products');
-    return this.syncAllDataFromSupabase();
+    const localProducts = this.getProducts();
+    this.saveProductImageRecoverySnapshot(localProducts);
+    this.saveLocalProductsBackupSafely('products_before_cache_clear', localProducts);
+
+    try {
+      const { data: remoteProducts, error } = await supabase.from('products').select('id,image');
+      if (error || !remoteProducts) return false;
+
+      const remoteById = new Map(remoteProducts.map(product => [String(product.id), product]));
+      // Never clear local-only products or local images that the cloud cannot restore.
+      if (localProducts.some(product => !remoteById.has(String(product.id)))) return false;
+      if (localProducts.some(product =>
+        this.usableProductImage(product.image) &&
+        !this.usableProductImage(remoteById.get(String(product.id))?.image)
+      )) return false;
+
+      localStorage.removeItem(this.STORAGE_PREFIX + 'products');
+      return this.syncAllDataFromSupabase();
+    } catch (error) {
+      console.warn('Refusing to clear product cache because cloud data could not be verified:', error);
+      return false;
+    }
   }
 
   // --- ORDERS MANAGEMENT ---
