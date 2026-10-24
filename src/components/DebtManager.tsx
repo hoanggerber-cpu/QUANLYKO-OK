@@ -331,7 +331,11 @@ export default function DebtManager({
       await onRecordPayment(payCustomer.name, payCustomer.type, payAmount, paymentNote.trim() || 'Mặc định');
       const formattedAmount = formatCurrency(payAmount);
       const noteSuffix = paymentNote.trim() ? ` - Ghi chú: ${paymentNote.trim()}` : '';
-      showToast(`Đã xử lý khoản thu ${formattedAmount}${noteSuffix}.`, 'success');
+      if (StorageManager.getIsSupabaseActive()) {
+        showToast(`Đã xử lý khoản thu ${formattedAmount}${noteSuffix}. Cần đối chiếu số dư cloud khi hoàn tất đồng bộ.`, 'success');
+      } else {
+        showToast(`Đã lưu khoản thu ${formattedAmount} trên máy này, CHƯA ĐỒNG BỘ CLOUD. Không ghi lại ở máy khác.`, 'info');
+      }
       setPayCustomer(null);
       setPayAmount(0);
       setPayAmountInputStr('');
@@ -355,7 +359,11 @@ export default function DebtManager({
     setPaymentBusy(true);
     try {
       await onRecordOrderPayment(payOrder.id, payOrderAmount);
-      showToast(`Đã xử lý khoản gạch nợ ${formatCurrency(payOrderAmount)} của đơn ${payOrder.orderCode}.`, 'success');
+      if (StorageManager.getIsSupabaseActive()) {
+        showToast(`Đã xử lý khoản gạch nợ ${formatCurrency(payOrderAmount)} của đơn ${payOrder.orderCode}.`, 'success');
+      } else {
+        showToast('Đã lưu khoản gạch nợ trên máy, CHƯA ĐỒNG BỘ CLOUD. Không ghi lại ở máy khác.', 'info');
+      }
       setPayOrder(null);
       setPayOrderAmount(0);
     } catch (error) {
