@@ -50,5 +50,28 @@ jobs:
           psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-fixture.sql
           psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f docs/PR8-ATOMIC-RECEIPTS-STAGING.sql
           psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-atomic.test.sql
+      - name: Reject double collection across two simultaneous browser sessions
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set +e
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -v payment_id=88888888-8888-4888-8888-888888888888 -f tests/sql/accounting-concurrent-collect.sql > /tmp/concurrent1.log 2>&1 &
+          p1=$!
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -v payment_id=99999999-9999-4999-8999-999999999999 -f tests/sql/accounting-concurrent-collect.sql > /tmp/concurrent2.log 2>&1 &
+          p2=$!
+          wait "$p1"; s1=$?
+          wait "$p2"; s2=$?
+          set -e
+          cat /tmp/concurrent1.log /tmp/concurrent2.log
+          if [ "$s1" -eq 0 ] && [ "$s2" -ne 0 ]; then
+            echo "First receipt committed; second safely refused"
+          elif [ "$s2" -eq 0 ] && [ "$s1" -ne 0 ]; then
+            echo "Second receipt committed; first safely refused"
+          else
+            echo "Expected exactly one of two concurrent 5M receipts to commit"
+            exit 1
+          fi
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-concurrent-verify.sql
+
       - name: Production Vite bundle
         run: npm run build
