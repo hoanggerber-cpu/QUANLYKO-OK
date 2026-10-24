@@ -57,7 +57,8 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [passwordSetupMode, setPasswordSetupMode] = useState(() => {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
-    return fragment.get('type') === 'recovery' || fragment.get('type') === 'invite';
+    return ['recovery', 'invite'].includes(fragment.get('type') || '') ||
+      fragment.has('error_code');
   });
   const [user, setUser] = useState('');
   const [activeSection, setActiveSection] = useState<string>('overview');
@@ -112,24 +113,43 @@ export default function App() {
     }
   }, []);
 
-  // Restore an authenticated owner session; local UI state is not an authorization boundary.
+  // An invite/recovery callback signs in temporarily so its password can be set.
+  // Do not sign out that valid recovery session before PasswordRecovery consumes it.
   useEffect(() => {
     let active = true;
     const restore = async () => {
-      const { data, error } = await supabase.auth.getUser();
-      if (!active) return;
-      if (!error && !passwordSetupMode && data.user?.email?.toLowerCase() === 'hoangkenlee@gmail.com') {
-        setUser('hoanguyen');
-        setIsLoggedIn(true);
-      } else if (data.user) {
-        await supabase.auth.signOut();
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (!active || passwordSetupMode) return;
+        if (!error && data.user?.email?.toLowerCase() === 'hoangkenlee@gmail.com') {
+          setUser('hoanguyen');
+          setIsLoggedIn(true);
+        } else {
+          setUser('');
+          setIsLoggedIn(false);
+          if (data.user) await supabase.auth.signOut();
+        }
+      } catch (error) {
+        if (active && !passwordSetupMode) {
+          setUser('');
+          setIsLoggedIn(false);
+          console.error('Owner session verification failed:', error);
+        }
       }
     };
     void restore();
+
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' && active) {
+      if (!active) return;
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordSetupMode(true);
+        setIsLoggedIn(false);
+        return;
+      }
+      if (event === 'SIGNED_OUT') {
         setIsLoggedIn(false);
         setUser('');
+        setIsSupabaseOnline(false);
       }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
