@@ -76,7 +76,7 @@ BEGIN
   BEGIN
     DELETE FROM public.payment_history WHERE id='aaaaaaaa-1111-4111-8111-111111111111';
     RAISE EXCEPTION 'Direct receipt deletion unexpectedly succeeded';
-  EXCEPTION WHEN raise_exception THEN
+  EXCEPTION WHEN insufficient_privilege OR raise_exception THEN
     IF SQLERRM='Direct receipt deletion unexpectedly succeeded' THEN RAISE; END IF;
   END;
   IF (SELECT count(*) FROM public.payment_history WHERE id='aaaaaaaa-1111-4111-8111-111111111111')<>1 THEN
