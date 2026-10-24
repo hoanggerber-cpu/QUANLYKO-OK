@@ -323,8 +323,8 @@ export default function DebtManager({
   const handleCollectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payCustomer || financeSaving.current) return;
-    if (!Number.isSafeInteger(payAmount) || payAmount <= 0 || payAmount > payCustomer.debtAmount) {
-      showToast('Số tiền không hợp lệ hoặc vượt công nợ của khách.', 'error');
+    if (!Number.isSafeInteger(payAmount) || payAmount <= 0) {
+      showToast('Số tiền thu phải là số nguyên VND dương.', 'error');
       return;
     }
     financeSaving.current = true;
@@ -351,8 +351,8 @@ export default function DebtManager({
   const handleCollectOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payOrder || !onRecordOrderPayment || financeSaving.current) return;
-    if (!Number.isSafeInteger(payOrderAmount) || payOrderAmount <= 0 || payOrderAmount > payOrder.debtAmount) {
-      showToast('Số tiền vượt công nợ hóa đơn hoặc không hợp lệ.', 'error');
+    if (!Number.isSafeInteger(payOrderAmount) || payOrderAmount <= 0) {
+      showToast('Số tiền thu phải là số nguyên VND dương.', 'error');
       return;
     }
     financeSaving.current = true;
@@ -425,7 +425,7 @@ export default function DebtManager({
                   onChange={(e) => {
                     const cleanValue = e.target.value.replace(/\D/g, '');
                     const numVal = cleanValue ? parseInt(cleanValue, 10) : 0;
-                    const finalVal = Math.min(payCustomer.debtAmount, numVal);
+                    const finalVal = Number.isSafeInteger(numVal) && numVal > 0 ? numVal : 0;
                     setPayAmount(finalVal);
                     setPayAmountInputStr(finalVal > 0 ? finalVal.toLocaleString('vi-VN') : '');
                   }}
@@ -528,10 +528,9 @@ export default function DebtManager({
                 <input
                   type="number"
                   min="1000"
-                  max={payOrder.debtAmount}
                   required
                   value={payOrderAmount}
-                  onChange={(e) => setPayOrderAmount(Math.min(payOrder.debtAmount, Math.max(1000, Number(e.target.value))))}
+                  onChange={(e) => setPayOrderAmount(Number(e.target.value))}
                   className="w-full pl-8 pr-4 py-2 bg-slate-50 border border-slate-205 rounded-xl text-md font-bold text-emerald-700 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
@@ -1160,7 +1159,11 @@ export default function DebtManager({
                         </span>
                       </td>
                       <td className="py-4.5 px-6 text-right font-mono font-extrabold text-base">
-                        {customer.debtAmount > 0 ? (
+                        {(customer.creditBalance || 0) > 0 ? (
+                          <span className="text-emerald-700 bg-emerald-50 px-3.5 py-1.5 rounded-xl border border-emerald-100">
+                            +{formatCurrency(customer.creditBalance || 0)} trả trước
+                          </span>
+                        ) : customer.debtAmount > 0 ? (
                           <span className="text-rose-600 bg-rose-50/50 px-3.5 py-1.5 rounded-xl border border-rose-100/30">
                             {formatCurrency(customer.debtAmount)}
                           </span>
