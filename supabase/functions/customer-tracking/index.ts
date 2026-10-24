@@ -93,6 +93,17 @@ async function issue(req: Request, body: Record<string, unknown>, origin: string
     return reply({ error: 'invalid_request' }, 400, origin);
   }
 
+  // If a shared link is leaked, the owner can revoke all previous links
+  // without touching any customer, order or payment records.
+  if (body.action === 'revoke') {
+    const { error: revokeError } = await admin.from('customer_tracking_links')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('customer_name', name).eq('customer_type', type)
+      .is('revoked_at', null);
+    if (revokeError) throw revokeError;
+    return reply({ revoked: true }, 200, origin);
+  }
+
   // Don't mint arbitrary customer identities that have no actual orders.
   const { data: existing, error: queryError } = await admin
     .from('orders').select('id').eq('customer_name', name).eq('type', type)
@@ -204,7 +215,7 @@ Deno.serve(async req => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return reply({ error: 'invalid_request' }, 400, origin);
     }
-    if (body.action === 'issue') return await issue(req, body, origin);
+    if (body.action === 'issue' || body.action === 'revoke') return await issue(req, body, origin);
     if (body.action === 'read') return await read(body, origin);
     return reply({ error: 'invalid_action' }, 400, origin);
   } catch (err) {
