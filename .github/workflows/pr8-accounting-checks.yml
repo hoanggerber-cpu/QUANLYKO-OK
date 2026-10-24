@@ -44,6 +44,8 @@ jobs:
         run: npm run lint
       - name: Accounting regression tests
         run: node --experimental-strip-types --test tests/accounting-safety.test.ts
+      - name: Product image preservation regression tests
+        run: node --experimental-strip-types --test tests/product-image-merge.test.ts
       - name: Atomic SQL receipt and reversal regressions (isolated Postgres)
         env:
           PGPASSWORD: postgres
