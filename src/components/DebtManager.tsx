@@ -51,7 +51,6 @@ export default function DebtManager({
   const [editCustName, setEditCustName] = useState('');
   const [editCustTotalSpent, setEditCustTotalSpent] = useState(0);
   const [editCustTotalPaid, setEditCustTotalPaid] = useState(0);
-  const [editCustPinCode, setEditCustPinCode] = useState('');
 
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [exportingCustomer, setExportingCustomer] = useState(false);
@@ -246,7 +245,6 @@ export default function DebtManager({
     setEditCustName(customer.name);
     setEditCustTotalSpent(customer.totalSpent);
     setEditCustTotalPaid(customer.paidAmount);
-    setEditCustPinCode(customer.pinCode || '');
   };
 
   const handleEditCustomerSubmit = async (e: React.FormEvent) => {
@@ -260,8 +258,7 @@ export default function DebtManager({
           editingCustomer.type,
           editCustName.trim(),
           editCustTotalSpent,
-          editCustTotalPaid,
-          editCustPinCode.trim() || null
+          editCustTotalPaid
         );
         showToast(`Đã cập nhật công nợ khách hàng ${editCustName.trim()} thành công!`, 'success');
         setEditingCustomer(null);
@@ -1363,24 +1360,6 @@ export default function DebtManager({
                 <div className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl font-mono text-sm font-bold text-rose-600 font-sans">
                   {formatCurrency(Math.max(0, editCustTotalSpent - editCustTotalPaid))}
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"></span>
-                  <span>Mã bảo mật (PIN Code)</span>
-                </label>
-                <input
-                  type="text"
-                  maxLength={10}
-                  placeholder="Để trống nếu không khóa. Khuyên dùng: 4-6 số cuối ĐT"
-                  value={editCustPinCode}
-                  onChange={(e) => setEditCustPinCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-normal"
-                />
-                <span className="text-[10px] text-slate-400 block mt-1">
-                  Khóa trang tra cứu công nợ ngoại quan công khai của khách hàng này.
-                </span>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
