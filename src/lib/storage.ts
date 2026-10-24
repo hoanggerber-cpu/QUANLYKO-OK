@@ -466,17 +466,24 @@ export class StorageManager {
 
   static async checkSupabaseConnection(): Promise<boolean> {
     try {
-      // Try to read products table
-      const { data, error } = await supabase.from('products').select('id').limit(1);
-      if (error && error.code !== 'PGRST116') { // not found error or similar
-        console.warn('Supabase not fully initialized with tables:', error.message);
+      // After owner-only RLS, an anonymous SELECT may return [] without error.
+      // Connectivity alone must not be mistaken for permission to synchronize accounts.
+      const { data: identity, error: authError } = await supabase.auth.getUser();
+      if (authError || !identity.user ||
+          identity.user.email?.toLowerCase() !== 'hoangkenlee@gmail.com') {
+        this.isSupabaseActive = false;
+        return false;
+      }
+      const { error } = await supabase.from('orders').select('id').limit(1);
+      if (error) {
+        console.warn('Supabase orders cannot be read under the owner session:', error.message);
         this.isSupabaseActive = false;
         return false;
       }
       this.isSupabaseActive = true;
       return true;
     } catch (e) {
-      console.warn('Cannot connect to Supabase backend, switching to offline-first Mode:', e);
+      console.warn('Cannot confirm an authorized Supabase connection:', e);
       this.isSupabaseActive = false;
       return false;
     }
@@ -1432,9 +1439,15 @@ export class StorageManager {
   }
 
   static async updateOrderPayment(id: string, additionalPay: number, status?: 'pending' | 'completed'): Promise<Order | null> {
+    if (!Number.isSafeInteger(additionalPay) || additionalPay <= 0) {
+      throw new Error('Số tiền thanh toán phải là số nguyên VND dương.');
+    }
     const orders = this.getOrders();
     const idx = orders.findIndex(o => o.id === id);
     if (idx === -1) return null;
+    if (additionalPay > Number(orders[idx].debtAmount)) {
+      throw new Error('Khoản thanh toán vượt quá dư nợ hiện tại; cần đồng bộ lại.');
+    }
 
     const o = { ...orders[idx] };
     o.paidAmount = Math.min(o.totalPrice, o.paidAmount + additionalPay);
