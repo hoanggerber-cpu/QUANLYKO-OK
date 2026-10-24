@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory, TemporaryBill } from '../types';
 import { getOrderProductSummary } from '../utils/orderSummary';
+import { assertPersistentOrderImages } from './orderImageSafety';
 import { mergeProductRecordsByUpdatedAt } from './productImageMerge';
 import {
   commitNewReceipt, commitNewReversal,
@@ -1691,6 +1692,7 @@ export class StorageManager {
   }
 
   static async addOrder(order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }): Promise<Order> {
+    assertPersistentOrderImages([...(order.orderImages || []), ...(order.items || []).flatMap(item => [item.image, ...(item.extraImages || [])])]);
     if (!crypto?.randomUUID) throw new Error('Không thể tạo mã định danh hóa đơn an toàn.');
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const prefix = order.type === 'dtf' ? 'ORD-DTF-' : 'ORD-TS-';
@@ -1856,6 +1858,8 @@ export class StorageManager {
   }
 
   static async updateOrder(id: string, updatedFields: Partial<Order>): Promise<void> {
+    // Leave legacy images untouched on financial/note-only edits.
+    assertPersistentOrderImages([...(updatedFields.orderImages || []), ...(updatedFields.items || []).flatMap(item => [item.image, ...(item.extraImages || [])])]);
     if (getPendingOrders().some(row => row.id === id)) {
       throw new Error('Đơn chưa đồng bộ cloud. Không sửa trước khi đối soát.');
     }
