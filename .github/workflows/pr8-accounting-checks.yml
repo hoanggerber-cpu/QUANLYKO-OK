@@ -19,6 +19,19 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: accounting_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,5 +43,12 @@ jobs:
         run: npm run lint
       - name: Accounting regression tests
         run: node --experimental-strip-types --test tests/accounting-safety.test.ts
+      - name: Atomic SQL receipt and reversal regressions (isolated Postgres)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-fixture.sql
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f docs/PR8-ATOMIC-RECEIPTS-STAGING.sql
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-atomic.test.sql
       - name: Production Vite bundle
         run: npm run build
