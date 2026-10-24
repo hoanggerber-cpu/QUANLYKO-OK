@@ -52,7 +52,9 @@ export default function App() {
   useEffect(() => {
     const onPendingOrderChange = () => setPendingOrderTick(value => value + 1);
     window.addEventListener('order_sync_status', onPendingOrderChange);
+    window.addEventListener('finance_sync_status', onPendingOrderChange);
     return () => window.removeEventListener('order_sync_status', onPendingOrderChange);
+      window.removeEventListener('finance_sync_status', onPendingOrderChange);
   }, []);
   void pendingOrderTick;
 
@@ -312,6 +314,26 @@ export default function App() {
     pendingOrderStatusError = error instanceof Error ? error.message : String(error);
   }
 
+  let pendingFinance: ReturnType<typeof StorageManager.getPendingFinance> = null;
+  let pendingFinanceError = '';
+  try { pendingFinance = StorageManager.getPendingFinance(); }
+  catch (error) { pendingFinanceError = error instanceof Error ? error.message : String(error); }
+
+  const retryFinanceSync = async () => {
+    if (syncingOutbox) return;
+    setSyncingOutbox(true);
+    try {
+      if (!(await StorageManager.checkSupabaseConnection())) throw new Error('Chưa kết nối được Supabase.');
+      await StorageManager.retryPendingFinance();
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+      setPendingOrderTick(x => x + 1);
+    } catch (error) {
+      alert('Chưa xác nhận đồng bộ khoản thu. KHÔNG tạo giao dịch khác để thay thế. ' +
+        (error instanceof Error ? error.message : String(error)));
+    } finally { setSyncingOutbox(false); }
+  };
+
   const retryOrderSync = async () => {
     if (syncingOutbox) return;
     setSyncingOutbox(true);
@@ -456,6 +478,20 @@ export default function App() {
                 className="bg-amber-700 text-white rounded-lg px-3 py-2 disabled:opacity-50"
               >
                 {syncingOutbox ? 'Đang đối chiếu...' : 'Thử đồng bộ và đối chiếu'}
+              </button>
+            )}
+          </div>
+        )}
+        {(pendingFinance || pendingFinanceError) && (
+          <div role="alert" className="p-3 bg-red-50 border-b border-red-300 text-red-900 text-sm font-semibold flex flex-wrap items-center gap-3">
+            <span>{pendingFinanceError || (pendingFinance?.kind === 'receipt'
+              ? `Khoản thu ${pendingFinance.amount.toLocaleString('vi-VN')}đ của ${pendingFinance.customerName} đang CHỜ ĐỒNG BỘ. Chưa trừ nợ trên cloud. Không thu lại lần nữa.`
+              : 'Một bút toán hoàn tác đang chờ xác nhận. Không thực hiện lại.')}</span>
+            {!pendingFinanceError && (
+              <button type="button" disabled={syncingOutbox}
+                onClick={() => { void retryFinanceSync(); }}
+                className="bg-red-800 text-white rounded-lg px-3 py-2 disabled:opacity-50">
+                {syncingOutbox ? 'Đang đồng bộ...' : 'Đồng bộ khoản thu'}
               </button>
             )}
           </div>
