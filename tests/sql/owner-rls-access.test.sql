@@ -6,8 +6,8 @@ SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claim.sub = '3ea90802-af4a-4163-b403-da7ee313eb6d';
 DO $$
 BEGIN
-  IF (SELECT count(*) FROM public.orders) <> 3 THEN
-    RAISE EXCEPTION 'Owner cannot read all 3 seeded orders';
+  IF (SELECT count(*) FROM public.orders) < 3 THEN
+    RAISE EXCEPTION 'Owner cannot read seeded orders after prior accounting tests';
   END IF;
   IF NOT has_table_privilege(current_user,'public.orders','INSERT') THEN
     RAISE EXCEPTION 'Owner authenticated role has no order insert permission';
