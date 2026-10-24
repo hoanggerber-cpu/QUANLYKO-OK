@@ -7,6 +7,10 @@ import {
   retryPendingFinanceOperation as retryPendingFinanceRpc,
   validateVnd
 } from './accountingOperations';
+import {
+  queueOrderForSync, getPendingOrders, confirmOrderSync,
+  noteOrderSyncError, matchesRecordedOrder, validateOrderAmounts
+} from './orderOutbox';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://ykbsykqqdjqgnpslemsw.supabase.co';
 const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYnN5a3FxZGpxZ25wc2xlbXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTM0ODUsImV4cCI6MjA5NTA4OTQ4NX0.UY-W_jJYWcJrsT4_D-XQmVdfWy4UXWEXsfF-WBMjxwk';
@@ -40,6 +44,111 @@ const SUPPRESSED_LEGACY_ORDER_IDS = new Set(['o1', 'o2', 'o3', 'o4', 'o5', 'o6']
 
 export class StorageManager {
   private static STORAGE_PREFIX = 'petshirt_admin_';
+  private static pendingOrderSyncWork: Promise<void> | null = null;
+
+  static getPendingOrderSyncCount(): number {
+    return getPendingOrders().length;
+  }
+
+  static getPendingOrderSyncSummary(): ReturnType<typeof getPendingOrders> {
+    return getPendingOrders();
+  }
+
+  private static async flushPendingOrdersImpl(): Promise<void> {
+    if (!this.isSupabaseActive) return;
+    for (const entry of getPendingOrders()) {
+      try {
+        const localOrder = this.getOrders().find(order => order.id === entry.id);
+        if (!localOrder) throw new Error('Đơn hàng chờ đồng bộ không còn trên máy.');
+        if (localOrder.customerName !== entry.customerName ||
+            localOrder.type !== entry.type ||
+            localOrder.totalPrice !== entry.totalPrice ||
+            localOrder.paidAmount !== entry.paidAmount ||
+            localOrder.debtAmount !== entry.debtAmount) {
+          throw new Error('Đơn cục bộ đã thay đổi sau khi đưa vào hàng đợi. Cần đối chiếu thủ công.');
+        }
+        validateOrderAmounts(localOrder);
+        const { data: existing, error: lookupError } = await supabase
+          .from('orders').select('*').eq('id', entry.id).maybeSingle();
+        if (lookupError) throw lookupError;
+        if (!existing) {
+          const payload = {
+            id: localOrder.id, order_code: localOrder.orderCode,
+            customer_name: localOrder.customerName, type: localOrder.type,
+            product_name: localOrder.productName,
+            color: (localOrder.color || '').replace(/\\(Phân khúc nhập sỉ\\)/gi, '').trim(),
+            quantity: localOrder.quantity, unit_price: localOrder.unitPrice,
+            total_price: localOrder.totalPrice, paid_amount: localOrder.paidAmount,
+            debt_amount: localOrder.debtAmount, status: localOrder.status,
+            created_at: localOrder.createdAt,
+            // Keep accounting metadata; avoid huge inlined base64 previews in API rows.
+            order_images: JSON.stringify({
+              images: (localOrder.orderImages || []).filter(image =>
+                typeof image === 'string' && !/^(data:|blob:|backup-asset:)/i.test(image)),
+              notes: localOrder.notes || '', surcharge: localOrder.surcharge || 0,
+            }),
+          };
+          const { error: insertError } = await supabase.from('orders').insert([payload]);
+          if (insertError && insertError.code !== '23505') throw insertError;
+        }
+        const { data: confirmed, error: readbackError } = await supabase
+          .from('orders').select('id,customer_name,type,total_price,paid_amount,debt_amount')
+          .eq('id', entry.id).maybeSingle();
+        if (readbackError) throw readbackError;
+        if (!confirmed || !matchesRecordedOrder(entry, confirmed)) {
+          throw new Error('Cloud và máy có số tiền khác nhau; KHÔNG ghi đè. Cần đối soát.');
+        }
+
+        if (entry.itemIds.length) {
+          const { data: remoteItems, error: itemReadError } = await supabase
+            .from('order_items').select('id,order_id,type,product_name,quantity,unit_price,total_price')
+            .eq('order_id', entry.id);
+          if (itemReadError) throw itemReadError;
+          const existingItems = new Map((remoteItems || []).map(item => [String(item.id), item]));
+          const currentIds = new Set((localOrder.items || []).map(item => item.id));
+          if (entry.itemIds.some(id => !currentIds.has(id))) {
+            throw new Error('Chi tiết đơn trên máy khác lúc tạo. Cần đối soát.');
+          }
+          for (const item of localOrder.items || []) {
+            const remote = existingItems.get(item.id);
+            if (remote) {
+              if (remote.order_id !== entry.id || remote.type !== item.type ||
+                  remote.product_name !== item.productName ||
+                  Number(remote.quantity) !== item.quantity ||
+                  Number(remote.unit_price) !== item.unitPrice ||
+                  Number(remote.total_price) !== item.totalPrice) {
+                throw new Error('Chi tiết hóa đơn đã thay đổi trên cloud. Không tự ghi đè.');
+              }
+            } else {
+              const { error: itemInsertError } = await supabase.from('order_items').insert([{
+                id: item.id, order_id: entry.id, type: item.type,
+                product_name: item.productName,
+                color: (item.color || 'Mặc định').replace(/\\(Phân khúc nhập sỉ\\)/gi, '').trim(),
+                size: item.size || null, quantity: item.quantity,
+                unit_price: item.unitPrice, total_price: item.totalPrice,
+                image: item.image && !/^(data:|blob:|backup-asset:)/i.test(item.image) ? item.image : null,
+              }]);
+              if (itemInsertError) throw itemInsertError;
+            }
+          }
+        }
+        confirmOrderSync(entry.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('Pending order is not confirmed on cloud:', entry.id, message);
+        noteOrderSyncError(entry.id, message);
+      }
+    }
+  }
+
+  static async flushPendingOrderSync(): Promise<void> {
+    if (this.pendingOrderSyncWork) return this.pendingOrderSyncWork;
+    const work = this.flushPendingOrdersImpl();
+    this.pendingOrderSyncWork = work;
+    try { await work; }
+    finally { if (this.pendingOrderSyncWork === work) this.pendingOrderSyncWork = null; }
+  }
+
   private static isSupabaseActive = false;
   private static backupAssetUrls = new Map<string, string>();
 
@@ -842,6 +951,10 @@ export class StorageManager {
       const isOnline = await this.checkSupabaseConnection();
       if (!isOnline) return false;
 
+      // Replay only locally queued NEW orders using their original immutable IDs.
+      // Never push arbitrary historical local-only orders over live accounting rows.
+      await this.flushPendingOrderSync();
+
       // Fetch products from Supabase
       const { data: dbProducts, error: prodError } = await supabase
         .from('products')
@@ -1307,110 +1420,65 @@ export class StorageManager {
   }
 
   static async addOrder(order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }): Promise<Order> {
+    if (!crypto?.randomUUID) throw new Error('Không thể tạo mã định danh hóa đơn an toàn.');
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const prefix = order.type === 'dtf' ? 'ORD-DTF-' : 'ORD-TS-';
     const qty = order.type === 'dtf' ? this.extractLengthFromOrder(order) : order.quantity;
     const newOrder: Order = {
-      ...order,
-      quantity: qty,
-      id: 'o_' + Math.random().toString(36).substr(2, 9),
+      ...order, quantity: qty,
+      id: 'o_' + crypto.randomUUID(),
       orderCode: `${prefix}${randomCode}`,
-      createdAt: order.createdAt || new Date().toISOString()
+      createdAt: order.createdAt || new Date().toISOString(),
+      items: order.items?.map(item => ({
+        ...item, id: item.id || 'itm_' + crypto.randomUUID()
+      })),
     } as Order;
+    validateOrderAmounts(newOrder);
 
-    // Persist locally first so slow or unavailable remote services never block invoicing.
+    // 1. Persist the exact invoice identity to the durable outbox.
+    // 2. Save locally, allowing daily bookkeeping even during network outages.
+    // 3. Only remove the outbox entry after remote read-back confirms its values.
+    queueOrderForSync(newOrder);
     const orders = this.getOrders();
     orders.unshift(newOrder);
     this.saveOrders(orders);
 
-    // Best-effort sync to Supabase.
     if (this.isSupabaseActive) {
-      void (async () => {
-      const payload: any = {
-        id: newOrder.id,
-        order_code: newOrder.orderCode,
-        customer_name: newOrder.customerName,
-        type: newOrder.type,
-        product_name: newOrder.productName,
-        color: (newOrder.color || '').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim(),
-        quantity: newOrder.quantity,
-        unit_price: newOrder.unitPrice,
-        total_price: newOrder.totalPrice,
-        paid_amount: newOrder.paidAmount,
-        debt_amount: newOrder.debtAmount,
-        status: newOrder.status,
-        created_at: newOrder.createdAt
-      };
-
-      // Embed both notes and orderImages under order_images column to avoid schema limitations
-      payload.order_images = JSON.stringify({
-        images: newOrder.orderImages || [],
-        notes: newOrder.notes || '',
-        surcharge: newOrder.surcharge || 0
-      });
-
-      try {
-        const { error } = await supabase.from('orders').insert([payload]);
-        if (error) {
-          console.warn('Supabase order sync failed, retrying with raw payload stripped of order_images', error.message);
-          if (error.message?.includes('type integer') || error.message?.includes('invalid input syntax')) {
-            localStorage.setItem('supabase_migration_needed', 'true');
-            window.dispatchEvent(new Event('supabase_sync_error'));
-          }
-          const retryPayload = { ...payload };
-          delete retryPayload.order_images;
-          const { error: retryErr } = await supabase.from('orders').insert([retryPayload]);
-          if (retryErr) {
-            if (retryErr.message?.includes('type integer') || retryErr.message?.includes('invalid input syntax')) {
-              localStorage.setItem('supabase_migration_needed', 'true');
-              window.dispatchEvent(new Event('supabase_sync_error'));
-            }
-            throw retryErr;
-          }
-        }
-
-        if (newOrder.items && newOrder.items.length > 0) {
-          await this.syncOrderItems(newOrder.id, newOrder.items);
-        }
-      } catch (err: any) {
-        console.error('Supabase order initial sync failed:', err);
-      }
-      })();
+      await this.flushPendingOrderSync();
     }
 
-    // Adjust product stock based on items in cart or single order
+    // Legacy inventory stock handling is retained pending its own transactional
+    // inventory migration. Do not silently turn an invoice into a duplicate.
     if (order.items && order.items.length > 0) {
       const products = this.getProducts();
       for (const item of order.items) {
-        if (item.type === 'tshirt') {
-          const prd = products.find(p => {
-            if (item.productId) return p.id === item.productId;
-            const sizeMatches = p.size === item.size;
-            const nameMatches = p.name === item.productName || `${p.name} - Màu: ${p.color}` === item.productName;
-            const colorMatches = p.color === item.color || item.color.includes(p.color);
-            return nameMatches && colorMatches && sizeMatches;
-          });
-          if (prd) {
-            void this.updateProductStock(prd.id, Math.max(0, prd.stock - item.quantity));
-          }
+        if (item.type !== 'tshirt') continue;
+        const prd = products.find(p => {
+          if (item.productId) return p.id === item.productId;
+          const sizeMatches = p.size === item.size;
+          const nameMatches = p.name === item.productName ||
+            `${p.name} - Màu: ${p.color}` === item.productName;
+          const colorMatches = p.color === item.color || item.color.includes(p.color);
+          return nameMatches && colorMatches && sizeMatches;
+        });
+        if (prd) {
+          void this.updateProductStock(prd.id, Math.max(0, prd.stock - item.quantity));
         }
       }
     } else if (order.type === 'tshirt') {
       const products = this.getProducts();
-      // Match exactly by name AND color + size
       let item = products.find(p => {
         const colorAndSize = `${p.color} - Size ${p.size || 'N/A'}`;
         return order.productName === p.name && order.color === colorAndSize;
       });
       if (!item) {
-        // Fallback for older formats or customized titles
-        item = products.find(p => p.name === order.productName || p.name + ' - ' + p.color === order.productName);
+        item = products.find(p => p.name === order.productName ||
+          p.name + ' - ' + p.color === order.productName);
       }
       if (item) {
         void this.updateProductStock(item.id, Math.max(0, item.stock - order.quantity));
       }
     }
-
     return newOrder;
   }
 
