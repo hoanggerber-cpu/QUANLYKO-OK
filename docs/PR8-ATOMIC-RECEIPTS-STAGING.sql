@@ -82,12 +82,13 @@ BEGIN
   END IF;
 
   -- Serializes receipts for one customer/type across ALL browsers.
+  -- Keep payment_history append-only; identity is protected by the advisory lock and primary key.
   PERFORM pg_advisory_xact_lock(hashtextextended(
     p_customer_name || chr(30) || p_customer_type, 0
   ));
 
   SELECT * INTO v_existing FROM public.payment_history
-    WHERE id=p_payment_id FOR UPDATE;
+    WHERE id=p_payment_id;
   IF FOUND THEN
     IF v_existing.customer_name IS DISTINCT FROM p_customer_name
       OR v_existing.type IS DISTINCT FROM p_customer_type
@@ -208,9 +209,9 @@ BEGIN
     v_receipt.customer_name || chr(30) || v_receipt.type,0
   ));
   SELECT * INTO v_receipt FROM public.payment_history
-    WHERE id=p_payment_id FOR UPDATE;
+    WHERE id=p_payment_id;
   SELECT * INTO v_reversal FROM public.payment_reversals
-    WHERE payment_id=p_payment_id FOR UPDATE;
+    WHERE payment_id=p_payment_id;
   IF FOUND THEN
     IF v_reversal.reversal_id<>p_reversal_id THEN
       RAISE EXCEPTION 'Receipt already reversed under another operation';
