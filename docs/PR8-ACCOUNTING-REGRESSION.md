@@ -27,7 +27,7 @@ Queried live Supabase, read-only on 2026-10-24:
 
 **Important:** History sums are not guaranteed to match order paid sums if early receipts, direct per-order adjustments, unapplied receipts, or historical imports bypassed payment_history. Do not "fix" discrepancies by resetting/reallocating any production payments automatically. Independently reconcile per customer and payment channel.
 
-## Confirmed code hazards
+## Confirmed historical production-code hazards (guarded in PR #8; current production unchanged)
 
 1. `StorageManager.addOrder`: commits localStorage first then launches the cloud insert in a detached `void (async () => ...)()`, with no durable retry journal. The UI can say saved even when Supabase lacks the order. Existing DTF-only manual backfill is explicitly opt-in and does not cover every order type.
 2. `recordCustomerPayment`: cloud `payment_history` INSERT happens before per-order FIFO UPDATEs, without a database transaction. Any interrupted step can leave a recorded receipt but not all orders paid. Local writes can also diverge if one step fails. Same receipt may be duplicated when an operator retries after an ambiguous network error.
@@ -77,18 +77,44 @@ Queried live Supabase, read-only on 2026-10-24:
 11. Production snapshot reconciliation: all pre-cutover record counts/totals/status match; 0 unapproved financial mutations.
 12. Only after the above: staging RLS prevents anon CRUD and only the owner can post/reverse.
 
+## PR #8 implementation and automated evidence (2026-10-24)
+
+- `src/lib/orderOutbox.ts` and `StorageManager.addOrder`: new invoice UUID, strict whole-VND arithmetic checks, persist immutable pending metadata before local invoice write, replay only pending order IDs, and confirm only after server read-back. A conflicting remote amount remains pending and is never overwritten automatically.
+- A persistent warning displays `CHƯA XÁC NHẬN đồng bộ cloud` with a safe manual retry button; historical local-only invoices are NOT bulk-pushed without explicit audit.
+- `src/lib/accountingOperations.ts`: durable UUID idempotency record for receipt/reversal. After network uncertainty, the app blocks a second new receipt until the SAME UUID is replayed. If a browser cannot persist the receipt ID, network money writes do not start.
+- `StorageManager.recordCustomerPayment` and `updateOrderPayment`: both use the single owner-only `record_customer_payment_atomic` RPC; invoice-level payments now have an auditable receipt, not an unaudited direct paid-amount update.
+- `deletePaymentAndRecalculate`: uses `reverse_customer_payment_atomic` only for journaled new receipts. Legacy receipts are rejected rather than resetting every old invoice. Reversal is recorded separately; history records are retained.
+- Client UI shows a persistent warning with the pending receipt details, an explicit same-ID retry button and an `Đã hoàn tác` badge on reversed historical rows.
+- `VITE_ATOMIC_ACCOUNTING_ENABLED` **defaults OFF**. When it is off or the owner is not authenticated, PR #8 rejects new receipt/reversal operations instead of silently using the unsafe old code. Turn this flag on only with the same `docs/PR8-ATOMIC-RECEIPTS-STAGING.sql` migration on an isolated staging database.
+- Feature-enabled invoice amount edits/deletes are deliberately blocked pending an allocation-aware amendment flow, rather than silently overwriting paid balances.
+
+### Verified GitHub Actions
+
+`PR8 Accounting Safety` run #21, commit `d68a19eed5085d167a538bc1a1e99ad81532b6b2`, completed **SUCCESS**:
+1. `npm ci`, `tsc --noEmit`, Node deterministic accounting/integer/outbox/idempotency unit tests.
+2. PostgreSQL 16 isolated fixtures: real SQL RPC execution, 6M FIFO split, read-back balances, identical-ID retry, overpayment rollback, targeted per-order payment, reversal without erasing legacy paid balances, denial to a different user.
+3. Two simultaneous independent 5M collections against 7M customer debt: exactly one committed; final debt 2M and no impact on the other customer.
+4. Vite production bundle completed.
+
+**This is NOT a production E2E verification.** The tests use invented customers and receipts in an independent PostgreSQL service container. SQL, RPC and financial outbox are NOT installed/enabled on the production finance tables.
+
 ## Release status
 
-- [x] Read-only production consistency audit.
-- [x] PR #8 UI now awaits payment callbacks and uses in-flight locks; local-only receipts display `CHƯA ĐỒNG BỘ CLOUD`.
-- [x] PR #8 verifies owner when marking Supabase as cloud connected.
-- [x] Created draft `docs/PR8-ATOMIC-RECEIPTS-STAGING.sql` for an idempotent, atomic server-side FIFO receipt with allocation journal. **NOT applied to any database; not wired into the app.**
-- [ ] Transactional receipt/order-payment RPC **NOT deployed or integrated**.
-- [ ] Durable offline outbox and replay **NOT built**.
-- [x] PR #8 now **blocks the unsafe legacy automatic reversal** instead of resetting historical paid balances. Production remains unchanged.
-- [ ] Safe history-preserving reversal **NOT built**; must be implemented before release.
-- [ ] Independent staging write tests, negative RLS tests and multi-device E2E **NOT run**.
-- [ ] Owner password/Auth login QA **NOT complete**.
-- [ ] Production accounting RLS cutover **BLOCKED**.
+- [x] Read-only production baseline and arithmetic audit (no production mutations).
+- [x] Durable pending new-order outbox and manual/reconnect replay with cloud amount checks.
+- [x] One per-browser durable payment UUID and same-ID ambiguous timeout retry.
+- [x] SQL FIFO, one-invoice payments, immutable allocation journal and guarded reversal authored.
+- [x] SQL and TypeScript accounting regression checks pass, including concurrency in isolated PostgreSQL.
+- [x] UI awaits payment responses; legacy unsafe reversal removed from PR #8.
+- [ ] Test server migration deployed to separate actual Supabase staging project and full browser E2E (NOT run).
+- [ ] Cross-browser/device refresh and authenticated Supabase realtime propagation verified (NOT run).
+- [ ] Edit/change/remove invoice values with a complete audited atomic adjustment flow (NOT implemented; blocked under feature flag).
+- [ ] Inventory stock adjustments receive their own durable transactional operations (NOT implemented).
+- [ ] Compare any legacy mismatched receipts/customer rows with true paper/transfer evidence. Never guess the 1,359,103 VND difference.
+- [ ] Owner login/password reset proven end-to-end (NOT complete).
+- [ ] Reviewed owner-only RLS applied and negative unauthorized tests on staging before production.
+- [ ] Backup, restore drill, production release, and RLS activation gates all PASSED (NOT done).
 
-Production finance data and localStorage remain untouched by this audit.
+**KEEP PR #8 DRAFT. KEEP VITE_ATOMIC_ACCOUNTING_ENABLED OFF ON PRODUCTION. DO NOT MERGE OR LOCK LIVE FINANCE RLS UNTIL ALL RELEASE GATES PASS.**
+
+Production accounting rows and user browser localStorage have not been changed by these engineering/test steps.
