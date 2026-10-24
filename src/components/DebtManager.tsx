@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Customer, OrderType, Order, PaymentHistory } from '../types';
 import { formatCurrency, generateReconciliationPDF } from '../utils/pdfGenerator';
 import { getOrderProductSummary } from '../utils/orderSummary';
@@ -25,9 +25,9 @@ import {
 interface DebtManagerProps {
   customers: Customer[];
   orders: Order[];
-  onRecordPayment: (customerName: string, type: OrderType, amount: number, paymentMethod: string) => void;
-  onUndoPayment?: (paymentId: string, customerName: string, type: OrderType) => void;
-  onRecordOrderPayment?: (orderId: string, amount: number) => void;
+  onRecordPayment: (customerName: string, type: OrderType, amount: number, paymentMethod: string) => Promise<void>;
+  onUndoPayment?: (paymentId: string, customerName: string, type: OrderType) => Promise<void>;
+  onRecordOrderPayment?: (orderId: string, amount: number) => Promise<void>;
   onUpdateCustomer?: (oldName: string, type: OrderType, newName: string, newTotalSpent?: number, newTotalPaid?: number, newPinCode?: string | null) => any;
   onDeleteCustomer?: (customerName: string, type: OrderType) => void;
   onUpdateOrder?: (id: string, updatedFields: Partial<Order>) => any;
@@ -178,6 +178,8 @@ export default function DebtManager({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const paymentInFlight = useRef(false);
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage(msg);
@@ -317,34 +319,52 @@ export default function DebtManager({
     )
     .sort((a, b) => b.debtAmount - a.debtAmount);
 
-  const handleCollectSubmit = (e: React.FormEvent) => {
+  const handleCollectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payCustomer) return;
-    if (payAmount <= 0) return;
+    if (!payCustomer || paymentInFlight.current || !Number.isSafeInteger(payAmount) ||
+        payAmount <= 0 || payAmount > payCustomer.debtAmount) return;
 
-    onRecordPayment(payCustomer.name, payCustomer.type, payAmount, paymentNote.trim() || 'Mặc định');
-    
-    const formattedAmount = formatCurrency(payAmount);
-    const noteSuffix = paymentNote.trim() ? ` - Ghi chú: ${paymentNote.trim()}` : '';
-    showToast(`Đã ghi nhận thanh toán thành công số tiền ${formattedAmount}${noteSuffix}!`, 'success');
-
-    setPayCustomer(null);
-    setPayAmount(0);
-    setPayAmountInputStr('');
-    setPaymentNote('');
+    // Guard against double-clicking before React has rendered the disabled button.
+    paymentInFlight.current = true;
+    setPaymentBusy(true);
+    try {
+      await onRecordPayment(payCustomer.name, payCustomer.type, payAmount, paymentNote.trim() || 'Mặc định');
+      const formattedAmount = formatCurrency(payAmount);
+      const noteSuffix = paymentNote.trim() ? ` - Ghi chú: ${paymentNote.trim()}` : '';
+      showToast(`Đã xử lý khoản thu ${formattedAmount}${noteSuffix}.`, 'success');
+      setPayCustomer(null);
+      setPayAmount(0);
+      setPayAmountInputStr('');
+      setPaymentNote('');
+    } catch (error) {
+      console.error('Customer payment could not be confirmed:', error);
+      showToast('Chưa xác nhận hoàn tất thu tiền. KHÔNG nhập lại ngay; hãy kiểm tra lịch sử và công nợ trên cloud để tránh trùng.', 'error');
+    } finally {
+      paymentInFlight.current = false;
+      setPaymentBusy(false);
+    }
   };
 
-  const handleCollectOrderSubmit = (e: React.FormEvent) => {
+  const handleCollectOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payOrder) return;
-    if (payOrderAmount <= 0) return;
+    if (!payOrder || !onRecordOrderPayment || paymentInFlight.current ||
+        !Number.isSafeInteger(payOrderAmount) || payOrderAmount <= 0 ||
+        payOrderAmount > payOrder.debtAmount) return;
 
-    if (onRecordOrderPayment) {
-      onRecordOrderPayment(payOrder.id, payOrderAmount);
-      showToast(`Đã ghi nhận thanh toán thành công số tiền ${formatCurrency(payOrderAmount)} cho hóa đơn ${payOrder.orderCode}!`, 'success');
+    paymentInFlight.current = true;
+    setPaymentBusy(true);
+    try {
+      await onRecordOrderPayment(payOrder.id, payOrderAmount);
+      showToast(`Đã xử lý khoản gạch nợ ${formatCurrency(payOrderAmount)} của đơn ${payOrder.orderCode}.`, 'success');
+      setPayOrder(null);
+      setPayOrderAmount(0);
+    } catch (error) {
+      console.error('Order payment could not be confirmed:', error);
+      showToast('Chưa xác nhận hoàn tất gạch nợ. Hãy kiểm tra số dư trên cloud trước khi thử lại.', 'error');
+    } finally {
+      paymentInFlight.current = false;
+      setPaymentBusy(false);
     }
-    setPayOrder(null);
-    setPayOrderAmount(0);
   };
 
   const activeTabLabel = activeTab === 'dtf' ? 'In Pet DTF' : 'Áo thun Kho';
@@ -362,6 +382,7 @@ export default function DebtManager({
             </h3>
             <button
               onClick={() => setPayCustomer(null)}
+              disabled={paymentBusy}
               className="text-white/80 hover:text-white cursor-pointer text-xl"
             >
               &times;
@@ -435,15 +456,17 @@ export default function DebtManager({
               <button
                 type="button"
                 onClick={() => setPayCustomer(null)}
+                disabled={paymentBusy}
                 className="px-4 py-2 hover:bg-slate-100 text-slate-500 font-semibold text-sm rounded-xl transition-all cursor-pointer"
               >
                 Hủy bỏ
               </button>
               <button
                 type="submit"
+                disabled={paymentBusy}
                 className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
               >
-                Xác nhận thanh toán
+                {paymentBusy ? "Đang ghi nhận..." : "Xác nhận thanh toán"}
               </button>
             </div>
           </form>
@@ -465,6 +488,7 @@ export default function DebtManager({
             </h3>
             <button
               onClick={() => setPayOrder(null)}
+              disabled={paymentBusy}
               className="text-white/80 hover:text-white cursor-pointer text-xl"
             >
               &times;
@@ -523,6 +547,7 @@ export default function DebtManager({
               <button
                 type="button"
                 onClick={() => setPayOrder(null)}
+                disabled={paymentBusy}
                 className="px-4 py-2 hover:bg-slate-100 text-slate-500 font-semibold text-sm rounded-xl transition-all cursor-pointer"
               >
                 Hủy bỏ
@@ -531,7 +556,7 @@ export default function DebtManager({
                 type="submit"
                 className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
               >
-                Xác nhận gạch nợ
+                {paymentBusy ? "Đang ghi nhận..." : "Xác nhận gạch nợ"}
               </button>
             </div>
           </form>
@@ -990,16 +1015,23 @@ export default function DebtManager({
                       <td className="py-4 px-6 text-center">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm(`Bạn có chắc chắn muốn XÓA và HOÀN TÁC giao dịch thu tiền ${formatCurrency(pay.amount)} này? Lúc này hệ thống sẽ tự động tính toán lại công nợ FIFO từ đầu cho khách.`)) {
-                              if (onUndoPayment) {
-                                onUndoPayment(pay.id, pay.customerName, pay.type);
-                                showToast(`Đã hủy giao dịch thu nợ và tự động phân bổ lại FIFO thành công!`, 'success');
-                              } else {
-                                showToast(`Không thiết lập hàm hoàn tác ở máy chủ.`, 'error');
-                              }
+                          onClick={async () => {
+                            if (!onUndoPayment || paymentInFlight.current) return;
+                            if (!window.confirm(`Bạn có chắc chắn muốn hoàn tác giao dịch thu ${formatCurrency(pay.amount)}? Hãy đối soát sổ trước khi thao tác.`)) return;
+                            paymentInFlight.current = true;
+                            setPaymentBusy(true);
+                            try {
+                              await onUndoPayment(pay.id, pay.customerName, pay.type);
+                              showToast('Hoàn tác thành công. Vui lòng kiểm tra lại số dư các đơn liên quan.', 'success');
+                            } catch (error) {
+                              console.error('Payment reversal failed:', error);
+                              showToast('Hoàn tác chưa được xác nhận. KHÔNG thao tác lại trước khi đối soát cloud.', 'error');
+                            } finally {
+                              paymentInFlight.current = false;
+                              setPaymentBusy(false);
                             }
                           }}
+                          disabled={paymentBusy}
                           className="px-2.5 py-1 text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200/50 rounded-lg cursor-pointer transition-colors inline-flex items-center gap-1.5"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
