@@ -331,7 +331,11 @@ export default function DebtManager({
     setFinanceBusy(true);
     try {
       await onRecordPayment(payCustomer.name, payCustomer.type, payAmount, paymentNote.trim() || 'Mặc định');
-      showToast(`Đã xử lý khoản thu ${formatCurrency(payAmount)}. Kiểm tra trạng thái đồng bộ trước khi thu lần nữa.`, 'success');
+      if (StorageManager.getPendingLegacyReceipt()) {
+        showToast('Khoản thu đã lưu trên máy, CHƯA ĐỒNG BỘ. Không nhập lại giao dịch này.', 'info');
+      } else {
+        showToast(`Đã ghi nhận khoản thu ${formatCurrency(payAmount)} trên Supabase.`, 'success');
+      }
       setPayCustomer(null);
       setPayAmount(0);
       setPayAmountInputStr('');
@@ -355,7 +359,11 @@ export default function DebtManager({
     setFinanceBusy(true);
     try {
       await onRecordOrderPayment(payOrder.id, payOrderAmount);
-      showToast(`Đã ghi nhận ${formatCurrency(payOrderAmount)} cho hóa đơn ${payOrder.orderCode}.`, 'success');
+      if (StorageManager.getPendingLegacyReceipt()) {
+        showToast('Đã lưu khoản thu hóa đơn trên máy, CHƯA ĐỒNG BỘ.', 'info');
+      } else {
+        showToast(`Đã ghi nhận ${formatCurrency(payOrderAmount)} cho hóa đơn ${payOrder.orderCode}.`, 'success');
+      }
       setPayOrder(null);
       setPayOrderAmount(0);
     } catch (error) {
