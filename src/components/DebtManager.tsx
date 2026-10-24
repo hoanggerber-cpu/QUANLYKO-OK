@@ -1214,13 +1214,33 @@ export default function DebtManager({
           <p>Đơn trên máy chưa tìm thấy trên cloud: <strong>{syncAudit.missing.length}</strong></p>
           <p>Tổng dư nợ của các đơn thiếu: <strong>{syncAudit.missingDebt.toLocaleString('vi-VN')} đ</strong></p>
           <p>Đơn có sai lệch tiền với cloud: <strong>{syncAudit.mismatched.length}</strong></p>
+          <p>Đơn chỉ có trên cloud: <strong>{syncAudit.cloudOnlyCount}</strong></p>
+          <div className="rounded-lg bg-slate-50 p-3 space-y-1">
+            <p className="font-bold">Đối chiếu tổng số PET (máy / Supabase)</p>
+            <p>Tiền hàng: {syncAudit.localPetTotals.amount.toLocaleString('vi-VN')} / {syncAudit.cloudPetTotals.amount.toLocaleString('vi-VN')} đ</p>
+            <p>Đã thanh toán phân bổ: {syncAudit.localPetTotals.paid.toLocaleString('vi-VN')} / {syncAudit.cloudPetTotals.paid.toLocaleString('vi-VN')} đ</p>
+            <p>Dư nợ: {syncAudit.localPetTotals.debt.toLocaleString('vi-VN')} / {syncAudit.cloudPetTotals.debt.toLocaleString('vi-VN')} đ</p>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-3 space-y-1">
+            <p className="font-bold">Lịch sử thu tiền PET (máy / Supabase)</p>
+            <p>Số giao dịch: {syncAudit.paymentAudit.localCount} / {syncAudit.paymentAudit.cloudCount}</p>
+            <p>Tổng đã thu: {syncAudit.paymentAudit.localTotal.toLocaleString('vi-VN')} / {syncAudit.paymentAudit.cloudTotal.toLocaleString('vi-VN')} đ</p>
+            <p>Chỉ có trên máy: {syncAudit.paymentAudit.localOnlyCount} · Chỉ có trên cloud: {syncAudit.paymentAudit.cloudOnlyCount} · Khác nội dung: {syncAudit.paymentAudit.mismatchedCount}</p>
+          </div>
+          {(syncAudit.missing.length > 0 || syncAudit.mismatched.length > 0 || syncAudit.cloudOnlyCount > 0 ||
+            syncAudit.paymentAudit.localOnlyCount > 0 || syncAudit.paymentAudit.cloudOnlyCount > 0 ||
+            syncAudit.paymentAudit.mismatchedCount > 0) && (
+            <p className="rounded-lg bg-amber-50 p-3 font-semibold text-amber-800">
+              CẢNH BÁO: Dữ liệu giữa máy và Supabase chưa khớp. Không xóa bộ nhớ trình duyệt, không tự ghi đè thanh toán.
+            </p>
+          )}
           {syncAudit.mismatched.map(order => <p key={order.id} className="text-xs text-red-700">{order.code} · {order.customer}: Máy {order.localDebt.toLocaleString('vi-VN')} đ / Cloud {order.cloudDebt.toLocaleString('vi-VN')} đ</p>)}
           <div className="max-h-56 overflow-y-auto space-y-1">
             {syncAudit.missing.map(order => <div key={order.id} className="border-b py-1 text-xs">
               {order.code} · {order.customer} · {new Date(order.date).toLocaleDateString('vi-VN')} · {order.debt.toLocaleString('vi-VN')} đ
             </div>)}
           </div>
-          <p className="text-xs text-amber-700">Chỉ so sánh theo ID. Chưa kiểm tra sai lệch số tiền ở các đơn đã có trên cloud.</p>
+          <p className="text-xs text-slate-500">Đối chiếu chỉ đọc; kiểm tra theo ID và số tiền. Chưa tự sửa hay xóa dữ liệu.</p>
         </div>}
       </section>
 
@@ -1241,7 +1261,7 @@ export default function DebtManager({
 
           <button
             onClick={handleSyncSupabase}
-            disabled={isSyncing || syncAuditBusy || !syncAudit || syncAudit.mismatched.length > 0}
+            disabled={isSyncing || syncAuditBusy || !syncAudit || syncAudit.mismatched.length > 0 || syncAudit.paymentAudit.localOnlyCount > 0 || syncAudit.paymentAudit.mismatchedCount > 0}
             className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all uppercase flex items-center gap-2 cursor-pointer text-white shadow-sm hover:shadow-md ${
               isSyncing ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
             }`}

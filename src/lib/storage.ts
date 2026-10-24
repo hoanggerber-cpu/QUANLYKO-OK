@@ -340,6 +340,13 @@ export class StorageManager {
     missing: Array<{ id: string; code: string; customer: string; date: string; debt: number }>;
     mismatched: Array<{ id: string; code: string; customer: string; localDebt: number; cloudDebt: number }>;
     missingDebt: number;
+    cloudOnlyCount: number;
+    localPetTotals: { amount: number; paid: number; debt: number };
+    cloudPetTotals: { amount: number; paid: number; debt: number };
+    paymentAudit: {
+      localCount: number; cloudCount: number; localOnlyCount: number; cloudOnlyCount: number;
+      mismatchedCount: number; localTotal: number; cloudTotal: number;
+    };
   }> {
     if (!(await this.checkSupabaseConnection())) throw new Error('Không thể kết nối Supabase.');
     const cloudOrders = await this.fetchAllSupabaseRows('orders');
@@ -362,11 +369,44 @@ export class StorageManager {
       return [{ id: String(order.id), code: order.orderCode || String(order.id),
         customer: order.customerName, localDebt, cloudDebt }];
     });
+    const cloudPetOrders = cloudOrders.filter(order => order.type === 'dtf');
+    const localIds = new Set(local.map(order => String(order.id)));
+    const sumOrders = (rows: Array<{ total: number; paid: number; debt: number }>) => ({
+      amount: rows.reduce((sum, row) => sum + row.total, 0),
+      paid: rows.reduce((sum, row) => sum + row.paid, 0),
+      debt: rows.reduce((sum, row) => sum + row.debt, 0)
+    });
+    const localPetTotals = sumOrders(local.map(o => ({
+      total: Number(o.totalPrice) || 0, paid: Number(o.paidAmount) || 0, debt: Number(o.debtAmount) || 0
+    })));
+    const cloudPetTotals = sumOrders(cloudPetOrders.map(o => ({
+      total: Number(o.total_price) || 0, paid: Number(o.paid_amount) || 0, debt: Number(o.debt_amount) || 0
+    })));
+    const cloudPayments = await this.fetchAllSupabaseRows('payment_history');
+    const localPayments = this.getPaymentHistory().filter(p => p.type === 'dtf');
+    const cloudDtfPayments = cloudPayments.filter(p => (p.type || 'dtf') === 'dtf');
+    const cloudPaymentMap = new Map(cloudDtfPayments.map(p => [String(p.id), p]));
+    const localPaymentMap = new Map(localPayments.map(p => [String(p.id), p]));
+    const paymentAudit = {
+      localCount: localPayments.length,
+      cloudCount: cloudDtfPayments.length,
+      localOnlyCount: localPayments.filter(p => !cloudPaymentMap.has(String(p.id))).length,
+      cloudOnlyCount: cloudDtfPayments.filter(p => !localPaymentMap.has(String(p.id))).length,
+      mismatchedCount: localPayments.filter(p => {
+        const cloud = cloudPaymentMap.get(String(p.id));
+        return cloud && (Number(cloud.amount) !== Number(p.amount) ||
+          String(cloud.created_at).slice(0, 19) !== String(p.createdAt).slice(0, 19));
+      }).length,
+      localTotal: localPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+      cloudTotal: cloudDtfPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+    };
     return {
       localCount: local.length,
       cloudCount: cloudOrders.filter(order => order.type === 'dtf').length,
       missing, mismatched,
-      missingDebt: missing.reduce((sum, order) => sum + order.debt, 0)
+      missingDebt: missing.reduce((sum, order) => sum + order.debt, 0),
+      cloudOnlyCount: cloudPetOrders.filter(o => !localIds.has(String(o.id))).length,
+      localPetTotals, cloudPetTotals, paymentAudit
     };
   }
 
@@ -375,7 +415,9 @@ export class StorageManager {
     if (!isOnline) throw new Error('Không thể kết nối Supabase.');
 
     const audit = await this.inspectDtfDebtSync();
-    if (audit.mismatched.length) throw new Error('Có đơn sai lệch tiền giữa máy và cloud. Cần kiểm tra trước khi đồng bộ.');
+    if (audit.mismatched.length || audit.paymentAudit.localOnlyCount || audit.paymentAudit.mismatchedCount) {
+      throw new Error('Có sai lệch đơn hoặc lịch sử thu tiền giữa máy và cloud. Cần đối chiếu trước khi đồng bộ.');
+    }
     const remoteOrders = await this.fetchAllSupabaseRows('orders');
     return this.backfillMissingDtfOrders(this.getOrders(), remoteOrders);
   }
