@@ -168,3 +168,53 @@ BEGIN
   END IF;
 END;
 $test$;
+
+-- Inject a database failure AFTER the receipt has inserted its history row
+-- and AFTER the first invoice has been updated. PostgreSQL must rollback
+-- every single write from that RPC, not leave a partially settled customer.
+RESET ROLE;
+CREATE OR REPLACE FUNCTION public.test_fail_second_invoice_update()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.id='a-next'
+     AND current_setting('app.test_fail_second_order',true)='on'
+     AND NEW.paid_amount>OLD.paid_amount THEN
+    RAISE EXCEPTION 'Injected failure after first invoice update';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER test_rollback_guard BEFORE UPDATE ON public.orders
+FOR EACH ROW EXECUTE FUNCTION public.test_fail_second_invoice_update();
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','3ea90802-af4a-4163-b403-da7ee313eb6d',false);
+SELECT set_config('app.test_fail_second_order','on',false);
+
+DO $test$
+DECLARE before_count integer; before_paid numeric; before_debt numeric;
+BEGIN
+  SELECT count(*) INTO before_count FROM public.payment_history;
+  SELECT sum(paid_amount), sum(debt_amount) INTO before_paid,before_debt
+    FROM public.orders WHERE customer_name='Khach A';
+  BEGIN
+    PERFORM public.record_customer_payment_atomic(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Khach A','dtf','c_dtf_A',
+      6000000,'Injected failure',NULL
+    );
+    RAISE EXCEPTION 'Expected injected trigger failure';
+  EXCEPTION WHEN raise_exception THEN NULL;
+  END;
+  IF (SELECT count(*) FROM public.payment_history)<>before_count OR
+     (SELECT count(*) FROM public.payment_allocations
+       WHERE payment_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')<>0 OR
+     (SELECT sum(paid_amount) FROM public.orders WHERE customer_name='Khach A')<>before_paid OR
+     (SELECT sum(debt_amount) FROM public.orders WHERE customer_name='Khach A')<>before_debt THEN
+    RAISE EXCEPTION 'ATOMICITY FAILURE: receipt insertion or first invoice did not roll back';
+  END IF;
+  RAISE NOTICE 'PASS: injected second-order failure caused full transaction rollback';
+END;
+$test$;
+
+SELECT set_config('app.test_fail_second_order','off',false);
+RESET ROLE;
