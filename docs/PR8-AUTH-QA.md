@@ -8,7 +8,7 @@
 - Live Supabase project received two **additive / non-breaking** database security migrations:
   - `add_service_only_customer_tracking_token_table`: new empty `public.customer_tracking_links`; RLS enabled, no anon or authenticated table access; only 256-bit token hashes will be stored.
   - `remove_unneeded_browser_ddl_and_admin_write_grants`: removes unnecessary TRUNCATE/REFERENCES/TRIGGER privileges from business tables, and unauthenticated/admin browser writes to `admin_users`. Legacy SELECT remains so the live login does not break.
-- The new independent `customer-tracking` Edge Function is ACTIVE, version 1, configured `verify_jwt=false` only because public **read** uses an unguessable token; privileged **issue** explicitly verifies the owner's JWT and UID.
+- The new independent `customer-tracking` Edge Function is ACTIVE, version 2, configured `verify_jwt=false` only because public **read** uses an unguessable token; privileged **issue** explicitly verifies the owner's JWT and UID.
 - **IMPORTANT:** Production finance tables still have overly permissive policies and public read/write access; owner-only RLS is NOT active. The live site is NOT secured end to end.
 - Recorded pre/post-additive-migration data: 1,113 orders; invoice 1,193,912,387 VND; paid 714,247,004 VND; debt 479,665,383 VND; 71 payment_history rows. No financial records updated.
 
@@ -20,7 +20,7 @@
 4. Customer opens the link: no PIN or login. Edge Function action `read` validates the hash, then fetches only matching `customer_name` + `type` orders and their items.
 5. Customer cannot get other customers' data merely by guessing customer names or editing the URL.
 6. `Referrer-Policy: no-referrer` on Vercel and HTML helps prevent the secret link from leaking when loading external images/links.
-7. Lost/stolen links require a future owner-facing **revoke/rotate** operation; not yet implemented. Generate-new-link currently does not revoke previous links.
+7. The owner can press **Thu hồi link cũ** to revoke all previously issued links for a customer, then **Copy Link Gửi Khách** to create a fresh URL. Generating a link does not automatically invalidate other active links.
 
 ## Explicit limitations and must-test items
 
@@ -40,6 +40,7 @@
 
 - [ ] Owner signs in using `hoanguyen` and the new Supabase Auth password.
 - [ ] Owner issues an opaque customer link in localhost or configured preview; anonymous browsing loads only that ledger.
+- [ ] Test owner link revocation; old URL stops working while a newly issued link works.
 - [ ] Reconcile two customer examples including longest history and totals; verify the data from independently checked DB rows.
 - [ ] Prove direct anonymous SELECT/INSERT/UPDATE/DELETE blocked against a **staging database** after owner-only RLS changes; prove owner permissions work.
 - [ ] Test create order, amend, delete, payment, payment reversal, image load, Supabase realtime and multi-device sync on isolated fixtures.
