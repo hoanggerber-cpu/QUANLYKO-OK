@@ -1555,11 +1555,20 @@ export class StorageManager {
       })),
     } as Order;
     validateOrderAmounts(newOrder);
+    if ((import.meta as any).env?.VITE_ATOMIC_ACCOUNTING_ENABLED === 'true' &&
+        newOrder.type !== 'dtf' && newOrder.type !== 'tshirt') {
+      throw new Error('Chưa hỗ trợ ghi đơn hỗn hợp trong sổ kế toán nguyên tử. Hãy tách theo loại đơn để tránh phân bổ nhầm.');
+    }
+    const initialPaymentId = newOrder.paidAmount > 0 ? crypto.randomUUID() : null;
+    const initialPaymentMethod = String(
+      (order as any).initialPaymentMethod || (order as any).paymentMethod || 'Thanh toán khi tạo đơn'
+    ).trim() || 'Thanh toán khi tạo đơn';
 
-    // 1. Persist the exact invoice identity to the durable outbox.
-    // 2. Save locally, allowing daily bookkeeping even during network outages.
-    // 3. Only remove the outbox entry after remote read-back confirms its values.
-    queueOrderForSync(newOrder);
+    // 1. Persist the exact invoice and initial receipt identities to the durable outbox.
+    // 2. Save locally, allowing daily bookkeeping during outages.
+    // 3. Atomic mode commits invoice, items, opening balance and initial receipt together.
+    // 4. Only remove the outbox entry after remote read-back confirms the result.
+    queueOrderForSync(newOrder, { id: initialPaymentId, method: initialPaymentMethod });
     const orders = this.getOrders();
     orders.unshift(newOrder);
     this.saveOrders(orders);
