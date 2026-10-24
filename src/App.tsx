@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Product, Order, Customer, OrderType } from './types';
 import { StorageManager, supabase } from './lib/storage';
 import Login from './components/Login';
+import PasswordRecovery from './components/PasswordRecovery';
 import SalesManager from './components/SalesManager';
 import DebtManager from './components/DebtManager';
 import PublicTracking from './components/PublicTracking';
@@ -54,6 +55,10 @@ ON order_items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [passwordSetupMode, setPasswordSetupMode] = useState(() => {
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    return fragment.get('type') === 'recovery' || fragment.get('type') === 'invite';
+  });
   const [user, setUser] = useState('');
   const [activeSection, setActiveSection] = useState<string>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -113,7 +118,7 @@ export default function App() {
     const restore = async () => {
       const { data, error } = await supabase.auth.getUser();
       if (!active) return;
-      if (!error && data.user?.email?.toLowerCase() === 'hoangkenlee@gmail.com') {
+      if (!error && !passwordSetupMode && data.user?.email?.toLowerCase() === 'hoangkenlee@gmail.com') {
         setUser('hoanguyen');
         setIsLoggedIn(true);
       } else if (data.user) {
@@ -128,7 +133,7 @@ export default function App() {
       }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
-  }, []);
+  }, [passwordSetupMode]);
 
   // 1. Load records only after the owner has authenticated.
   useEffect(() => {
@@ -298,6 +303,10 @@ export default function App() {
 
   if (trackingId) {
     return <PublicTracking trackingId={trackingId} />;
+  }
+
+  if (passwordSetupMode) {
+    return <PasswordRecovery onComplete={() => setPasswordSetupMode(false)} />;
   }
 
   if (!isLoggedIn) {
