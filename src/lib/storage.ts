@@ -1576,6 +1576,22 @@ export class StorageManager {
   }
 
   static async updateOrder(id: string, updatedFields: Partial<Order>): Promise<void> {
+    if (getPendingOrders().some(row => row.id === id)) {
+      throw new Error('Đơn chưa đồng bộ cloud. Không sửa trước khi đối soát.');
+    }
+    if ((import.meta as any).env?.VITE_ATOMIC_ACCOUNTING_ENABLED === 'true') {
+      if (!this.isSupabaseActive) {
+        throw new Error('Không thể sửa đơn khi chưa xác thực và đồng bộ cloud.');
+      }
+      const existing = this.getOrders().find(row => row.id === id);
+      if (existing && (
+        (updatedFields.totalPrice !== undefined && updatedFields.totalPrice !== existing.totalPrice) ||
+        (updatedFields.paidAmount !== undefined && updatedFields.paidAmount !== existing.paidAmount) ||
+        (updatedFields.debtAmount !== undefined && updatedFields.debtAmount !== existing.debtAmount)
+      )) {
+        throw new Error('Bản bảo mật chưa hỗ trợ điều chỉnh số tiền đơn đã ghi. Cần bút toán điều chỉnh nguyên tử, không sửa số dư trực tiếp.');
+      }
+    }
     const orders = this.getOrders();
     const idx = orders.findIndex(o => o.id === id);
     if (idx === -1) return;
@@ -1741,6 +1757,12 @@ export class StorageManager {
   }
 
   static async deleteOrder(id: string): Promise<void> {
+    if (getPendingOrders().some(row => row.id === id)) {
+      throw new Error('Không thể xóa đơn đang chờ đồng bộ. Cần đối soát trước.');
+    }
+    if ((import.meta as any).env?.VITE_ATOMIC_ACCOUNTING_ENABLED === 'true') {
+      throw new Error('Không xóa hóa đơn khi chưa có quy trình hủy/đảo bút toán an toàn.');
+    }
     const orders = this.getOrders();
     const orderToDelete = orders.find(order => order.id === id);
     if (!orderToDelete) return;
@@ -2074,6 +2096,14 @@ export class StorageManager {
   // Historical receipt amounts MUST NOT be used to reset all paid invoices.
   static async deletePaymentAndRecalculate(paymentId: string, _customerName: string, _type: OrderType): Promise<void> {
     this.assertAtomicAccountingEnabled();
+    // Legacy receipts have no allocation journal; do NOT create a pending
+    // reversal ID for an operation the server must correctly reject.
+    const { data: journaled, error } = await supabase.from('payment_allocations')
+      .select('payment_id').eq('payment_id', paymentId).limit(1);
+    if (error) throw error;
+    if (!journaled?.length) {
+      throw new Error('Khoản thu lịch sử chưa có bút toán phân bổ. Không thể hoàn tác tự động an toàn.');
+    }
     await commitNewReversal(supabase, paymentId);
     await this.refreshCommittedFinancialState();
   }
