@@ -1942,6 +1942,22 @@ export class StorageManager {
       }
     });
 
+    // A customer can have an advance even without an existing invoice.
+    for (const [key, amount] of Object.entries(credits)) {
+      if (!Number.isSafeInteger(amount) || amount<=0) continue;
+      let decoded: [string,string];
+      try { decoded=JSON.parse(key) as [string,string]; }
+      catch { continue; }
+      const [name,type]=decoded;
+      if(!name || (type!=='dtf' && type!=='tshirt') || (filterType && filterType!==type)) continue;
+      const composite=`${name}_${type}`;
+      if(!customersMap.has(composite)) customersMap.set(composite,{
+        id:`c_${type}_`+btoa(encodeURIComponent(name)).replace(/=/g,''),
+        name,type,productsTaken:[],totalSpent:0,paidAmount:0,debtAmount:0,
+        updatedAt:new Date(0).toISOString(),creditBalance:amount
+      });
+    }
+
     const list = Array.from(customersMap.values());
     list.forEach(client => {
       client.pinCode = pins[`${client.name}_${client.type}`] || null;
