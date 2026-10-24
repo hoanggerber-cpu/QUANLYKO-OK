@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { supabase } from '../lib/storage';
 
 const OWNER_EMAIL = 'hoangkenlee@gmail.com';
@@ -42,7 +42,7 @@ export default function PasswordRecovery({ onComplete }: { onComplete: () => voi
     return () => { active = false; };
   }, []);
 
-  const save = async (event: React.FormEvent) => {
+  const save = async (event: FormEvent) => {
     event.preventDefault();
     if (!authorized || loading) return;
     if (password.length < 12) {
