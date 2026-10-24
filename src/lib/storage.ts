@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory, TemporaryBill } from '../types';
 import { getOrderProductSummary } from '../utils/orderSummary';
+import { assertPersistentOrderImages } from './orderImageSafety';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://ykbsykqqdjqgnpslemsw.supabase.co';
 const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYnN5a3FxZGpxZ25wc2xlbXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTM0ODUsImV4cCI6MjA5NTA4OTQ4NX0.UY-W_jJYWcJrsT4_D-XQmVdfWy4UXWEXsfF-WBMjxwk';
@@ -1284,6 +1285,10 @@ export class StorageManager {
   }
 
   static async addOrder(order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }): Promise<Order> {
+    assertPersistentOrderImages([
+      ...(order.orderImages || []),
+      ...(order.items || []).flatMap(item => [item.image, ...(item.extraImages || [])])
+    ]);
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const prefix = order.type === 'dtf' ? 'ORD-DTF-' : 'ORD-TS-';
     const qty = order.type === 'dtf' ? this.extractLengthFromOrder(order) : order.quantity;
@@ -1468,6 +1473,12 @@ export class StorageManager {
   }
 
   static async updateOrder(id: string, updatedFields: Partial<Order>): Promise<void> {
+    // Validate only image fields explicitly being written, leaving historical
+    // broken references untouched when editing unrelated order details.
+    assertPersistentOrderImages([
+      ...(updatedFields.orderImages || []),
+      ...(updatedFields.items || []).flatMap(item => [item.image, ...(item.extraImages || [])])
+    ]);
     const orders = this.getOrders();
     const idx = orders.findIndex(o => o.id === id);
     if (idx === -1) return;
