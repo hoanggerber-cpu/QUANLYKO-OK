@@ -412,19 +412,37 @@ export class StorageManager {
     return products.filter(product => Boolean(this.usableProductImage(product.image))).length;
   }
 
-  private static saveProductImageRecoverySnapshot(products: Product[]): void {
-    const serialized = this.serializeProductsForLocalBackup(products);
-    const imageCount = this.countProductsWithUsableImages(serialized);
-    if (imageCount === 0) return;
+  private static mergeProductImageBackupRecords(current: Product[], previous: Product[]): Product[] {
+    const currentSerialized = this.serializeProductsForLocalBackup(current);
+    const previousSerialized = this.serializeProductsForLocalBackup(previous);
+    const previousById = new Map(previousSerialized.map(product => [product.id, product]));
+    const currentIds = new Set(currentSerialized.map(product => product.id));
 
+    const merged = currentSerialized.map(product => {
+      const old = previousById.get(product.id);
+      if (this.usableProductImage(product.image)) return product;
+      const oldImage = this.usableProductImage(old?.image);
+      return oldImage && old ? { ...product, image: old.image } : product;
+    });
+
+    // Keep older image-bearing rows in the recovery snapshot. They are not
+    // reinserted into the live product list; recovery still matches by product ID.
+    for (const old of previousSerialized) {
+      if (!currentIds.has(old.id)) merged.push(old);
+    }
+    return merged;
+  }
+
+  private static saveProductImageRecoverySnapshot(products: Product[]): void {
     const key = this.STORAGE_PREFIX + 'product_image_recovery_snapshot';
     const existing = this.parseProductsFromLocalBackup(localStorage.getItem(key));
-    if (this.countProductsWithUsableImages(existing) > imageCount) return;
+    const merged = this.mergeProductImageBackupRecords(products, existing);
+    if (this.countProductsWithUsableImages(merged) === 0) return;
 
     try {
       localStorage.setItem(key, JSON.stringify({
         createdAt: new Date().toISOString(),
-        data: serialized
+        data: merged
       }));
     } catch (error) {
       console.warn('Unable to preserve product-image recovery snapshot:', error);
@@ -432,13 +450,11 @@ export class StorageManager {
   }
 
   private static saveLocalProductsBackupSafely(key: string, products: Product[]): void {
-    const serialized = this.serializeProductsForLocalBackup(products);
-    const newImageCount = this.countProductsWithUsableImages(serialized);
-    const existing = this.parseProductsFromLocalBackup(
-      localStorage.getItem(this.STORAGE_PREFIX + 'backup_' + key)
-    );
-    if (this.countProductsWithUsableImages(existing) > newImageCount) return;
-    this.saveLocalBackup(key, serialized);
+    const backupKey = this.STORAGE_PREFIX + 'backup_' + key;
+    const existing = this.parseProductsFromLocalBackup(localStorage.getItem(backupKey));
+    const merged = this.mergeProductImageBackupRecords(products, existing);
+    if (this.countProductsWithUsableImages(merged) === 0 && merged.length === 0) return;
+    this.saveLocalBackup(key, merged);
   }
 
   static recoverMissingProductImagesFromLocalBackup(): {
