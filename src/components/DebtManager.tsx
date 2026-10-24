@@ -425,7 +425,7 @@ export default function DebtManager({
                   onChange={(e) => {
                     const cleanValue = e.target.value.replace(/\D/g, '');
                     const numVal = cleanValue ? parseInt(cleanValue, 10) : 0;
-                    const finalVal = Math.min(payCustomer.debtAmount, numVal);
+                    const finalVal = Number.isSafeInteger(numVal) && numVal > 0 ? numVal : 0;
                     setPayAmount(finalVal);
                     setPayAmountInputStr(finalVal > 0 ? finalVal.toLocaleString('vi-VN') : '');
                   }}
@@ -528,10 +528,9 @@ export default function DebtManager({
                 <input
                   type="number"
                   min="1000"
-                  max={payOrder.debtAmount}
                   required
                   value={payOrderAmount}
-                  onChange={(e) => setPayOrderAmount(Math.min(payOrder.debtAmount, Math.max(1000, Number(e.target.value))))}
+                  onChange={(e) => setPayOrderAmount(Number(e.target.value))}
                   className="w-full pl-8 pr-4 py-2 bg-slate-50 border border-slate-205 rounded-xl text-md font-bold text-emerald-700 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
