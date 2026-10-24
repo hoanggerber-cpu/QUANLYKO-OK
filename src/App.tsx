@@ -228,6 +228,7 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể ghi nhận giao dịch thu tiền vào hệ thống!");
+      throw error;
     }
   };
 
@@ -238,15 +239,18 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể hủy giao dịch thu tiền!");
+      throw error;
     }
   };
 
   const handleRecordOrderPayment = async (orderId: string, amount: number) => {
     try {
-      await StorageManager.updateOrderPayment(orderId, amount);
+      const result = await StorageManager.updateOrderPayment(orderId, amount);
+      if (!result) throw new Error('Không tìm thấy đơn hàng cần gạch nợ.');
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể lưu hóa đơn thanh toán vào hệ thống!");
+      throw error;
     }
   };
 
