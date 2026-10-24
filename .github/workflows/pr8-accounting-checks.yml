@@ -79,5 +79,12 @@ jobs:
           fi
           psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-concurrent-verify.sql
 
+      - name: Owner RLS access-control test (disposable PostgreSQL only)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/owner-rls-fixture.sql
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f docs/PR8-OWNER-RLS-DRAFT.sql
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/owner-rls-access.test.sql
       - name: Production Vite bundle
         run: npm run build
