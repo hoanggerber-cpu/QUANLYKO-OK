@@ -6,6 +6,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'docs/PR8-ATOMIC-RECEIPTS-STAGING.sql'
+      - 'docs/PR8-ACCOUNTING-IDENTITY-STAGING.sql'
       - 'package*.json'
       - '.github/workflows/pr8-accounting-checks.yml'
   push:
@@ -49,7 +50,9 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-fixture.sql
           psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f docs/PR8-ATOMIC-RECEIPTS-STAGING.sql
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f docs/PR8-ACCOUNTING-IDENTITY-STAGING.sql
           psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-atomic.test.sql
+          psql -h 127.0.0.1 -U postgres -d accounting_test -v ON_ERROR_STOP=1 -f tests/sql/accounting-create-order.test.sql
       - name: Reject double collection across two simultaneous browser sessions
         env:
           PGPASSWORD: postgres
