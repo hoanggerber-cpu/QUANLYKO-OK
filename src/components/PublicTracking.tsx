@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Customer, Order } from '../types';
-import { StorageManager, supabase } from '../lib/storage';
+import { supabase } from '../lib/storage';
 import { formatCurrency } from '../utils/pdfGenerator';
 import { 
   ShieldAlert, 
@@ -101,103 +101,53 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
   const [pinError, setPinError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
 
+  // Public links must never load all customers/orders or compare PINs in-browser.
+  // The backend returns a single customer's ledger only after checking the PIN.
   useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      try {
-        // Sync live data from Supabase first so anonymous devices have the latest context
-        await StorageManager.syncAllDataFromSupabase();
-      } catch (err) {
-        console.warn('Failed to sync live data:', err);
-      }
-      
-      const cust = StorageManager.getCustomerByTrackingId(trackingId);
-      if (cust) {
-        setCustomer(cust);
-        
-        let pinCodeValue: string | null = cust.pinCode || null;
-        if (StorageManager.getIsSupabaseActive()) {
-          try {
-            const customerId = `c_${cust.type}_` + btoa(encodeURIComponent(cust.name)).replace(/=/g, '');
-            const { data } = await supabase
-              .from('customers')
-              .select('pin_code')
-              .eq('id', customerId)
-              .maybeSingle();
-            if (data && data.pin_code !== undefined) {
-              pinCodeValue = data.pin_code;
-            }
-          } catch (e) {
-            console.warn('Failed to get PIN from remote DB:', e);
-          }
-        }
-
-        if (pinCodeValue) {
-          setHasPinCode(true);
-          const sessionAuthKey = 'tracking_auth_' + trackingId;
-          const isAuthedInSession = sessionStorage.getItem(sessionAuthKey) === 'true';
-          if (isAuthedInSession) {
-            setIsVerified(true);
-            const custOrders = StorageManager.getOrdersForCustomer(cust.name, cust.type);
-            setSortedOrders(custOrders);
-          } else {
-            setIsVerified(false);
-            setOrders([]); // Security: Ensure orders are completely empty until PIN matches
-          }
-        } else {
-          setHasPinCode(false);
-          setIsVerified(true);
-          const custOrders = StorageManager.getOrdersForCustomer(cust.name, cust.type);
-          setSortedOrders(custOrders);
-        }
-      }
-      setLoading(false);
-    }
-    loadData();
+    setLoading(false);
+    setHasPinCode(true);
+    setIsVerified(false);
+    setCustomer({
+      id: trackingId, name: 'Khách hàng', type: 'dtf', productsTaken: [],
+      totalSpent: 0, paidAmount: 0, debtAmount: 0, updatedAt: new Date().toISOString(),
+    });
+    setOrders([]);
+    setPinInput('');
+    setPinError(null);
   }, [trackingId]);
 
   const handleVerifyPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customer) return;
-
-    setVerifying(true);
-    setPinError(null);
-
     const enteredPin = pinInput.trim();
     if (!enteredPin) {
       setPinError('Vui lòng nhập mã bảo mật.');
-      setVerifying(false);
       return;
     }
-
-    let correctPin: string | null = customer.pinCode || null;
-    if (StorageManager.getIsSupabaseActive()) {
-      try {
-        const customerId = `c_${customer.type}_` + btoa(encodeURIComponent(customer.name)).replace(/=/g, '');
-        const { data } = await supabase
-          .from('customers')
-          .select('pin_code')
-          .eq('id', customerId)
-          .maybeSingle();
-        if (data && data.pin_code !== undefined) {
-          correctPin = data.pin_code;
-        }
-      } catch (err) {
-        console.error('DB error during PIN check:', err);
+    setVerifying(true);
+    setPinError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('customer-tracking', {
+        body: { trackingId, pin: enteredPin },
+      });
+      if (error || !data?.customer || !Array.isArray(data.orders)) {
+        throw new Error('Mã bảo mật không chính xác hoặc đường link không hợp lệ.');
       }
-    }
-
-    if (correctPin === enteredPin) {
-      const sessionAuthKey = 'tracking_auth_' + trackingId;
-      sessionStorage.setItem(sessionAuthKey, 'true');
+      // Never retain the customer's PIN in memory or local/session storage.
+      const scopedCustomer = data.customer as Customer;
+      if (typeof scopedCustomer.name !== 'string' || typeof scopedCustomer.debtAmount !== 'number') {
+        throw new Error('Dữ liệu phản hồi không hợp lệ.');
+      }
+      setCustomer(scopedCustomer);
+      setSortedOrders(data.orders as Order[]);
+      setPinInput('');
       setIsVerified(true);
-
-      const custOrders = StorageManager.getOrdersForCustomer(customer.name, customer.type);
-      setSortedOrders(custOrders);
-    } else {
-      setPinError('Mã bảo mật không chính xác. Vui lòng nhập lại.');
+    } catch {
+      setPinError('Không thể xác minh mã PIN hoặc liên kết. Vui lòng thử lại.');
+      setIsVerified(false);
+      setOrders([]);
+    } finally {
+      setVerifying(false);
     }
-    setVerifying(false);
   };
 
   if (loading) {
