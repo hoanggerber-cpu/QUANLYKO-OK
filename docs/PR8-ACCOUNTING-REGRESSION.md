@@ -80,11 +80,13 @@ Queried live Supabase, read-only on 2026-10-24:
 ## Release status
 
 - [x] Read-only production consistency audit.
-- [x] PR #8 UI now awaits payment callbacks and uses in-flight locks.
+- [x] PR #8 UI now awaits payment callbacks and uses in-flight locks; local-only receipts display `CHƯA ĐỒNG BỘ CLOUD`.
 - [x] PR #8 verifies owner when marking Supabase as cloud connected.
-- [ ] Transactional receipt/order-payment RPC and allocation journal **NOT built or deployed**.
+- [x] Created draft `docs/PR8-ATOMIC-RECEIPTS-STAGING.sql` for an idempotent, atomic server-side FIFO receipt with allocation journal. **NOT applied to any database; not wired into the app.**
+- [ ] Transactional receipt/order-payment RPC **NOT deployed or integrated**.
 - [ ] Durable offline outbox and replay **NOT built**.
-- [ ] Safe history-preserving reversal **NOT built**.
+- [x] PR #8 now **blocks the unsafe legacy automatic reversal** instead of resetting historical paid balances. Production remains unchanged.
+- [ ] Safe history-preserving reversal **NOT built**; must be implemented before release.
 - [ ] Independent staging write tests, negative RLS tests and multi-device E2E **NOT run**.
 - [ ] Owner password/Auth login QA **NOT complete**.
 - [ ] Production accounting RLS cutover **BLOCKED**.
