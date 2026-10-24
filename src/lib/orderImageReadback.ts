@@ -1,5 +1,3 @@
-import type { Order } from '../types';
-
 export type RemoteOrderImages = { order_images?: unknown };
 export type RemoteItemImage = { id?: string; image?: string | null };
 
@@ -8,7 +6,7 @@ export type RemoteItemImage = { id?: string; image?: string | null };
  * selected when the invoice was created. An HTTP URL alone does not prove
  * that an object exists in Storage; this guard protects DB readback only.
  */
-export function matchesOrderImageReadback(local: Pick<Order,'orderImages'|'items'>, remote: RemoteOrderImages | null | undefined, items: RemoteItemImage[]): boolean {
+export function matchesOrderImageReadback(local: {orderImages?: string[]; items?: Array<{id: string; image?: string}>}, remote: RemoteOrderImages | null | undefined, items: RemoteItemImage[]): boolean {
   if (!remote) return false;
   let json: unknown = remote.order_images;
   try {
