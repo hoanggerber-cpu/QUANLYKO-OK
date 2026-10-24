@@ -207,7 +207,8 @@ export default function SalesManager({
     setUploadingEditDtfImages(true);
     try {
       return (await Promise.all(attachments.map(async attachment => {
-        if (!attachment.rawFile || /^https?:\/\//i.test(attachment.image)) return attachment.image;
+        if (/^https?:\/\//i.test(attachment.image)) return attachment.image;
+        if (!attachment.rawFile) throw new Error('Ảnh đính kèm chưa được tải lên Supabase. Giữ ảnh gốc và thử lại.');
         try {
           const fileExt = attachment.rawFile.name.split('.').pop() || 'png';
           const filePath = `originals/${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
@@ -219,7 +220,7 @@ export default function SalesManager({
         } catch (error) {
           console.error('Uploading DTF attachment failed:', error);
         }
-        return attachment.image;
+        throw new Error('Tải ảnh đính kèm thất bại. Đơn chưa được lưu.');
       }))).filter(Boolean);
     } finally {
       setUploadingEditDtfImages(false);
@@ -1255,6 +1256,7 @@ export default function SalesManager({
 
     setIsSavingOrder(true);
 
+    try {
     // 1. Process cart items to upload raw files or images to Supabase Storage and strip any tail-end descriptions
     const cleanCartItems = await Promise.all(
       cartItems.map(async (item) => {
@@ -1290,7 +1292,7 @@ export default function SalesManager({
             );
 
             if (error) {
-              console.warn('Cannot upload file of cart item to Supabase:', error.message);
+              throw error;
             } else if (data) {
               const { data: publicUrlData } = supabase.storage
                 .from('order-images')
@@ -1302,6 +1304,7 @@ export default function SalesManager({
             }
           } catch (uploadErr) {
             console.error('Error uploading item file during submit:', uploadErr);
+            throw new Error('Tải ảnh lên Supabase thất bại. Đơn chưa được lưu. Vui lòng thử lại.');
           }
         }
 
@@ -1357,7 +1360,6 @@ export default function SalesManager({
     ]));
     const finalStatus: OrderStatus = finalPaid >= totalPrice ? 'completed' : 'pending';
 
-    try {
       await onAddOrder({
         customerName: customerName.trim(),
         type: finalType,
