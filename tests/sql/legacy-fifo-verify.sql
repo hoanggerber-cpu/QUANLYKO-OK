@@ -172,8 +172,7 @@ END;
 $test$;
 RESET ROLE;
 
-INSERT INTO public.orders(id,order_code,customer_name,type,created_at,total_price,paid_amount,debt_amount,status)
-VALUES ('advance-new-1','ADV-NEW-1','Advance Test','dtf','2026-10-24',1000000,0,1000000,'pending');
+SELECT public.create_legacy_order_with_advance('{"id":"advance-new-1","order_code":"ADV-NEW-1","customer_name":"Advance Test","type":"dtf","product_name":"In phim","color":"Mặc định","quantity":1,"unit_price":1000000,"total_price":1000000,"paid_amount":0,"debt_amount":1000000,"status":"pending","created_at":"2026-10-24"}'::jsonb);
 DO $test$
 BEGIN
  IF (SELECT credit_balance FROM public.customers WHERE name='Advance Test' AND type='dtf')<>1000000 OR
@@ -183,8 +182,7 @@ BEGIN
 END;
 $test$;
 
-INSERT INTO public.orders(id,order_code,customer_name,type,created_at,total_price,paid_amount,debt_amount,status)
-VALUES ('advance-new-2','ADV-NEW-2','Advance Test','dtf','2026-10-25',3000000,0,3000000,'pending');
+SELECT public.create_legacy_order_with_advance('{"id":"advance-new-2","order_code":"ADV-NEW-2","customer_name":"Advance Test","type":"dtf","product_name":"In phim","color":"Mặc định","quantity":1,"unit_price":3000000,"total_price":3000000,"paid_amount":0,"debt_amount":3000000,"status":"pending","created_at":"2026-10-25"}'::jsonb);
 DO $test$
 BEGIN
  IF (SELECT credit_balance FROM public.customers WHERE name='Advance Test' AND type='dtf')<>0 OR
