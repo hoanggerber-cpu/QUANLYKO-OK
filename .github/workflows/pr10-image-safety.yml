@@ -30,5 +30,7 @@ jobs:
         run: npm run lint
       - name: Order image safety unit tests (mocked uploads)
         run: npx tsx --test tests/order-image-safety.test.ts
+      - name: Offline pending order and receipt durability tests
+        run: npx tsx --test tests/stability-outbox.test.ts
       - name: Vite production build
         run: npm run build
