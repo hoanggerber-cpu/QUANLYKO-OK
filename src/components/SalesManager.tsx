@@ -302,6 +302,7 @@ export default function SalesManager({
       showToast('Đã cập nhật chi tiết đơn áo thun thành công!', 'success');
     } catch (error) {
       console.error('Update T-shirt order failed:', error);
+      showToast(error instanceof Error ? error.message : 'Đơn chưa được lưu. Vui lòng kiểm tra ảnh tải lên Supabase.', 'error');
     }
   };
 
@@ -373,6 +374,7 @@ export default function SalesManager({
       showToast('Đã cập nhật đơn hàng thành công!', 'success');
     } catch (err) {
       console.error('Update order submit failed:', err);
+      showToast(err instanceof Error ? err.message : 'Đơn chưa được lưu. Vui lòng kiểm tra ảnh tải lên Supabase.', 'error');
     }
   };
 
