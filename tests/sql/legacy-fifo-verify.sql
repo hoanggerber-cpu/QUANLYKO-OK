@@ -80,7 +80,7 @@ BEGIN
      'a0000004-1111-4111-8111-000000000004','Khach FIFO','dtf','c_dtf_fifo',100000000,'cash',NULL
    );
    RAISE EXCEPTION 'Overpayment was accepted';
- EXCEPTION WHEN raise_exception THEN
+ EXCEPTION WHEN others THEN
    IF SQLERRM='Overpayment was accepted' THEN RAISE; END IF;
  END;
  IF (SELECT count(*) FROM public.payment_history)<>v_count
