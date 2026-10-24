@@ -23,35 +23,8 @@ import {
   Check
 } from 'lucide-react';
 
-const MIGRATION_SQL = `-- 1. Tạo bảng order_items nếu chưa tồn tại
-CREATE TABLE IF NOT EXISTS order_items (
-    id TEXT PRIMARY KEY,
-    order_id TEXT,
-    type TEXT NOT NULL,
-    product_name TEXT NOT NULL,
-    color TEXT,
-    size TEXT,
-    quantity NUMERIC DEFAULT 1,
-    unit_price NUMERIC DEFAULT 0,
-    total_price NUMERIC DEFAULT 0,
-    image TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 2. Đổi kiểu dữ liệu cột quantity thành NUMERIC để hỗ trợ mét lẻ
-ALTER TABLE orders ALTER COLUMN quantity TYPE NUMERIC;
-ALTER TABLE order_items ALTER COLUMN quantity TYPE NUMERIC;
-
--- 3. Cấu hình bảo mật RLS và quyền truy cập cho order_items
-ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Cho pheps doc order_items an danh" ON order_items;
-CREATE POLICY "Cho pheps doc order_items an danh"
-ON order_items FOR SELECT TO anon, authenticated USING (true);
-
-DROP POLICY IF EXISTS "Toan quyen order_items cho moi vai tro" ON order_items;
-CREATE POLICY "Toan quyen order_items cho moi vai tro"
-ON order_items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
+// Owner-only database RLS is managed through reviewed migrations.
+// Never give browser users a SQL snippet that grants anonymous CRUD privileges.
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
