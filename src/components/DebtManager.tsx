@@ -323,8 +323,8 @@ export default function DebtManager({
   const handleCollectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payCustomer || financeSaving.current) return;
-    if (!Number.isSafeInteger(payAmount) || payAmount <= 0 || payAmount > payCustomer.debtAmount) {
-      showToast('Số tiền không hợp lệ hoặc vượt công nợ của khách.', 'error');
+    if (!Number.isSafeInteger(payAmount) || payAmount <= 0) {
+      showToast('Số tiền thu phải là số nguyên VND dương.', 'error');
       return;
     }
     financeSaving.current = true;
@@ -351,8 +351,8 @@ export default function DebtManager({
   const handleCollectOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payOrder || !onRecordOrderPayment || financeSaving.current) return;
-    if (!Number.isSafeInteger(payOrderAmount) || payOrderAmount <= 0 || payOrderAmount > payOrder.debtAmount) {
-      showToast('Số tiền vượt công nợ hóa đơn hoặc không hợp lệ.', 'error');
+    if (!Number.isSafeInteger(payOrderAmount) || payOrderAmount <= 0) {
+      showToast('Số tiền thu phải là số nguyên VND dương.', 'error');
       return;
     }
     financeSaving.current = true;
@@ -1160,7 +1160,11 @@ export default function DebtManager({
                         </span>
                       </td>
                       <td className="py-4.5 px-6 text-right font-mono font-extrabold text-base">
-                        {customer.debtAmount > 0 ? (
+                        {(customer.creditBalance || 0) > 0 ? (
+                          <span className="text-emerald-700 bg-emerald-50 px-3.5 py-1.5 rounded-xl border border-emerald-100">
+                            +{formatCurrency(customer.creditBalance || 0)} trả trước
+                          </span>
+                        ) : customer.debtAmount > 0 ? (
                           <span className="text-rose-600 bg-rose-50/50 px-3.5 py-1.5 rounded-xl border border-rose-100/30">
                             {formatCurrency(customer.debtAmount)}
                           </span>
