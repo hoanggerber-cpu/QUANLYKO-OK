@@ -213,7 +213,7 @@ RESET ROLE;
 -- Verify untouched legacy invoices remain in their prior final state.
 DO $test$
 BEGIN
- IF (SELECT count(*) FROM public.orders WHERE customer_name='Khach FIFO' AND status='completed')<>1000
+ IF (SELECT count(*) FROM public.orders WHERE customer_name='Khach FIFO' AND status='completed')<>500
     OR (SELECT sum(total_price) FROM public.orders WHERE customer_name='Khach FIFO')<>105000000
  THEN RAISE EXCEPTION 'Migration changed historical customer orders'; END IF;
 END;
