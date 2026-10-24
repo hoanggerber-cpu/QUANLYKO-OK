@@ -138,7 +138,7 @@ CREATE INDEX IF NOT EXISTS payment_history_accounting_customer_idx
 -- Database-level invariants. The production audit found zero invalid or NULL
 -- order/receipt amounts; if staging differs, validation aborts rather than
 -- silently rewriting balances.
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='orders_accounting_amounts_check') THEN
     ALTER TABLE public.orders ADD CONSTRAINT orders_accounting_amounts_check
@@ -156,7 +156,7 @@ BEGIN
       CHECK (amount IS NOT NULL AND amount > 0 AND amount = trunc(amount)) NOT VALID;
   END IF;
 END;
-$;
+$$;
 ALTER TABLE public.orders VALIDATE CONSTRAINT orders_accounting_amounts_check;
 ALTER TABLE public.payment_history VALIDATE CONSTRAINT payment_history_amount_check;
 
