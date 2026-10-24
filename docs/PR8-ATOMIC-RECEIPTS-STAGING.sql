@@ -23,6 +23,7 @@ CREATE OR REPLACE FUNCTION public.record_customer_payment_atomic(
  p_payment_id uuid,
  p_customer_name text,
  p_customer_type text,
+ p_customer_id text,
  p_amount numeric,
  p_method text
 ) RETURNS jsonb
@@ -45,6 +46,7 @@ BEGIN
  END IF;
  IF p_payment_id IS NULL OR p_customer_name IS NULL OR length(trim(p_customer_name)) = 0
     OR p_customer_type NOT IN ('dtf', 'tshirt')
+    OR p_customer_id IS NULL OR length(trim(p_customer_id))=0
     OR p_amount IS NULL OR p_amount <= 0 OR p_amount <> trunc(p_amount)
     OR p_method IS NULL OR length(trim(p_method)) = 0 THEN
    RAISE EXCEPTION 'Invalid receipt fields' USING ERRCODE = '22023';
@@ -58,6 +60,7 @@ BEGIN
  IF FOUND THEN
    IF v_previous.customer_name IS DISTINCT FROM p_customer_name
       OR v_previous.type IS DISTINCT FROM p_customer_type
+      OR v_previous.customer_id IS DISTINCT FROM p_customer_id
       OR v_previous.amount IS DISTINCT FROM p_amount
       OR v_previous.payment_method IS DISTINCT FROM p_method THEN
      RAISE EXCEPTION 'Receipt idempotency ID reused for a different payment';
@@ -75,8 +78,7 @@ BEGIN
    (id, customer_name, type, customer_id, amount, payment_method, created_at)
  VALUES
    (p_payment_id,p_customer_name,p_customer_type,
-    'c_' || p_customer_type || '_' || replace(replace(encode(convert_to(p_customer_name,'UTF8'),'base64'),E'\n',''),'=',''),
-    p_amount,p_method,now());
+    p_customer_id,p_amount,p_method,now());
 
  v_remaining := p_amount;
  FOR v_order IN
@@ -118,15 +120,17 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.record_customer_payment_atomic(uuid,text,text,numeric,text)
+REVOKE ALL ON FUNCTION public.record_customer_payment_atomic(uuid,text,text,text,numeric,text)
  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.record_customer_payment_atomic(uuid,text,text,numeric,text)
+GRANT EXECUTE ON FUNCTION public.record_customer_payment_atomic(uuid,text,text,text,numeric,text)
  TO authenticated;
 
 COMMIT;
 
 -- REQUIRED BEFORE INTEGRATION:
 -- 1. Use a durable client-generated UUID (pending outbox entry) for retries.
+-- 1a. Pass the existing browser-generated customerId as p_customer_id until
+--     an audited customer identity migration removes this legacy column.
 -- 2. Test concurrent browsers, timeout-after-commit, amount overflow,
 --    rollback-on-bad-item, negative authorization, and RLS permissions.
 -- 3. Support single-invoice payments with a separate journaled transactional RPC.
