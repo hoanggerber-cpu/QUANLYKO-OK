@@ -1,5 +1,6 @@
 -- Additive customer advance support: one credit_balance column on existing customers table.
 -- No new tables, no backfill, no update of existing invoice or receipt amounts.
+-- Newly created orders MUST call create_legacy_order_with_advance; old direct inserts do not consume credit.
 -- IMPORTANT: Existing permissive RLS/grants are an unresolved security issue.
 -- SECURITY INVOKER intentionally grants no additional underlying table access.
 BEGIN;
@@ -9,38 +10,6 @@ ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS credit_balance numeric NOT
 -- Existing production data has no duplicate (name,type); enforce one credit account.
 CREATE UNIQUE INDEX IF NOT EXISTS customers_name_type_credit_key
   ON public.customers(name,type);
-
--- Deduct customer advance only for NEW invoices. No existing order is changed.
-CREATE OR REPLACE FUNCTION public.apply_customer_advance_new_order()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $
-DECLARE v_credit numeric; v_applied numeric;
-BEGIN
-  IF NEW.type NOT IN ('dtf','tshirt') THEN RETURN NEW; END IF;
-  IF NEW.total_price IS NULL OR NEW.paid_amount IS NULL OR NEW.debt_amount IS NULL
-     OR NEW.total_price<>NEW.paid_amount+NEW.debt_amount
-     OR NEW.debt_amount<0 OR NEW.paid_amount<0 THEN
-     RAISE EXCEPTION 'New invoice money is invalid';
-  END IF;
-  -- Same lock as receipt RPC avoids simultaneous credit consumption.
-  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.customer_name||chr(30)||NEW.type,0));
-  SELECT credit_balance INTO v_credit FROM public.customers
-    WHERE name=NEW.customer_name AND type=NEW.type FOR UPDATE;
-  v_applied:=least(coalesce(v_credit,0),NEW.debt_amount);
-  IF v_applied>0 THEN
-    UPDATE public.customers SET credit_balance=credit_balance-v_applied
-      WHERE name=NEW.customer_name AND type=NEW.type;
-    NEW.paid_amount:=NEW.paid_amount+v_applied;
-    NEW.debt_amount:=NEW.debt_amount-v_applied;
-    NEW.status:=CASE WHEN NEW.debt_amount=0 THEN 'completed' ELSE 'pending' END;
-  END IF;
-  RETURN NEW;
-END;
-$;
-DROP TRIGGER IF EXISTS apply_customer_advance_new_order ON public.orders;
-CREATE TRIGGER apply_customer_advance_new_order BEFORE INSERT ON public.orders
- FOR EACH ROW EXECUTE FUNCTION public.apply_customer_advance_new_order();
-REVOKE ALL ON FUNCTION public.apply_customer_advance_new_order() FROM PUBLIC,anon,authenticated;
-
 
 CREATE OR REPLACE FUNCTION public.record_legacy_payment_atomic(
   p_payment_id uuid,
@@ -159,6 +128,80 @@ BEGIN
   );
 END;
 $$;
+
+
+-- Only explicit NEW order RPCs may consume customer advance.
+-- Background recovery/backfill still inserts into orders directly without touching credit.
+CREATE OR REPLACE FUNCTION public.create_legacy_order_with_advance(p_order jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
+SET search_path=public,pg_temp
+AS $
+DECLARE
+ v_name text := p_order->>'customer_name';
+ v_type text := p_order->>'type';
+ v_id text := p_order->>'id';
+ v_total numeric := (p_order->>'total_price')::numeric;
+ v_paid numeric := (p_order->>'paid_amount')::numeric;
+ v_debt numeric := (p_order->>'debt_amount')::numeric;
+ v_credit numeric := 0;
+ v_use numeric := 0;
+ v_existing public.orders%ROWTYPE;
+BEGIN
+ IF p_order IS NULL OR v_id IS NULL OR length(v_id)=0
+    OR v_name IS NULL OR length(btrim(v_name)) NOT BETWEEN 1 AND 200
+    OR v_type NOT IN ('dtf','tshirt')
+    OR p_order->>'order_code' IS NULL OR length(p_order->>'order_code')=0
+    OR v_total IS NULL OR v_paid IS NULL OR v_debt IS NULL
+    OR v_total<0 OR v_paid<0 OR v_debt<0
+    OR v_total<>v_paid+v_debt
+    OR v_total<>trunc(v_total) OR v_paid<>trunc(v_paid) OR v_debt<>trunc(v_debt)
+    OR v_total>9007199254740991
+ THEN
+   RAISE EXCEPTION 'Invalid new order values' USING ERRCODE='22023';
+ END IF;
+
+ PERFORM pg_advisory_xact_lock(hashtextextended(v_name||chr(30)||v_type,0));
+ SELECT * INTO v_existing FROM public.orders WHERE id=v_id;
+ IF FOUND THEN
+   IF v_existing.customer_name IS DISTINCT FROM v_name
+      OR v_existing.type IS DISTINCT FROM v_type
+      OR v_existing.order_code IS DISTINCT FROM p_order->>'order_code'
+      OR v_existing.total_price IS DISTINCT FROM v_total
+   THEN RAISE EXCEPTION 'Order ID reused with different values' USING ERRCODE='23505'; END IF;
+   RETURN jsonb_build_object('id',v_id,'paid_amount',v_existing.paid_amount,
+     'debt_amount',v_existing.debt_amount,'status',v_existing.status,'duplicate',true);
+ END IF;
+
+ SELECT credit_balance INTO v_credit
+ FROM public.customers
+ WHERE name=v_name AND type=v_type
+ FOR UPDATE;
+ v_use:=least(coalesce(v_credit,0),v_debt);
+ IF v_use>0 THEN
+   UPDATE public.customers SET credit_balance=credit_balance-v_use
+   WHERE name=v_name AND type=v_type;
+ END IF;
+
+ INSERT INTO public.orders(
+   id,order_code,customer_name,type,product_name,color,quantity,unit_price,
+   total_price,paid_amount,debt_amount,status,order_images,created_at
+ ) VALUES(
+   v_id,p_order->>'order_code',v_name,v_type,p_order->>'product_name',
+   p_order->>'color',(p_order->>'quantity')::numeric,(p_order->>'unit_price')::numeric,
+   v_total,v_paid+v_use,v_debt-v_use,
+   CASE WHEN v_debt-v_use=0 THEN 'completed' ELSE coalesce(p_order->>'status','pending') END,
+   p_order->>'order_images',(p_order->>'created_at')::timestamptz
+ );
+ RETURN jsonb_build_object('id',v_id,'paid_amount',v_paid+v_use,
+   'debt_amount',v_debt-v_use,
+   'status',CASE WHEN v_debt-v_use=0 THEN 'completed' ELSE coalesce(p_order->>'status','pending') END,
+   'credit_used',v_use,'duplicate',false);
+END;
+$;
+REVOKE ALL ON FUNCTION public.create_legacy_order_with_advance(jsonb)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.create_legacy_order_with_advance(jsonb)
+ TO anon,authenticated;
 
 -- Existing orders/payment history remain untouched. These RPC roles
 -- already have table read/write privileges in the legacy deployment.
