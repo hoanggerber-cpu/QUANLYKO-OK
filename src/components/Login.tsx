@@ -28,51 +28,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         return;
       }
 
-      // Cách 1: Xác thực bằng Supabase Auth (Nếu người dùng điền địa chỉ email đăng nhập)
-      if (inputUsername.includes('@')) {
-        const { data, error: authError } = await supabase.auth.signInWithPassword({
-          email: inputUsername,
-          password: inputPassword,
-        });
-
-        if (!authError && data?.user) {
-          onLoginSuccess(data.user.email || 'Admin');
-          setLoading(false);
-          return;
-        } else if (authError) {
-          setError(`Lỗi xác thực Supabase: ${authError.message}`);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Cách 2: Xác thực bằng bảng dữ liệu truyền thống "admin_users" trên Supabase
-      try {
-        const { data: adminDb, error: dbError } = await supabase
-          .from('admin_users')
-          .select('*')
-          .eq('username', inputUsername.toLowerCase())
-          .eq('password', inputPassword)
-          .maybeSingle();
-
-        if (!dbError && adminDb) {
-          onLoginSuccess(adminDb.username || 'Admin (DB)');
-          setLoading(false);
-          return;
-        }
-      } catch (dbErr) {
-        // Bảng không tồn tại hoặc lỗi kết nối, bỏ qua để đi tiếp xuống Cách 3
-      }
-
-      // Cách 3: Xác thực qua Biến môi trường Vercel/Vite (Hoàn hảo cho Github, mật khẩu ẩn hoàn toàn khỏi mã nguồn)
-      const expectedUser = (import.meta as any).env?.VITE_ADMIN_USERNAME || 'admin';
-      const expectedPass = (import.meta as any).env?.VITE_ADMIN_PASSWORD || 'admin123';
-
-      if (inputUsername.toLowerCase() === expectedUser.toLowerCase() && inputPassword === expectedPass) {
-        onLoginSuccess('Admin');
-      } else {
+      // Keep the familiar username while using server-verified Supabase Auth.
+      // Never query public.admin_users or compare passwords in browser code.
+      if (inputUsername.toLowerCase() !== 'hoanguyen') {
         setError('Tên đăng nhập hoặc mật khẩu không chính xác.');
+        return;
       }
+
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: 'hoangkenlee@gmail.com',
+        password: inputPassword,
+      });
+
+      if (authError || !data.user || data.user.email?.toLowerCase() !== 'hoangkenlee@gmail.com') {
+        if (data.session) await supabase.auth.signOut();
+        setError('Tên đăng nhập hoặc mật khẩu không chính xác.');
+        return;
+      }
+
+      onLoginSuccess('hoanguyen');
     } catch (err: any) {
       setError(`Lỗi hệ thống: ${err.message || err.toString()}`);
     } finally {
