@@ -32,5 +32,7 @@ jobs:
         run: npx tsx --test tests/order-image-safety.test.ts
       - name: Offline pending order and receipt durability tests
         run: npx tsx --test tests/stability-outbox.test.ts
+      - name: Verify cloud image readback never confirms wrong photos
+        run: npx tsx --test tests/order-image-readback.test.ts
       - name: Vite production build
         run: npm run build
