@@ -39,7 +39,7 @@ END $$;
 
 -- No finance CRUD for anonymous API callers.
 REVOKE ALL ON public.orders,public.order_items,public."order-item",
-  public.customers,public.payment_history,public.products FROM anon;
+  public.customers,public.payment_history,public.products FROM PUBLIC, anon, authenticated;
 -- Authenticated role continues operations, but policy restricts to owner.
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.orders,public.order_items,
   public."order-item",public.customers,public.payment_history,public.products TO authenticated;
