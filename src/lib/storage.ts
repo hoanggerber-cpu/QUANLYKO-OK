@@ -1,6 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory, TemporaryBill } from '../types';
 import { getOrderProductSummary } from '../utils/orderSummary';
+import {
+  commitNewReceipt, commitNewReversal,
+  getPendingFinanceOperation as readPendingFinance,
+  retryPendingFinanceOperation as retryPendingFinanceRpc,
+  validateVnd
+} from './accountingOperations';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://ykbsykqqdjqgnpslemsw.supabase.co';
 const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYnN5a3FxZGpxZ25wc2xlbXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTM0ODUsImV4cCI6MjA5NTA4OTQ4NX0.UY-W_jJYWcJrsT4_D-XQmVdfWy4UXWEXsfF-WBMjxwk';
@@ -962,6 +968,14 @@ export class StorageManager {
       if (payError) {
         console.warn('Cannot fetch payment history from Supabase:', payError.message);
       } else if (dbPayments) {
+        // Do not erase old receipts: reversals are separate, auditable entries.
+        let reversals = new Map<string, string>();
+        if ((import.meta as any).env?.VITE_ATOMIC_ACCOUNTING_ENABLED === 'true') {
+          const { data: reverted, error: reversalError } = await supabase
+            .from('payment_reversals').select('payment_id,reversed_at');
+          if (reversalError) throw reversalError;
+          reversals = new Map((reverted || []).map(row => [row.payment_id, row.reversed_at]));
+        }
         const mappedPayments: PaymentHistory[] = dbPayments.map(p => ({
           id: p.id,
           customerName: p.customer_name || '',
@@ -969,7 +983,9 @@ export class StorageManager {
           customerId: p.customer_id || undefined,
           amount: Number(p.amount) || 0,
           paymentMethod: p.payment_method || '',
-          createdAt: p.created_at || new Date().toISOString()
+          createdAt: p.created_at || new Date().toISOString(),
+          isReversed: reversals.has(p.id),
+          reversedAt: reversals.get(p.id)
         }));
         const mergedPayments = this.mergeById(mappedPayments, this.getPaymentHistory())
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -1438,46 +1454,57 @@ export class StorageManager {
     }
   }
 
-  static async updateOrderPayment(id: string, additionalPay: number, status?: 'pending' | 'completed'): Promise<Order | null> {
-    if (!Number.isSafeInteger(additionalPay) || additionalPay <= 0) {
-      throw new Error('Số tiền thanh toán phải là số nguyên VND dương.');
+  private static assertAtomicAccountingEnabled(): void {
+    if ((import.meta as any).env?.VITE_ATOMIC_ACCOUNTING_ENABLED !== 'true') {
+      throw new Error('Bản thử nghiệm chưa kích hoạt máy chủ kế toán giao dịch nguyên tử. Chưa thể ghi tiền an toàn.');
     }
+    if (!this.isSupabaseActive) {
+      throw new Error('Chưa có kết nối Supabase Auth của chủ sở hữu. Không ghi tiền vào sổ cục bộ khi chưa thể xác nhận cloud.');
+    }
+  }
+
+  static getPendingFinance(): ReturnType<typeof readPendingFinance> {
+    return readPendingFinance();
+  }
+
+  private static async refreshCommittedFinancialState(): Promise<void> {
+    const success = await this.syncAllDataFromSupabase();
+    if (!success) {
+      throw new Error('Cloud đã xử lý giao dịch nhưng không thể tải lại số dư. KHÔNG ghi tiền lần nữa. Hãy kiểm tra đối soát.');
+    }
+    window.dispatchEvent(new Event('supabase_sync_success'));
+  }
+
+  static async retryPendingFinance(): Promise<boolean> {
+    this.assertAtomicAccountingEnabled();
+    const replayed = await retryPendingFinanceRpc(supabase);
+    if (replayed) await this.refreshCommittedFinancialState();
+    return replayed;
+  }
+
+  static async updateOrderPayment(id: string, additionalPay: number, _status?: 'pending' | 'completed'): Promise<Order | null> {
+    this.assertAtomicAccountingEnabled();
+    validateVnd(additionalPay);
     const orders = this.getOrders();
-    const idx = orders.findIndex(o => o.id === id);
-    if (idx === -1) return null;
-    if (additionalPay > Number(orders[idx].debtAmount)) {
-      throw new Error('Khoản thanh toán vượt quá dư nợ hiện tại; cần đồng bộ lại.');
+    const existing = orders.find(o => o.id === id);
+    if (!existing) throw new Error('Không tìm thấy hóa đơn.');
+    if (existing.type !== 'dtf' && existing.type !== 'tshirt') {
+      throw new Error('Không hỗ trợ gạch nợ hóa đơn hỗn hợp khi chưa kiểm thử.');
     }
-
-    const o = { ...orders[idx] };
-    o.paidAmount = Math.min(o.totalPrice, o.paidAmount + additionalPay);
-    o.debtAmount = o.totalPrice - o.paidAmount;
-    if (status) {
-      o.status = status;
-    } else if (o.debtAmount === 0) {
-      o.status = 'completed';
+    if (additionalPay > existing.debtAmount) {
+      throw new Error('Tiền thu vượt số dư hóa đơn đang hiển thị. Cần đồng bộ trước.');
     }
-
-    if (this.isSupabaseActive) {
-      try {
-        const { error } = await supabase
-          .from('orders')
-          .update({
-            paid_amount: o.paidAmount,
-            debt_amount: o.debtAmount,
-            status: o.status
-          })
-          .eq('id', id);
-        if (error) throw error;
-      } catch (err: any) {
-        console.error('Supabase order payment update failed:', err?.message || err);
-        throw err;
-      }
-    }
-
-    orders[idx] = o;
-    this.saveOrders(orders);
-    return o;
+    const customerId = `c_${existing.type}_` +
+      btoa(encodeURIComponent(existing.customerName)).replace(/=/g, '');
+    await commitNewReceipt(supabase, {
+      customerName: existing.customerName,
+      customerType: existing.type,
+      customerId, amount: additionalPay,
+      method: `Gạch nợ hóa đơn ${existing.orderCode} [${existing.id}]`,
+      targetOrderId: id,
+    });
+    await this.refreshCommittedFinancialState();
+    return this.getOrders().find(o => o.id === id) || null;
   }
 
   static async updateOrder(id: string, updatedFields: Partial<Order>): Promise<void> {
@@ -1958,101 +1985,29 @@ export class StorageManager {
     return list;
   }
 
-  // Helper to record payment directly from customer card
+  // Receipt allocation and history are committed together on the database.
+  // No local paid/debt mutation is permitted until RPC confirms the commit.
   static async recordCustomerPayment(customerName: string, type: OrderType, amount: number, paymentMethod: string): Promise<void> {
-    // 1. Record the transaction inside payment_history (insert in local state and push to database)
-    const uuid = typeof crypto !== 'undefined' && crypto.randomUUID 
-      ? crypto.randomUUID() 
-      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { 
-          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8); 
-          return v.toString(16); 
-        });
-
-    const newPayment: PaymentHistory = {
-      id: uuid,
-      customerName,
-      type,
-      customerId: `c_${type}_` + btoa(encodeURIComponent(customerName)).replace(/=/g, ''),
-      amount,
-      paymentMethod: paymentMethod || 'Mặc định',
-      createdAt: new Date().toISOString()
-    };
-
-    if (this.isSupabaseActive) {
-      const payload = {
-        id: newPayment.id,
-        customer_name: newPayment.customerName,
-        type: newPayment.type,
-        customer_id: newPayment.customerId,
-        amount: newPayment.amount,
-        payment_method: newPayment.paymentMethod,
-        created_at: newPayment.createdAt
-      };
-      
-      try {
-        const { error } = await supabase.from('payment_history').insert([payload]);
-        if (error) {
-          console.error('Supabase payment_history insert failed:', error.message);
-          throw error;
-        }
-      } catch (err) {
-        console.error('Supabase payment history initial sync failed:', err);
-        throw err;
-      }
+    this.assertAtomicAccountingEnabled();
+    validateVnd(amount);
+    if (type !== 'dtf' && type !== 'tshirt') {
+      throw new Error('Chưa hỗ trợ thu tiền loại đơn hỗn hợp.');
     }
-
-    const payments = this.getPaymentHistory();
-    payments.unshift(newPayment);
-    this.savePaymentHistory(payments);
-
-    // 2. FIFO Allocation to unpaid/debt orders
-    const orders = this.getOrders();
-    let remainingAmount = amount;
-
-    // Apply payments to customer's unpaid/debt orders starting from oldest to newest
-    const customerOrders = orders
-      .filter(o => o.customerName === customerName && o.type === type && o.debtAmount > 0)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    for (const order of customerOrders) {
-      if (remainingAmount <= 0) break;
-      const paymentToApply = Math.min(order.debtAmount, remainingAmount);
-      
-      order.paidAmount = Math.min(order.totalPrice, order.paidAmount + paymentToApply);
-      order.debtAmount = order.totalPrice - order.paidAmount;
-      order.status = order.paidAmount >= order.totalPrice ? 'completed' : 'pending';
-      remainingAmount -= paymentToApply;
-
-      if (this.isSupabaseActive) {
-        try {
-          const { error } = await supabase.from('orders')
-            .update({
-              paid_amount: order.paidAmount,
-              debt_amount: order.debtAmount,
-              status: order.status
-            })
-            .eq('id', order.id);
-          if (error) throw error;
-        } catch (err) {
-          console.error('Supabase FIFO order update failed:', err);
-          throw err;
-        }
-      }
-    }
-
-    this.saveOrders(orders);
+    const customerId = `c_${type}_` +
+      btoa(encodeURIComponent(customerName)).replace(/=/g, '');
+    await commitNewReceipt(supabase, {
+      customerName, customerType: type, customerId,
+      amount, method: paymentMethod || 'Mặc định',
+    });
+    await this.refreshCommittedFinancialState();
   }
 
-  // Safe release gate for legacy receipts. The former code zeroed every paid
-  // invoice then replayed an incomplete payment_history, which can erase
-  // historic direct payments. A server-atomic allocation-aware reversal is
-  // required; never guess how old receipts should be redistributed.
-  static async deletePaymentAndRecalculate(
-    _paymentId: string, _customerName: string, _type: OrderType
-  ): Promise<void> {
-    throw new Error(
-      'Tạm khóa hoàn tác tự động trên bản bảo mật thử nghiệm: lịch sử thu tiền cũ chưa đủ để tính lại an toàn. Cần đối soát và triển khai hoàn tác theo bút toán riêng.'
-    );
+  // A reversal may only touch allocations created by the new atomic system.
+  // Historical receipt amounts MUST NOT be used to reset all paid invoices.
+  static async deletePaymentAndRecalculate(paymentId: string, _customerName: string, _type: OrderType): Promise<void> {
+    this.assertAtomicAccountingEnabled();
+    await commitNewReversal(supabase, paymentId);
+    await this.refreshCommittedFinancialState();
   }
 
   // --- STATS CALCULATION ---
