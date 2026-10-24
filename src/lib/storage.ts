@@ -68,6 +68,127 @@ export class StorageManager {
           throw new Error('Đơn cục bộ đã thay đổi sau khi đưa vào hàng đợi. Cần đối chiếu thủ công.');
         }
         validateOrderAmounts(localOrder);
+
+        // With atomic accounting enabled, the invoice, opening balance, line items,
+        // initial receipt, and allocation journal must be one database transaction.
+        if ((import.meta as any).env?.VITE_ATOMIC_ACCOUNTING_ENABLED === 'true') {
+          const initialPaymentId = entry.initialPaymentId || null;
+          const initialPaymentMethod = entry.initialPaymentMethod || 'Thanh toán khi tạo đơn';
+          if (localOrder.paidAmount > 0 && !initialPaymentId) {
+            throw new Error('Đơn đang chờ có khoản trả trước nhưng thiếu mã biên nhận bền vững. Không tự tạo mã mới; cần đối soát.');
+          }
+          if (localOrder.paidAmount === 0 && initialPaymentId) {
+            throw new Error('Đơn không có tiền trả trước nhưng hàng đợi chứa mã biên nhận. Cần đối soát.');
+          }
+          const legacyCustomerId = \`c_\${localOrder.type}_\` +
+            btoa(encodeURIComponent(localOrder.customerName)).replace(/=/g, '');
+          const orderImagesPayload = JSON.stringify({
+            images: (localOrder.orderImages || []).filter(image =>
+              typeof image === 'string' && !/^(data:|blob:|backup-asset:)/i.test(image)),
+            notes: localOrder.notes || '',
+            surcharge: localOrder.surcharge || 0,
+          });
+          const itemsPayload = (localOrder.items || []).map(item => ({
+            id: item.id,
+            type: item.type,
+            product_name: item.productName,
+            color: (item.color || 'Mặc định').replace(/\(Phân khúc nhập sỉ\)/gi, '').trim(),
+            size: item.size || null,
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+            total_price: item.totalPrice,
+            image: item.image && !/^(data:|blob:|backup-asset:)/i.test(item.image) ? item.image : null,
+          }));
+          const { data: created, error: createError } = await supabase.rpc('create_order_atomic', {
+            p_order_id: localOrder.id,
+            p_order_code: localOrder.orderCode,
+            p_customer_name: localOrder.customerName,
+            p_customer_type: localOrder.type,
+            p_legacy_customer_id: legacyCustomerId,
+            p_product_name: localOrder.productName,
+            p_color: localOrder.color || '',
+            p_quantity: localOrder.quantity,
+            p_unit_price: localOrder.unitPrice,
+            p_total_price: localOrder.totalPrice,
+            p_paid_amount: localOrder.paidAmount,
+            p_debt_amount: localOrder.debtAmount,
+            p_status: localOrder.status,
+            p_order_images: orderImagesPayload,
+            p_created_at: localOrder.createdAt,
+            p_initial_payment_id: initialPaymentId,
+            p_initial_payment_method: initialPaymentMethod,
+            p_items: itemsPayload,
+          });
+          if (createError) throw new Error('Tạo đơn nguyên tử chưa được xác nhận: ' + createError.message);
+          if (created?.order_id !== localOrder.id || created?.state !== 'committed') {
+            throw new Error('Phản hồi tạo đơn không khớp. Giữ nguyên hàng đợi để đối soát.');
+          }
+
+          const { data: confirmed, error: readbackError } = await supabase
+            .from('orders')
+            .select('id,order_code,customer_name,type,total_price,paid_amount,debt_amount')
+            .eq('id', entry.id).maybeSingle();
+          if (readbackError) throw readbackError;
+          if (!confirmed ||
+              confirmed.id !== localOrder.id ||
+              confirmed.order_code !== localOrder.orderCode ||
+              confirmed.customer_name !== localOrder.customerName ||
+              confirmed.type !== localOrder.type ||
+              Number(confirmed.total_price) !== localOrder.totalPrice ||
+              Number(confirmed.paid_amount) < localOrder.paidAmount ||
+              Number(confirmed.debt_amount) > localOrder.debtAmount ||
+              Number(confirmed.paid_amount) + Number(confirmed.debt_amount) !== localOrder.totalPrice) {
+            throw new Error('Đơn trên cloud không khớp với hóa đơn ban đầu hoặc bất biến kế toán. Không tự ghi đè.');
+          }
+
+          if (initialPaymentId) {
+            const { data: receipt, error: receiptError } = await supabase
+              .from('payment_history')
+              .select('id,customer_id,customer_name,type,amount,payment_method,accounting_origin')
+              .eq('id', initialPaymentId).maybeSingle();
+            if (receiptError) throw receiptError;
+            if (!receipt || receipt.customer_id !== legacyCustomerId ||
+                receipt.customer_name !== localOrder.customerName ||
+                receipt.type !== localOrder.type ||
+                Number(receipt.amount) !== localOrder.paidAmount ||
+                receipt.payment_method !== initialPaymentMethod ||
+                receipt.accounting_origin !== 'initial_order_payment') {
+              throw new Error('Biên nhận trả trước không khớp đơn. Giữ nguyên hàng đợi để đối soát.');
+            }
+            const { data: allocations, error: allocationError } = await supabase
+              .from('payment_allocations').select('order_id,amount').eq('payment_id', initialPaymentId);
+            if (allocationError) throw allocationError;
+            const allocationTotal = (allocations || []).reduce((sum, row) => sum + Number(row.amount), 0);
+            if (allocationTotal !== localOrder.paidAmount ||
+                !(allocations || []).some(row => row.order_id === localOrder.id)) {
+              throw new Error('Phân bổ khoản trả trước không khớp. Giữ nguyên hàng đợi để đối soát.');
+            }
+          }
+
+          const { data: remoteItems, error: itemReadError } = await supabase
+            .from('order_items')
+            .select('id,order_id,type,product_name,color,size,quantity,unit_price,total_price')
+            .eq('order_id', localOrder.id);
+          if (itemReadError) throw itemReadError;
+          const remoteById = new Map((remoteItems || []).map(item => [String(item.id), item]));
+          if (remoteById.size !== itemsPayload.length) {
+            throw new Error('Số dòng hàng trên cloud khác hóa đơn. Giữ nguyên hàng đợi để đối soát.');
+          }
+          for (const item of itemsPayload) {
+            const remote = remoteById.get(String(item.id));
+            if (!remote || remote.order_id !== localOrder.id ||
+                remote.type !== item.type || remote.product_name !== item.product_name ||
+                remote.color !== item.color || (remote.size || null) !== item.size ||
+                Number(remote.quantity) !== item.quantity ||
+                Number(remote.unit_price) !== item.unit_price ||
+                Number(remote.total_price) !== item.total_price) {
+              throw new Error('Chi tiết hàng trên cloud khác hóa đơn. Giữ nguyên hàng đợi để đối soát.');
+            }
+          }
+          confirmOrderSync(entry.id);
+          continue;
+        }
+
         const { data: existing, error: lookupError } = await supabase
           .from('orders').select('*').eq('id', entry.id).maybeSingle();
         if (lookupError) throw lookupError;
