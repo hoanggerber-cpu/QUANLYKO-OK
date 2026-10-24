@@ -2043,77 +2043,16 @@ export class StorageManager {
     this.saveOrders(orders);
   }
 
-  // Undo payment / recalculate FIFO
-  static async deletePaymentAndRecalculate(paymentId: string, customerName: string, type: OrderType): Promise<void> {
-    // 3.1: Delete record from local state payment_history
-    let payments = this.getPaymentHistory();
-    payments = payments.filter(p => p.id !== paymentId);
-    this.savePaymentHistory(payments);
-
-    // Sync deletion to Supabase
-    if (this.isSupabaseActive) {
-      try {
-        const { error } = await supabase.from('payment_history').delete().eq('id', paymentId);
-        if (error) console.error('Supabase delete from payment_history failed:', error.message);
-      } catch (err) {
-        console.error('Failed to post delete payment_history to Supabase:', err);
-      }
-    }
-
-    // 3.2: Get sum of remaining payment history records for this customer
-    const newTotalPaid = payments
-      .filter(p => p.customerName === customerName && p.type === type)
-      .reduce((sum, p) => sum + p.amount, 0);
-
-    // 3.3: Reset ALL orders of the customer for this specific type to paid_amount = 0 and status = 'pending'
-    const orders = this.getOrders();
-    const customerOrders = orders.filter(o => o.customerName === customerName && o.type === type);
-
-    for (const order of customerOrders) {
-      order.paidAmount = 0;
-      order.debtAmount = order.totalPrice;
-      order.status = 'pending';
-    }
-
-    // 3.4: Re-allocate old ones first (FIFO) using newTotalPaid
-    let remainingAmount = newTotalPaid;
-    const sortedOrders = [...customerOrders].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    for (const order of sortedOrders) {
-      if (remainingAmount <= 0) {
-        order.paidAmount = 0;
-        order.debtAmount = order.totalPrice;
-        order.status = 'pending';
-        continue;
-      }
-      const paymentToApply = Math.min(order.totalPrice, remainingAmount);
-      order.paidAmount = paymentToApply;
-      order.debtAmount = order.totalPrice - paymentToApply;
-      order.status = order.paidAmount >= order.totalPrice ? 'completed' : 'pending';
-      remainingAmount -= paymentToApply;
-    }
-
-    // Save orders state locally
-    this.saveOrders(orders);
-
-    // Push updated orders to Supabase
-    if (this.isSupabaseActive) {
-      try {
-        await Promise.all(
-          customerOrders.map(async (order) => {
-            return supabase.from('orders')
-              .update({
-                paid_amount: order.paidAmount,
-                debt_amount: order.debtAmount,
-                status: order.status
-              })
-              .eq('id', order.id);
-          })
-        );
-      } catch (err) {
-        console.error('Failed to update orders after recalculation:', err);
-      }
-    }
+  // Safe release gate for legacy receipts. The former code zeroed every paid
+  // invoice then replayed an incomplete payment_history, which can erase
+  // historic direct payments. A server-atomic allocation-aware reversal is
+  // required; never guess how old receipts should be redistributed.
+  static async deletePaymentAndRecalculate(
+    _paymentId: string, _customerName: string, _type: OrderType
+  ): Promise<void> {
+    throw new Error(
+      'Tạm khóa hoàn tác tự động trên bản bảo mật thử nghiệm: lịch sử thu tiền cũ chưa đủ để tính lại an toàn. Cần đối soát và triển khai hoàn tác theo bút toán riêng.'
+    );
   }
 
   // --- STATS CALCULATION ---
