@@ -42,7 +42,10 @@ REVOKE ALL ON public.orders,public.order_items,public."order-item",
   public.customers,public.payment_history,public.products FROM PUBLIC, anon, authenticated;
 -- Authenticated role continues operations, but policy restricts to owner.
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.orders,public.order_items,
-  public."order-item",public.customers,public.payment_history,public.products TO authenticated;
+  public."order-item",public.customers,public.products TO authenticated;
+-- A receipt is an immutable financial record. Atomic posting appends new rows;
+-- reversal writes into payment_reversals instead of UPDATE/DELETE payment_history.
+GRANT SELECT,INSERT ON public.payment_history TO authenticated;
 
 COMMIT;
 
