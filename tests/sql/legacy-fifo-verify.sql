@@ -127,3 +127,94 @@ BEGIN
  THEN RAISE EXCEPTION 'Rollback must restore every order and history'; END IF;
 END;$test$;
 RESET ROLE;
+
+
+-- Customer overpayment and automatic application to future invoices.
+-- This migration adds only one column to existing customers and one INSERT trigger.
+CREATE TABLE public.customers (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  type text NOT NULL,
+  pin_code text,
+  created_at timestamptz DEFAULT now()
+);
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.customers TO anon,authenticated;
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+CREATE POLICY legacy_customer_access ON public.customers FOR ALL TO anon,authenticated
+  USING(true) WITH CHECK(true);
+\i docs/CUSTOMER_OVERPAYMENT_CREDIT.sql
+
+INSERT INTO public.orders(id,order_code,customer_name,type,created_at,total_price,paid_amount,debt_amount,status)
+VALUES ('advance-old','ADV-OLD','Advance Test','dtf','2026-01-01',5000000,0,5000000,'pending');
+
+SET ROLE anon;
+DO $test$
+DECLARE v_result jsonb;
+BEGIN
+ SELECT public.record_legacy_payment_atomic(
+   'c1000001-1111-4111-8111-000000000001',
+   'Advance Test','dtf','c_dtf_advance',7000000,'Cash',NULL
+ ) INTO v_result;
+ IF v_result->>'state'<>'committed'
+    OR (SELECT debt_amount FROM public.orders WHERE id='advance-old')<>0
+    OR (SELECT paid_amount FROM public.orders WHERE id='advance-old')<>5000000
+    OR (SELECT credit_balance FROM public.customers WHERE name='Advance Test' AND type='dtf')<>2000000
+ THEN RAISE EXCEPTION 'Overpayment must close 5M old debt and leave +2M'; END IF;
+
+ SELECT public.record_legacy_payment_atomic(
+   'c1000001-1111-4111-8111-000000000001',
+   'Advance Test','dtf','c_dtf_advance',7000000,'Cash',NULL
+ ) INTO v_result;
+ IF v_result->>'duplicate'<>'true' OR
+    (SELECT credit_balance FROM public.customers WHERE name='Advance Test' AND type='dtf')<>2000000
+ THEN RAISE EXCEPTION 'Duplicate receipt cannot double positive credit'; END IF;
+END;
+$test$;
+RESET ROLE;
+
+INSERT INTO public.orders(id,order_code,customer_name,type,created_at,total_price,paid_amount,debt_amount,status)
+VALUES ('advance-new-1','ADV-NEW-1','Advance Test','dtf','2026-10-24',1000000,0,1000000,'pending');
+DO $test$
+BEGIN
+ IF (SELECT credit_balance FROM public.customers WHERE name='Advance Test' AND type='dtf')<>1000000 OR
+    (SELECT debt_amount FROM public.orders WHERE id='advance-new-1')<>0 OR
+    (SELECT paid_amount FROM public.orders WHERE id='advance-new-1')<>1000000
+ THEN RAISE EXCEPTION 'New 1M invoice must draw 1M of 2M advance'; END IF;
+END;
+$test$;
+
+INSERT INTO public.orders(id,order_code,customer_name,type,created_at,total_price,paid_amount,debt_amount,status)
+VALUES ('advance-new-2','ADV-NEW-2','Advance Test','dtf','2026-10-25',3000000,0,3000000,'pending');
+DO $test$
+BEGIN
+ IF (SELECT credit_balance FROM public.customers WHERE name='Advance Test' AND type='dtf')<>0 OR
+    (SELECT debt_amount FROM public.orders WHERE id='advance-new-2')<>2000000 OR
+    (SELECT paid_amount FROM public.orders WHERE id='advance-new-2')<>1000000 OR
+    (SELECT total_price FROM public.orders WHERE id='advance-old')<>5000000 OR
+    (SELECT sum(amount) FROM public.payment_history WHERE customer_name='Advance Test')<>7000000
+ THEN RAISE EXCEPTION 'Second new invoice must consume last credit and owe 2M, original receipt intact'; END IF;
+END;
+$test$;
+
+-- Customer who owes zero may still prepay without an invoice.
+SET ROLE anon;
+DO $test$
+BEGIN
+ PERFORM public.record_legacy_payment_atomic(
+   'c1000002-1111-4111-8111-000000000002',
+   'No Orders Yet','dtf','c_dtf_empty',1000000,'Bank',NULL
+ );
+ IF (SELECT credit_balance FROM public.customers WHERE name='No Orders Yet' AND type='dtf')<>1000000
+ THEN RAISE EXCEPTION 'Advance without existing debt not stored'; END IF;
+END;
+$test$;
+RESET ROLE;
+
+-- Verify untouched legacy invoices remain in their prior final state.
+DO $test$
+BEGIN
+ IF (SELECT count(*) FROM public.orders WHERE customer_name='Khach FIFO' AND status='completed')<>1000
+    OR (SELECT sum(total_price) FROM public.orders WHERE customer_name='Khach FIFO')<>105000000
+ THEN RAISE EXCEPTION 'Migration changed historical customer orders'; END IF;
+END;
+$test$;
