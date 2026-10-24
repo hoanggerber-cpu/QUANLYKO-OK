@@ -5,7 +5,7 @@ import { assertPersistentOrderImages } from './orderImageSafety';
 import { matchesOrderImageReadback } from './orderImageReadback';
 import { mergeProductRecordsByUpdatedAt } from './productImageMerge';
 import {
-  commitNewReceipt, commitNewReversal,
+  commitNewReceipt, commitNewReversal, queueOfflineReceipt,
   getPendingFinanceOperation as readPendingFinance,
   retryPendingFinanceOperation as retryPendingFinanceRpc,
   validateVnd
@@ -2383,17 +2383,26 @@ export class StorageManager {
   // Receipt allocation and history are committed together on the database.
   // No local paid/debt mutation is permitted until RPC confirms the commit.
   static async recordCustomerPayment(customerName: string, type: OrderType, amount: number, paymentMethod: string): Promise<void> {
-    this.assertAtomicAccountingEnabled();
+    if ((import.meta as any).env?.VITE_ATOMIC_ACCOUNTING_ENABLED !== 'true') {
+      throw new Error('Máy chủ kế toán nguyên tử chưa được kích hoạt; không ghi tiền vào sổ để tránh sai lệch.');
+    }
     validateVnd(amount);
     if (type !== 'dtf' && type !== 'tshirt') {
       throw new Error('Chưa hỗ trợ thu tiền loại đơn hỗn hợp.');
     }
     const customerId = `c_${type}_` +
       btoa(encodeURIComponent(customerName)).replace(/=/g, '');
-    await commitNewReceipt(supabase, {
+    const input = {
       customerName, customerType: type, customerId,
       amount, method: paymentMethod || 'Mặc định',
-    });
+    };
+    // Offline = record a durable pending receipt only. Never mutate local
+    // confirmed paid/debt or claim the server received any money.
+    if (!this.isSupabaseActive || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+      queueOfflineReceipt(input);
+      return;
+    }
+    await commitNewReceipt(supabase, input);
     await this.refreshCommittedFinancialState();
   }
 
