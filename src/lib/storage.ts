@@ -1337,24 +1337,27 @@ export class StorageManager {
       });
 
       try {
-        const { error } = await supabase.from('orders').insert([payload]);
-        if (error) {
-          console.warn('Supabase order sync failed, retrying with raw payload stripped of order_images', error.message);
-          if (error.message?.includes('type integer') || error.message?.includes('invalid input syntax')) {
-            localStorage.setItem('supabase_migration_needed', 'true');
-            window.dispatchEvent(new Event('supabase_sync_error'));
-          }
-          const retryPayload = { ...payload };
-          delete retryPayload.order_images;
-          const { error: retryErr } = await supabase.from('orders').insert([retryPayload]);
-          if (retryErr) {
-            if (retryErr.message?.includes('type integer') || retryErr.message?.includes('invalid input syntax')) {
-              localStorage.setItem('supabase_migration_needed', 'true');
-              window.dispatchEvent(new Event('supabase_sync_error'));
-            }
-            throw retryErr;
-          }
+        const { data: savedOrder, error } = await supabase.rpc(
+          'create_legacy_order_with_advance', { p_order: payload }
+        );
+        if (error) throw error;
+        if (!savedOrder || savedOrder.id !== newOrder.id
+            || !Number.isSafeInteger(Number(savedOrder.paid_amount))
+            || !Number.isSafeInteger(Number(savedOrder.debt_amount))) {
+          throw new Error('Supabase chưa xác nhận đúng số dư đơn mới.');
         }
+        // Read back the credit-adjusted numbers; never invent a local paid amount.
+        newOrder.paidAmount=Number(savedOrder.paid_amount);
+        newOrder.debtAmount=Number(savedOrder.debt_amount);
+        newOrder.status=savedOrder.status as Order['status'];
+        const localOrders=this.getOrders();
+        const idx=localOrders.findIndex(o=>o.id===newOrder.id);
+        if(idx>=0) {
+          localOrders[idx]={...localOrders[idx],paidAmount:newOrder.paidAmount,
+            debtAmount:newOrder.debtAmount,status:newOrder.status};
+          this.saveOrders(localOrders);
+        }
+        window.dispatchEvent(new Event('supabase_sync_success'));
 
         if (newOrder.items && newOrder.items.length > 0) {
           await this.syncOrderItems(newOrder.id, newOrder.items);
