@@ -135,6 +135,31 @@ CREATE INDEX IF NOT EXISTS orders_accounting_customer_debt_idx
 CREATE INDEX IF NOT EXISTS payment_history_accounting_customer_idx
   ON public.payment_history(accounting_customer_id, created_at);
 
+-- Database-level invariants. The production audit found zero invalid or NULL
+-- order/receipt amounts; if staging differs, validation aborts rather than
+-- silently rewriting balances.
+DO $
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='orders_accounting_amounts_check') THEN
+    ALTER TABLE public.orders ADD CONSTRAINT orders_accounting_amounts_check
+      CHECK (
+        total_price IS NOT NULL AND paid_amount IS NOT NULL AND debt_amount IS NOT NULL
+        AND total_price >= 0 AND paid_amount >= 0 AND debt_amount >= 0
+        AND total_price = paid_amount + debt_amount
+        AND total_price = trunc(total_price)
+        AND paid_amount = trunc(paid_amount)
+        AND debt_amount = trunc(debt_amount)
+      ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='payment_history_amount_check') THEN
+    ALTER TABLE public.payment_history ADD CONSTRAINT payment_history_amount_check
+      CHECK (amount IS NOT NULL AND amount > 0 AND amount = trunc(amount)) NOT VALID;
+  END IF;
+END;
+$;
+ALTER TABLE public.orders VALIDATE CONSTRAINT orders_accounting_amounts_check;
+ALTER TABLE public.payment_history VALIDATE CONSTRAINT payment_history_amount_check;
+
 -- Immutable opening snapshots preserve the exact state at cutover. Legacy
 -- balances are treated as a baseline, not falsely attributed to guessed receipts.
 INSERT INTO public.accounting_order_opening_balances(
