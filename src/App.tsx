@@ -107,7 +107,30 @@ export default function App() {
     }
   }, []);
 
-  // 1. Check database/storage state on boot
+  // Restore an authenticated owner session; local UI state is not an authorization boundary.
+  useEffect(() => {
+    let active = true;
+    const restore = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (!active) return;
+      if (!error && data.user?.email?.toLowerCase() === 'hoangkenlee@gmail.com') {
+        setUser('hoanguyen');
+        setIsLoggedIn(true);
+      } else if (data.user) {
+        await supabase.auth.signOut();
+      }
+    };
+    void restore();
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && active) {
+        setIsLoggedIn(false);
+        setUser('');
+      }
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, []);
+
+  // 1. Load records only after the owner has authenticated.
   useEffect(() => {
     async function initData() {
       try {
@@ -137,8 +160,8 @@ export default function App() {
         setLoading(false);
       }
     }
-    initData();
-  }, []);
+    if (isLoggedIn) void initData();
+  }, [isLoggedIn]);
 
   // Derive customer records without mutating persisted data.
   useEffect(() => {
@@ -147,7 +170,7 @@ export default function App() {
 
   // 3. Listen to Realtime updates from Supabase to auto-sync cross-device actions
   useEffect(() => {
-    if (isSupabaseOnline) {
+    if (isLoggedIn && isSupabaseOnline) {
       console.log('Initializing Supabase Realtime Listener...');
       const channel = supabase
         .channel('db_realtime_changes')
@@ -172,7 +195,7 @@ export default function App() {
         supabase.removeChannel(channel);
       };
     }
-  }, [isSupabaseOnline]);
+  }, [isLoggedIn, isSupabaseOnline]);
 
   // Auth logins
   const handleLoginSuccess = (adminUser: string) => {
@@ -180,9 +203,11 @@ export default function App() {
     setIsLoggedIn(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setIsLoggedIn(false);
     setUser('');
+    setIsSupabaseOnline(false);
   };
 
   // --- ACTIONS ---
