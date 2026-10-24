@@ -291,23 +291,7 @@ export class StorageManager {
       };
 
       try {
-        const { data: insertedOrder, error } = await supabase.from('orders')
-          .insert([payload]).select('id,paid_amount,debt_amount,status').single();
-        if (!error && insertedOrder) {
-          const localOrders=this.getOrders();
-          const idx=localOrders.findIndex(o=>o.id===newOrder.id);
-          if(idx>=0) {
-            localOrders[idx]={...localOrders[idx],
-              paidAmount:Number(insertedOrder.paid_amount),
-              debtAmount:Number(insertedOrder.debt_amount),
-              status:insertedOrder.status as Order['status']};
-            newOrder.paidAmount=localOrders[idx].paidAmount;
-            newOrder.debtAmount=localOrders[idx].debtAmount;
-            newOrder.status=localOrders[idx].status;
-            this.saveOrders(localOrders);
-          }
-          window.dispatchEvent(new Event('supabase_sync_success'));
-        }
+        const { error } = await supabase.from('orders').insert([payload]);
         if (error?.code === '23505') {
           remoteIds.add(String(order.id));
           existingCount += 1;
