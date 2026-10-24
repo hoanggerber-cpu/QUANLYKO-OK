@@ -1283,7 +1283,21 @@ export class StorageManager {
     return this.getDtfPricesForCustomer(trimmedName);
   }
 
+  // Reject browser-local blob:/data:/backup-asset: references for NEW image writes.
+  // Existing legacy orders remain readable and are never rewritten by this guard.
+  private static assertPersistentOrderImages(images: Array<string | undefined | null>): void {
+    for (const image of images) {
+      if (image && !/^https:\/\/[^\s]+$/i.test(image)) {
+        throw new Error('Ảnh đơn hàng chưa được tải lên Supabase thành công. Không lưu đơn để tránh mất ảnh. Vui lòng giữ file gốc và thử lại.');
+      }
+    }
+  }
+
   static async addOrder(order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }): Promise<Order> {
+    this.assertPersistentOrderImages([
+      ...(order.orderImages || []),
+      ...(order.items || []).flatMap(item => [item.image, ...(item.extraImages || [])])
+    ]);
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const prefix = order.type === 'dtf' ? 'ORD-DTF-' : 'ORD-TS-';
     const qty = order.type === 'dtf' ? this.extractLengthFromOrder(order) : order.quantity;
@@ -1468,6 +1482,12 @@ export class StorageManager {
   }
 
   static async updateOrder(id: string, updatedFields: Partial<Order>): Promise<void> {
+    // Validate only image fields explicitly being written, leaving historical
+    // broken references untouched when editing unrelated order details.
+    this.assertPersistentOrderImages([
+      ...(updatedFields.orderImages || []),
+      ...(updatedFields.items || []).flatMap(item => [item.image, ...(item.extraImages || [])])
+    ]);
     const orders = this.getOrders();
     const idx = orders.findIndex(o => o.id === id);
     if (idx === -1) return;
