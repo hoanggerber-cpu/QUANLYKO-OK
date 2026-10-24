@@ -357,10 +357,10 @@ export default function DebtManager({
       await onRecordPayment(payCustomer.name, payCustomer.type, payAmount, paymentNote.trim() || 'Mặc định');
       const formattedAmount = formatCurrency(payAmount);
       const noteSuffix = paymentNote.trim() ? ` - Ghi chú: ${paymentNote.trim()}` : '';
-      if (StorageManager.getIsSupabaseActive()) {
-        showToast(`Đã xử lý khoản thu ${formattedAmount}${noteSuffix}. Cần đối chiếu số dư cloud khi hoàn tất đồng bộ.`, 'success');
-      } else {
+      if (StorageManager.getPendingFinance()?.kind === 'receipt') {
         showToast(`Đã lưu khoản thu ${formattedAmount} trên máy này, CHƯA ĐỒNG BỘ CLOUD. Không ghi lại ở máy khác.`, 'info');
+      } else {
+        showToast(`Đã xử lý khoản thu ${formattedAmount}${noteSuffix}. Cần đối chiếu số dư cloud khi hoàn tất đồng bộ.`, 'success');
       }
       setPayCustomer(null);
       setPayAmount(0);
