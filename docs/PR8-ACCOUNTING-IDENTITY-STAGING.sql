@@ -237,6 +237,7 @@ BEGIN
       OLD.paid_amount IS DISTINCT FROM NEW.paid_amount OR
       OLD.debt_amount IS DISTINCT FROM NEW.debt_amount OR
       OLD.status IS DISTINCT FROM NEW.status OR
+      OLD.order_images IS DISTINCT FROM NEW.order_images OR
       OLD.accounting_customer_id IS DISTINCT FROM NEW.accounting_customer_id OR
       OLD.created_at IS DISTINCT FROM NEW.created_at
     ) THEN
@@ -524,6 +525,8 @@ DECLARE
   v_item jsonb;
   v_saved_item public.order_items%ROWTYPE;
   v_count integer;
+  v_items_total numeric;
+  v_surcharge numeric;
 BEGIN
   IF auth.uid() IS DISTINCT FROM '3ea90802-af4a-4163-b403-da7ee313eb6d'::uuid THEN
     RAISE EXCEPTION 'Owner authorization required' USING ERRCODE='42501';
@@ -552,6 +555,21 @@ BEGIN
     OR (p_paid_amount=0 AND p_initial_payment_id IS NOT NULL)
   THEN
     RAISE EXCEPTION 'Invalid invoice/accounting fields' USING ERRCODE='22023';
+  END IF;
+
+  v_items_total := 0;
+  v_surcharge := 0;
+  v_count := jsonb_array_length(p_items);
+  IF v_count > 0 THEN
+    SELECT coalesce(sum((item->>'total_price')::numeric),0)
+      INTO v_items_total
+      FROM jsonb_array_elements(p_items) AS t(item);
+    IF p_order_images IS NOT NULL AND btrim(p_order_images) <> '' THEN
+      v_surcharge := coalesce(nullif((p_order_images::jsonb->>'surcharge'), '')::numeric, 0);
+    END IF;
+    IF v_surcharge < 0 OR v_items_total + v_surcharge <> p_total_price THEN
+      RAISE EXCEPTION 'Invoice total must equal line items plus surcharge exactly';
+    END IF;
   END IF;
 
   v_customer_uuid:=public.resolve_accounting_customer_identity(p_customer_name,p_customer_type);
