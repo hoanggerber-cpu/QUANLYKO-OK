@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Customer, OrderType, Order, PaymentHistory } from '../types';
 import { formatCurrency, generateReconciliationPDF } from '../utils/pdfGenerator';
 import { getOrderProductSummary } from '../utils/orderSummary';
@@ -25,9 +25,9 @@ import {
 interface DebtManagerProps {
   customers: Customer[];
   orders: Order[];
-  onRecordPayment: (customerName: string, type: OrderType, amount: number, paymentMethod: string) => void;
-  onUndoPayment?: (paymentId: string, customerName: string, type: OrderType) => void;
-  onRecordOrderPayment?: (orderId: string, amount: number) => void;
+  onRecordPayment: (customerName: string, type: OrderType, amount: number, paymentMethod: string) => Promise<void>;
+  onUndoPayment?: (paymentId: string, customerName: string, type: OrderType) => Promise<void>;
+  onRecordOrderPayment?: (orderId: string, amount: number) => Promise<void>;
   onUpdateCustomer?: (oldName: string, type: OrderType, newName: string, newTotalSpent?: number, newTotalPaid?: number, newPinCode?: string | null) => any;
   onDeleteCustomer?: (customerName: string, type: OrderType) => void;
   onUpdateOrder?: (id: string, updatedFields: Partial<Order>) => any;
@@ -289,6 +289,8 @@ export default function DebtManager({
   const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
 
   // Payment modal state
+  const financeSaving = useRef(false);
+  const [financeBusy, setFinanceBusy] = useState(false);
   const [payCustomer, setPayCustomer] = useState<Customer | null>(null);
   const [payAmount, setPayAmount] = useState(0);
   const [payAmountInputStr, setPayAmountInputStr] = useState('');
@@ -318,34 +320,58 @@ export default function DebtManager({
     )
     .sort((a, b) => b.debtAmount - a.debtAmount);
 
-  const handleCollectSubmit = (e: React.FormEvent) => {
+  const handleCollectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payCustomer) return;
-    if (payAmount <= 0) return;
-
-    onRecordPayment(payCustomer.name, payCustomer.type, payAmount, paymentNote.trim() || 'Mặc định');
-    
-    const formattedAmount = formatCurrency(payAmount);
-    const noteSuffix = paymentNote.trim() ? ` - Ghi chú: ${paymentNote.trim()}` : '';
-    showToast(`Đã ghi nhận thanh toán thành công số tiền ${formattedAmount}${noteSuffix}!`, 'success');
-
-    setPayCustomer(null);
-    setPayAmount(0);
-    setPayAmountInputStr('');
-    setPaymentNote('');
+    if (!payCustomer || financeSaving.current) return;
+    if (!Number.isSafeInteger(payAmount) || payAmount <= 0 || payAmount > payCustomer.debtAmount) {
+      showToast('Số tiền không hợp lệ hoặc vượt công nợ của khách.', 'error');
+      return;
+    }
+    financeSaving.current = true;
+    setFinanceBusy(true);
+    try {
+      await onRecordPayment(payCustomer.name, payCustomer.type, payAmount, paymentNote.trim() || 'Mặc định');
+      if (StorageManager.getPendingLegacyReceipt()) {
+        showToast('Khoản thu đã lưu trên máy, CHƯA ĐỒNG BỘ. Không nhập lại giao dịch này.', 'info');
+      } else {
+        showToast(`Đã ghi nhận khoản thu ${formatCurrency(payAmount)} trên Supabase.`, 'success');
+      }
+      setPayCustomer(null);
+      setPayAmount(0);
+      setPayAmountInputStr('');
+      setPaymentNote('');
+    } catch (error) {
+      showToast('Không thể xác nhận khoản thu. Kiểm tra lịch sử và đồng bộ trước khi thử lại.', 'error');
+    } finally {
+      financeSaving.current = false;
+      setFinanceBusy(false);
+    }
   };
 
-  const handleCollectOrderSubmit = (e: React.FormEvent) => {
+  const handleCollectOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payOrder) return;
-    if (payOrderAmount <= 0) return;
-
-    if (onRecordOrderPayment) {
-      onRecordOrderPayment(payOrder.id, payOrderAmount);
-      showToast(`Đã ghi nhận thanh toán thành công số tiền ${formatCurrency(payOrderAmount)} cho hóa đơn ${payOrder.orderCode}!`, 'success');
+    if (!payOrder || !onRecordOrderPayment || financeSaving.current) return;
+    if (!Number.isSafeInteger(payOrderAmount) || payOrderAmount <= 0 || payOrderAmount > payOrder.debtAmount) {
+      showToast('Số tiền vượt công nợ hóa đơn hoặc không hợp lệ.', 'error');
+      return;
     }
-    setPayOrder(null);
-    setPayOrderAmount(0);
+    financeSaving.current = true;
+    setFinanceBusy(true);
+    try {
+      await onRecordOrderPayment(payOrder.id, payOrderAmount);
+      if (StorageManager.getPendingLegacyReceipt()) {
+        showToast('Đã lưu khoản thu hóa đơn trên máy, CHƯA ĐỒNG BỘ.', 'info');
+      } else {
+        showToast(`Đã ghi nhận ${formatCurrency(payOrderAmount)} cho hóa đơn ${payOrder.orderCode}.`, 'success');
+      }
+      setPayOrder(null);
+      setPayOrderAmount(0);
+    } catch (error) {
+      showToast('Không thể xác nhận khoản thu hóa đơn. Kiểm tra số dư trước khi thử lại.', 'error');
+    } finally {
+      financeSaving.current = false;
+      setFinanceBusy(false);
+    }
   };
 
   const activeTabLabel = activeTab === 'dtf' ? 'In Pet DTF' : 'Áo thun Kho';
@@ -442,7 +468,8 @@ export default function DebtManager({
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
+                disabled={financeBusy}
+                className="px-6 py-2 disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
               >
                 Xác nhận thanh toán
               </button>
@@ -530,7 +557,8 @@ export default function DebtManager({
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
+                disabled={financeBusy}
+                className="px-6 py-2 disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
               >
                 Xác nhận gạch nợ
               </button>
@@ -945,14 +973,19 @@ export default function DebtManager({
                       <td className="py-4 px-6 text-center">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm(`Bạn có chắc chắn muốn XÓA và HOÀN TÁC giao dịch thu tiền ${formatCurrency(pay.amount)} này? Lúc này hệ thống sẽ tự động tính toán lại công nợ FIFO từ đầu cho khách.`)) {
-                              if (onUndoPayment) {
-                                onUndoPayment(pay.id, pay.customerName, pay.type);
-                                showToast(`Đã hủy giao dịch thu nợ và tự động phân bổ lại FIFO thành công!`, 'success');
-                              } else {
-                                showToast(`Không thiết lập hàm hoàn tác ở máy chủ.`, 'error');
-                              }
+                          onClick={async () => {
+                            if (!onUndoPayment || financeSaving.current) return;
+                            if (!window.confirm('Hoàn tác khoản thu cũ có thể làm sai số dư lịch sử. Chỉ tiếp tục nếu chức năng kiểm soát điều chỉnh đã sẵn sàng.')) return;
+                            financeSaving.current = true;
+                            setFinanceBusy(true);
+                            try {
+                              await onUndoPayment(pay.id, pay.customerName, pay.type);
+                              showToast('Đã xác nhận hoàn tác khoản thu.', 'success');
+                            } catch {
+                              showToast('Không thể hoàn tác tự động an toàn. Dữ liệu tiền đã giữ nguyên.', 'error');
+                            } finally {
+                              financeSaving.current = false;
+                              setFinanceBusy(false);
                             }
                           }}
                           className="px-2.5 py-1 text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200/50 rounded-lg cursor-pointer transition-colors inline-flex items-center gap-1.5"

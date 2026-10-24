@@ -69,6 +69,14 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [dbMigrationNeeded, setDbMigrationNeeded] = useState(true);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [legacyFinanceTick, setLegacyFinanceTick] = useState(0);
+  const [legacyFinanceSyncing, setLegacyFinanceSyncing] = useState(false);
+  useEffect(() => {
+    const onFinanceChange = () => setLegacyFinanceTick(v => v+1);
+    window.addEventListener('legacy_finance_status', onFinanceChange);
+    return () => window.removeEventListener('legacy_finance_status', onFinanceChange);
+  }, []);
+
 
   useEffect(() => {
     const handleSyncError = () => {
@@ -205,6 +213,7 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể ghi nhận giao dịch thu tiền vào hệ thống!");
+      throw error;
     }
   };
 
@@ -215,6 +224,7 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể hủy giao dịch thu tiền!");
+      throw error;
     }
   };
 
@@ -224,6 +234,7 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể lưu hóa đơn thanh toán vào hệ thống!");
+      throw error;
     }
   };
 
@@ -267,6 +278,27 @@ export default function App() {
     }
   };
 
+
+  let pendingLegacyFinance: ReturnType<typeof StorageManager.getPendingLegacyReceipt> = null;
+  let pendingLegacyFinanceError = '';
+  try { pendingLegacyFinance = StorageManager.getPendingLegacyReceipt(); }
+  catch (error) { pendingLegacyFinanceError = error instanceof Error ? error.message : String(error); }
+  void legacyFinanceTick;
+
+  const retryLegacyFinance = async () => {
+    if (legacyFinanceSyncing) return;
+    setLegacyFinanceSyncing(true);
+    try {
+      const result = await StorageManager.synchronizePendingLegacyReceipt();
+      if (!result) throw new Error('Không còn khoản thu đang chờ.');
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+      setLegacyFinanceTick(v => v+1);
+    } catch (error) {
+      alert('Chưa xác nhận đồng bộ khoản thu. KHÔNG nhập lại khoản tiền đó. '+
+        (error instanceof Error ? error.message : String(error)));
+    } finally { setLegacyFinanceSyncing(false); }
+  };
 
   const petOrders = orders.filter(order => order.type === 'dtf');
   const petCustomers = customers.filter(customer => customer.type === 'dtf');
@@ -374,6 +406,19 @@ export default function App() {
 
       {/* 2. Main Content Board */}
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
+        {(pendingLegacyFinance || pendingLegacyFinanceError) && (
+          <div role="alert" className="p-3 bg-amber-50 border-b border-amber-400 text-amber-900 text-sm font-semibold flex flex-wrap items-center gap-3">
+            <span>{pendingLegacyFinanceError ||
+              `Khoản thu ${pendingLegacyFinance?.amount.toLocaleString('vi-VN')}đ của ${pendingLegacyFinance?.customerName} CHƯA ĐỒNG BỘ. Công nợ chính thức chưa bị trừ. Không nhập lại trên máy khác.`}</span>
+            {!pendingLegacyFinanceError && (
+              <button type="button" disabled={legacyFinanceSyncing}
+                onClick={() => { void retryLegacyFinance(); }}
+                className="bg-amber-800 text-white rounded-lg px-3 py-2 disabled:opacity-50">
+                {legacyFinanceSyncing ? 'Đang đối soát...' : 'Đồng bộ khoản thu'}
+              </button>
+            )}
+          </div>
+        )}
         {/* Dynamic header navigation representing responsive layout toggles */}
         <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 sticky top-0 z-40">
           <div className="flex items-center gap-3">

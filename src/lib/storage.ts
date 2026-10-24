@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory, TemporaryBill } from '../types';
 import { getOrderProductSummary } from '../utils/orderSummary';
+import { getPendingLegacyReceipt, queueLegacyReceipt, syncLegacyReceipt } from './legacyFinanceOutbox';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://ykbsykqqdjqgnpslemsw.supabase.co';
 const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYnN5a3FxZGpxZ25wc2xlbXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTM0ODUsImV4cCI6MjA5NTA4OTQ4NX0.UY-W_jJYWcJrsT4_D-XQmVdfWy4UXWEXsfF-WBMjxwk';
@@ -1431,40 +1432,30 @@ export class StorageManager {
     }
   }
 
-  static async updateOrderPayment(id: string, additionalPay: number, status?: 'pending' | 'completed'): Promise<Order | null> {
-    const orders = this.getOrders();
-    const idx = orders.findIndex(o => o.id === id);
-    if (idx === -1) return null;
-
-    const o = { ...orders[idx] };
-    o.paidAmount = Math.min(o.totalPrice, o.paidAmount + additionalPay);
-    o.debtAmount = o.totalPrice - o.paidAmount;
-    if (status) {
-      o.status = status;
-    } else if (o.debtAmount === 0) {
-      o.status = 'completed';
+  static async updateOrderPayment(id: string, additionalPay: number, _status?: 'pending' | 'completed'): Promise<Order | null> {
+    if (!Number.isSafeInteger(additionalPay) || additionalPay <= 0) {
+      throw new Error('Số tiền thu phải là số nguyên VND dương.');
     }
-
-    if (this.isSupabaseActive) {
-      try {
-        const { error } = await supabase
-          .from('orders')
-          .update({
-            paid_amount: o.paidAmount,
-            debt_amount: o.debtAmount,
-            status: o.status
-          })
-          .eq('id', id);
-        if (error) throw error;
-      } catch (err: any) {
-        console.error('Supabase order payment update failed:', err?.message || err);
-        throw err;
-      }
+    const order = this.getOrders().find(o => o.id === id);
+    if (!order) return null;
+    if (order.type !== 'dtf' && order.type !== 'tshirt') {
+      throw new Error('Chưa hỗ trợ thu tiền đơn hỗn hợp.');
     }
-
-    orders[idx] = o;
-    this.saveOrders(orders);
-    return o;
+    if (!Number.isSafeInteger(order.debtAmount) || additionalPay > order.debtAmount) {
+      throw new Error('Số tiền thu vượt công nợ hóa đơn.');
+    }
+    const customerId = `c_${order.type}_` +
+      btoa(encodeURIComponent(order.customerName)).replace(/=/g, '');
+    queueLegacyReceipt({
+      customerName:order.customerName,customerType:order.type,customerId,
+      amount:additionalPay,
+      method:`Gạch nợ hóa đơn ${order.orderCode} [${id}]`,
+      targetOrderId:id,
+    });
+    if (this.isSupabaseActive && (typeof navigator === 'undefined' || navigator.onLine)) {
+      await this.synchronizePendingLegacyReceipt();
+    }
+    return this.getOrders().find(o => o.id===id) || null;
   }
 
   static async updateOrder(id: string, updatedFields: Partial<Order>): Promise<void> {
@@ -1946,161 +1937,54 @@ export class StorageManager {
   }
 
   // Helper to record payment directly from customer card
-  static async recordCustomerPayment(customerName: string, type: OrderType, amount: number, paymentMethod: string): Promise<void> {
-    // 1. Record the transaction inside payment_history (insert in local state and push to database)
-    const uuid = typeof crypto !== 'undefined' && crypto.randomUUID 
-      ? crypto.randomUUID() 
-      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { 
-          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8); 
-          return v.toString(16); 
-        });
-
-    const newPayment: PaymentHistory = {
-      id: uuid,
-      customerName,
-      type,
-      customerId: `c_${type}_` + btoa(encodeURIComponent(customerName)).replace(/=/g, ''),
-      amount,
-      paymentMethod: paymentMethod || 'Mặc định',
-      createdAt: new Date().toISOString()
-    };
-
-    if (this.isSupabaseActive) {
-      const payload = {
-        id: newPayment.id,
-        customer_name: newPayment.customerName,
-        type: newPayment.type,
-        customer_id: newPayment.customerId,
-        amount: newPayment.amount,
-        payment_method: newPayment.paymentMethod,
-        created_at: newPayment.createdAt
-      };
-      
-      try {
-        const { error } = await supabase.from('payment_history').insert([payload]);
-        if (error) {
-          console.error('Supabase payment_history insert failed:', error.message);
-          throw error;
-        }
-      } catch (err) {
-        console.error('Supabase payment history initial sync failed:', err);
-        throw err;
-      }
-    }
-
-    const payments = this.getPaymentHistory();
-    payments.unshift(newPayment);
-    this.savePaymentHistory(payments);
-
-    // 2. FIFO Allocation to unpaid/debt orders
-    const orders = this.getOrders();
-    let remainingAmount = amount;
-
-    // Apply payments to customer's unpaid/debt orders starting from oldest to newest
-    const customerOrders = orders
-      .filter(o => o.customerName === customerName && o.type === type && o.debtAmount > 0)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    for (const order of customerOrders) {
-      if (remainingAmount <= 0) break;
-      const paymentToApply = Math.min(order.debtAmount, remainingAmount);
-      
-      order.paidAmount = Math.min(order.totalPrice, order.paidAmount + paymentToApply);
-      order.debtAmount = order.totalPrice - order.paidAmount;
-      order.status = order.paidAmount >= order.totalPrice ? 'completed' : 'pending';
-      remainingAmount -= paymentToApply;
-
-      if (this.isSupabaseActive) {
-        try {
-          const { error } = await supabase.from('orders')
-            .update({
-              paid_amount: order.paidAmount,
-              debt_amount: order.debtAmount,
-              status: order.status
-            })
-            .eq('id', order.id);
-          if (error) throw error;
-        } catch (err) {
-          console.error('Supabase FIFO order update failed:', err);
-          throw err;
-        }
-      }
-    }
-
-    this.saveOrders(orders);
+  static getPendingLegacyReceipt() {
+    return getPendingLegacyReceipt();
   }
 
-  // Undo payment / recalculate FIFO
-  static async deletePaymentAndRecalculate(paymentId: string, customerName: string, type: OrderType): Promise<void> {
-    // 3.1: Delete record from local state payment_history
-    let payments = this.getPaymentHistory();
-    payments = payments.filter(p => p.id !== paymentId);
-    this.savePaymentHistory(payments);
-
-    // Sync deletion to Supabase
-    if (this.isSupabaseActive) {
-      try {
-        const { error } = await supabase.from('payment_history').delete().eq('id', paymentId);
-        if (error) console.error('Supabase delete from payment_history failed:', error.message);
-      } catch (err) {
-        console.error('Failed to post delete payment_history to Supabase:', err);
+  static async synchronizePendingLegacyReceipt(): Promise<boolean> {
+    if (!(await this.checkSupabaseConnection())) {
+      throw new Error('Không kết nối được Supabase, khoản thu vẫn đang chờ trên máy này.');
+    }
+    const didSync = await syncLegacyReceipt(supabase);
+    if (didSync) {
+      if (!(await this.syncAllDataFromSupabase())) {
+        throw new Error('Máy chủ đã xác nhận khoản thu nhưng chưa đọc lại được công nợ. KHÔNG thu lại; hãy kiểm tra lịch sử.');
       }
+      window.dispatchEvent(new Event('supabase_sync_success'));
     }
+    return didSync;
+  }
 
-    // 3.2: Get sum of remaining payment history records for this customer
-    const newTotalPaid = payments
-      .filter(p => p.customerName === customerName && p.type === type)
-      .reduce((sum, p) => sum + p.amount, 0);
-
-    // 3.3: Reset ALL orders of the customer for this specific type to paid_amount = 0 and status = 'pending'
-    const orders = this.getOrders();
-    const customerOrders = orders.filter(o => o.customerName === customerName && o.type === type);
-
-    for (const order of customerOrders) {
-      order.paidAmount = 0;
-      order.debtAmount = order.totalPrice;
-      order.status = 'pending';
+  static async recordCustomerPayment(customerName: string, type: OrderType, amount: number, paymentMethod: string): Promise<void> {
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      throw new Error('Số tiền thu phải là số nguyên VND dương.');
     }
-
-    // 3.4: Re-allocate old ones first (FIFO) using newTotalPaid
-    let remainingAmount = newTotalPaid;
-    const sortedOrders = [...customerOrders].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    for (const order of sortedOrders) {
-      if (remainingAmount <= 0) {
-        order.paidAmount = 0;
-        order.debtAmount = order.totalPrice;
-        order.status = 'pending';
-        continue;
-      }
-      const paymentToApply = Math.min(order.totalPrice, remainingAmount);
-      order.paidAmount = paymentToApply;
-      order.debtAmount = order.totalPrice - paymentToApply;
-      order.status = order.paidAmount >= order.totalPrice ? 'completed' : 'pending';
-      remainingAmount -= paymentToApply;
+    if (type !== 'dtf' && type !== 'tshirt') {
+      throw new Error('Chưa hỗ trợ thu tiền cho đơn hỗn hợp.');
     }
-
-    // Save orders state locally
-    this.saveOrders(orders);
-
-    // Push updated orders to Supabase
-    if (this.isSupabaseActive) {
-      try {
-        await Promise.all(
-          customerOrders.map(async (order) => {
-            return supabase.from('orders')
-              .update({
-                paid_amount: order.paidAmount,
-                debt_amount: order.debtAmount,
-                status: order.status
-              })
-              .eq('id', order.id);
-          })
-        );
-      } catch (err) {
-        console.error('Failed to update orders after recalculation:', err);
-      }
+    const outstanding = this.getOrders()
+      .filter(o => o.customerName === customerName && o.type === type)
+      .reduce((sum, o) => sum + o.debtAmount, 0);
+    if (!Number.isSafeInteger(outstanding) || amount > outstanding) {
+      throw new Error('Tiền thu vượt công nợ hiển thị. Hãy đồng bộ và kiểm tra trước.');
     }
+    const customerId = `c_${type}_` +
+      btoa(encodeURIComponent(customerName)).replace(/=/g, '');
+    queueLegacyReceipt({
+      customerName, customerType:type, customerId, amount,
+      method:paymentMethod || 'Mặc định', targetOrderId:null
+    });
+    // Explicit offline queue: never change confirmed debt in localStorage.
+    if (!this.isSupabaseActive || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+    await this.synchronizePendingLegacyReceipt();
+  }
+
+  // Historical receipts are not fully linked to initial invoice payments.
+  // The former 'reset all paid=0, replay payment_history' algorithm could
+  // increase debt incorrectly. Refuse deletion until a verifiable correction
+  // journal exists; NEVER alter pre-existing invoice balances implicitly.
+  static async deletePaymentAndRecalculate(_paymentId: string, _customerName: string, _type: OrderType): Promise<void> {
+    throw new Error('Chưa thể hoàn tác tự động khoản thu lịch sử an toàn. Không thay đổi số liệu; cần kiểm tra chứng từ và điều chỉnh có ghi lịch sử.');
   }
 
   // --- STATS CALCULATION ---
