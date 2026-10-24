@@ -460,7 +460,8 @@ export default function DebtManager({
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
+                disabled={financeBusy}
+                className="px-6 py-2 disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
               >
                 Xác nhận thanh toán
               </button>
@@ -548,7 +549,8 @@ export default function DebtManager({
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
+                disabled={financeBusy}
+                className="px-6 py-2 disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
               >
                 Xác nhận gạch nợ
               </button>
