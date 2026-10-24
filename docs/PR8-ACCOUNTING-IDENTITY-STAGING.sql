@@ -587,6 +587,7 @@ BEGIN
       OR v_existing.quantity IS DISTINCT FROM p_quantity
       OR v_existing.unit_price IS DISTINCT FROM p_unit_price
       OR v_existing.total_price IS DISTINCT FROM p_total_price
+      OR v_existing.order_images IS DISTINCT FROM p_order_images
       OR v_existing.created_at IS DISTINCT FROM p_created_at
     THEN
       RAISE EXCEPTION 'Order ID reused for a different invoice; manual reconciliation required' USING ERRCODE='23505';
