@@ -141,6 +141,35 @@ export async function commitNewReversal(
   await transmitFinanceOperation(client, operation);
 }
 
+// Save a receipt locally with its immutable idempotency key, but DO NOT
+// change confirmed debt totals until the owner manually synchronizes.
+export function queueOfflineReceipt(input: {
+  customerName: string;
+  customerType: 'dtf' | 'tshirt';
+  customerId: string;
+  amount: number;
+  method: string;
+  targetOrderId?: string | null;
+}): FinanceOperation {
+  validateVnd(input.amount);
+  if (!input.customerName.trim() || !input.customerId.trim() || !input.method.trim()) {
+    throw new Error('Thiếu thông tin khách hàng hoặc phương thức thanh toán.');
+  }
+  const operation: FinanceOperation = {
+    kind: 'receipt', id: makeFinanceId(),
+    customerName: input.customerName,
+    customerType: input.customerType,
+    customerId: input.customerId,
+    amount: input.amount,
+    method: input.method,
+    targetOrderId: input.targetOrderId ?? null,
+    createdAt: new Date().toISOString(),
+  };
+  persistNewOperation(operation);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('finance_sync_status'));
+  return operation;
+}
+
 // The only retry path reuses exactly the SAME idempotency key.
 // UI must make this user-initiated and show the outstanding record details.
 export async function retryPendingFinanceOperation(client: SupabaseClient): Promise<boolean> {
