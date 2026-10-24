@@ -292,6 +292,7 @@ export default function DebtManager({
   const [paymentNote, setPaymentNote] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [copyingTrackingLink, setCopyingTrackingLink] = useState(false);
+  const [revokingTrackingLinks, setRevokingTrackingLinks] = useState(false);
 
   // Specific order payment state
   const [payOrder, setPayOrder] = useState<Order | null>(null);
@@ -622,6 +623,23 @@ export default function DebtManager({
       }
     };
 
+    const handleRevokeTrackingLinks = async () => {
+      if (revokingTrackingLinks) return;
+      if (!window.confirm('Thu hồi tất cả link công nợ đã gửi cho khách này? Khách sẽ cần link mới để xem công nợ.')) return;
+      setRevokingTrackingLinks(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('customer-tracking', {
+          body: { action: 'revoke', customerName: currentCustomer.name, customerType: currentCustomer.type },
+        });
+        if (error || data?.revoked !== true) throw new Error('Revocation failed');
+        showToast('Đã thu hồi link cũ. Hãy bấm Copy Link Gửi Khách để cấp link mới.', 'success');
+      } catch {
+        showToast('Không thể thu hồi link lúc này. Vui lòng thử lại.', 'error');
+      } finally {
+        setRevokingTrackingLinks(false);
+      }
+    };
+
     return (
       <div className="space-y-6 animate-fade-in text-slate-700">
         {/* Header Breadcrumbs */}
@@ -684,6 +702,17 @@ export default function DebtManager({
             >
               <Link className="w-4 h-4" />
               <span>{copyingTrackingLink ? 'Đang tạo link...' : copiedLink ? 'Đã copy thành công!' : 'Copy Link Gửi Khách'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { void handleRevokeTrackingLinks(); }}
+              disabled={revokingTrackingLinks}
+              className="px-3 py-2.5 text-xs font-bold text-rose-700 border border-rose-200 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 rounded-xl flex items-center gap-1.5"
+              title="Chỉ thu hồi link đã chia sẻ, không xóa bất kỳ dữ liệu công nợ nào"
+            >
+              <Ban className="w-4 h-4" />
+              {revokingTrackingLinks ? 'Đang thu hồi...' : 'Thu hồi link cũ'}
             </button>
 
             {/* Export Receipt */}
