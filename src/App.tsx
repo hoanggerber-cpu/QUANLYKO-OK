@@ -47,6 +47,15 @@ export default function App() {
   const [isSupabaseOnline, setIsSupabaseOnline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dbMigrationNeeded, setDbMigrationNeeded] = useState(true);
+  const [pendingOrderTick, setPendingOrderTick] = useState(0);
+  const [syncingOutbox, setSyncingOutbox] = useState(false);
+  useEffect(() => {
+    const onPendingOrderChange = () => setPendingOrderTick(value => value + 1);
+    window.addEventListener('order_sync_status', onPendingOrderChange);
+    return () => window.removeEventListener('order_sync_status', onPendingOrderChange);
+  }, []);
+  void pendingOrderTick;
+
   const [copiedCode, setCopiedCode] = useState(false);
 
   useEffect(() => {
@@ -295,6 +304,34 @@ export default function App() {
   };
 
 
+  let pendingOrderCount = 0;
+  let pendingOrderStatusError = '';
+  try {
+    pendingOrderCount = StorageManager.getPendingOrderSyncCount();
+  } catch (error) {
+    pendingOrderStatusError = error instanceof Error ? error.message : String(error);
+  }
+
+  const retryOrderSync = async () => {
+    if (syncingOutbox) return;
+    setSyncingOutbox(true);
+    try {
+      if (!(await StorageManager.checkSupabaseConnection())) {
+        throw new Error('Chưa xác thực hoặc mất kết nối Supabase.');
+      }
+      await StorageManager.flushPendingOrderSync();
+      const refreshed = await StorageManager.syncAllDataFromSupabase();
+      if (!refreshed) throw new Error('Không thể xác nhận đọc lại dữ liệu từ cloud.');
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      console.error('Unable to reconcile pending orders:', error);
+      alert('Chưa thể xác nhận đồng bộ đơn hàng. KHÔNG ghi trùng. Kiểm tra kết nối và đối soát danh sách chờ.');
+    } finally {
+      setSyncingOutbox(false);
+    }
+  };
+
   const petOrders = orders.filter(order => order.type === 'dtf');
   const petCustomers = customers.filter(customer => customer.type === 'dtf');
 
@@ -405,6 +442,24 @@ export default function App() {
 
       {/* 2. Main Content Board */}
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
+        {(pendingOrderCount > 0 || pendingOrderStatusError) && (
+          <div role="alert" className="p-3 bg-amber-50 border-b border-amber-300 text-amber-900 text-xs font-semibold flex flex-wrap items-center gap-3">
+            <span>
+              {pendingOrderStatusError ||
+                `${pendingOrderCount} đơn đã lưu trên máy nhưng CHƯA XÁC NHẬN đồng bộ cloud. Không tạo lại các đơn đó trên máy khác.`}
+            </span>
+            {!pendingOrderStatusError && (
+              <button
+                type="button"
+                disabled={syncingOutbox}
+                onClick={() => { void retryOrderSync(); }}
+                className="bg-amber-700 text-white rounded-lg px-3 py-2 disabled:opacity-50"
+              >
+                {syncingOutbox ? 'Đang đối chiếu...' : 'Thử đồng bộ và đối chiếu'}
+              </button>
+            )}
+          </div>
+        )}
         {/* Dynamic header navigation representing responsive layout toggles */}
         <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 sticky top-0 z-40">
           <div className="flex items-center gap-3">
