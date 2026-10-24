@@ -6,7 +6,7 @@ import {
 } from '../src/lib/orderOutbox.ts';
 import {
   commitNewReceipt, commitNewReversal, retryPendingFinanceOperation,
-  getPendingFinanceOperation, validateVnd
+  getPendingFinanceOperation, validateVnd, queueOfflineReceipt
 } from '../src/lib/accountingOperations.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -156,5 +156,38 @@ test('invalid or reversed payment response keeps receipt pending for investigati
     customerName:'Khach A', customerType:'dtf',customerId:'c_a',
     amount:1000000,method:'Cash'
   }), /đã hoàn tác/);
+  assert.ok(getPendingFinanceOperation());
+});
+
+test('offline receipt remains pending, with unchanged confirmed debt until explicit sync', async () => {
+  const offline = queueOfflineReceipt({
+    customerName:'Khach B', customerType:'dtf', customerId:'c_b',
+    amount:900000, method:'Tiền mặt',
+  });
+  assert.equal(offline.kind,'receipt');
+  assert.equal(getPendingFinanceOperation()?.id,offline.id);
+  let requests=0;
+  const client = {rpc: async (_name:string, params:Record<string,unknown>) => {
+    requests++;
+    assert.equal(params.p_payment_id,offline.id);
+    assert.equal(params.p_amount,900000);
+    return {data:{payment_id:offline.id,state:'committed'},error:null};
+  }} as unknown as SupabaseClient;
+  assert.equal(requests,0,'queue must never send when offline');
+  await assert.rejects(commitNewReceipt(client,{
+    customerName:'Khach B',customerType:'dtf',customerId:'c_b',
+    amount:900000,method:'Tiền mặt',
+  }),/chưa được xác nhận/);
+  assert.equal(requests,0,'cannot create a new UUID for the same unconfirmed payment');
+  assert.equal(await retryPendingFinanceOperation(client),true);
+  assert.equal(requests,1);
+  assert.equal(getPendingFinanceOperation(),null);
+});
+
+test('offline payment cannot be queued twice while first is outstanding', () => {
+  queueOfflineReceipt({customerName:'Khach B',customerType:'dtf',customerId:'c_b',
+    amount:900000,method:'Tiền mặt'});
+  assert.throws(()=>queueOfflineReceipt({customerName:'Khach B',customerType:'dtf',customerId:'c_b',
+    amount:900000,method:'Tiền mặt'}),/chưa được xác nhận/);
   assert.ok(getPendingFinanceOperation());
 });
