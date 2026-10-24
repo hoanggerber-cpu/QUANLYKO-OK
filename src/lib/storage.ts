@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Product, Order, OrderItem, Customer, DashboardStats, OrderType, PaymentHistory, TemporaryBill } from '../types';
 import { getOrderProductSummary } from '../utils/orderSummary';
+import { assertPersistentOrderImages } from './orderImageSafety';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://ykbsykqqdjqgnpslemsw.supabase.co';
 const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrYnN5a3FxZGpxZ25wc2xlbXN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1MTM0ODUsImV4cCI6MjA5NTA4OTQ4NX0.UY-W_jJYWcJrsT4_D-XQmVdfWy4UXWEXsfF-WBMjxwk';
@@ -1283,18 +1284,8 @@ export class StorageManager {
     return this.getDtfPricesForCustomer(trimmedName);
   }
 
-  // Reject browser-local blob:/data:/backup-asset: references for NEW image writes.
-  // Existing legacy orders remain readable and are never rewritten by this guard.
-  private static assertPersistentOrderImages(images: Array<string | undefined | null>): void {
-    for (const image of images) {
-      if (image && !/^https:\/\/[^\s]+$/i.test(image)) {
-        throw new Error('Ảnh đơn hàng chưa được tải lên Supabase thành công. Không lưu đơn để tránh mất ảnh. Vui lòng giữ file gốc và thử lại.');
-      }
-    }
-  }
-
   static async addOrder(order: Omit<Order, 'id' | 'orderCode'> & { createdAt?: string }): Promise<Order> {
-    this.assertPersistentOrderImages([
+    assertPersistentOrderImages([
       ...(order.orderImages || []),
       ...(order.items || []).flatMap(item => [item.image, ...(item.extraImages || [])])
     ]);
@@ -1484,7 +1475,7 @@ export class StorageManager {
   static async updateOrder(id: string, updatedFields: Partial<Order>): Promise<void> {
     // Validate only image fields explicitly being written, leaving historical
     // broken references untouched when editing unrelated order details.
-    this.assertPersistentOrderImages([
+    assertPersistentOrderImages([
       ...(updatedFields.orderImages || []),
       ...(updatedFields.items || []).flatMap(item => [item.image, ...(item.extraImages || [])])
     ]);
