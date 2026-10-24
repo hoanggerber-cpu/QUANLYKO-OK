@@ -50,7 +50,7 @@ BEGIN
      (SELECT total_price FROM public.orders WHERE id='new-atomic-order-1')<>200000 OR
      (SELECT paid_amount FROM public.orders WHERE id='new-atomic-order-1')<>200000 OR
      (SELECT debt_amount FROM public.orders WHERE id='new-atomic-order-1')<>0 OR
-     (SELECT coalesce(sum(amount),0) FROM public.payment_allocations a
+     (SELECT coalesce(sum(a.amount),0) FROM public.payment_allocations a
        JOIN public.payment_history p ON p.id=a.payment_id
        WHERE a.order_id='new-atomic-order-1'
          AND NOT EXISTS (SELECT 1 FROM public.payment_reversals r WHERE r.payment_id=p.id))<>200000 THEN
