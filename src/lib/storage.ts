@@ -291,7 +291,23 @@ export class StorageManager {
       };
 
       try {
-        const { error } = await supabase.from('orders').insert([payload]);
+        const { data: insertedOrder, error } = await supabase.from('orders')
+          .insert([payload]).select('id,paid_amount,debt_amount,status').single();
+        if (!error && insertedOrder) {
+          const localOrders=this.getOrders();
+          const idx=localOrders.findIndex(o=>o.id===newOrder.id);
+          if(idx>=0) {
+            localOrders[idx]={...localOrders[idx],
+              paidAmount:Number(insertedOrder.paid_amount),
+              debtAmount:Number(insertedOrder.debt_amount),
+              status:insertedOrder.status as Order['status']};
+            newOrder.paidAmount=localOrders[idx].paidAmount;
+            newOrder.debtAmount=localOrders[idx].debtAmount;
+            newOrder.status=localOrders[idx].status;
+            this.saveOrders(localOrders);
+          }
+          window.dispatchEvent(new Event('supabase_sync_success'));
+        }
         if (error?.code === '23505') {
           remoteIds.add(String(order.id));
           existingCount += 1;
@@ -988,6 +1004,15 @@ export class StorageManager {
             }
           });
           this.saveCustomerPins(pinsRecord);
+          const credits: Record<string,number> = {};
+          dbCustomers.forEach(customer => {
+            const n=customer.name || customer.customer_name;
+            const t=customer.type;
+            const amount=Number(customer.credit_balance||0);
+            if(n && t && Number.isSafeInteger(amount) && amount>=0)
+              credits[JSON.stringify([n,t])]=amount;
+          });
+          localStorage.setItem(this.STORAGE_PREFIX+'customer_advance_balances',JSON.stringify(credits));
         }
       } catch (e) {
         console.warn('Failed to sync customers table from Supabase:', e);
@@ -1441,9 +1466,8 @@ export class StorageManager {
     if (order.type !== 'dtf' && order.type !== 'tshirt') {
       throw new Error('Chưa hỗ trợ thu tiền đơn hỗn hợp.');
     }
-    if (!Number.isSafeInteger(order.debtAmount) || additionalPay > order.debtAmount) {
-      throw new Error('Số tiền thu vượt công nợ hóa đơn.');
-    }
+    // Extra money on a single-invoice receipt is also customer advance.
+
     const customerId = `c_${order.type}_` +
       btoa(encodeURIComponent(order.customerName)).replace(/=/g, '');
     queueLegacyReceipt({
@@ -1897,6 +1921,9 @@ export class StorageManager {
     const orders = this.getOrders();
     const customersMap = new Map<string, Customer>();
     const pins = this.getCustomerPins();
+    let credits: Record<string,number> = {};
+    try { credits = JSON.parse(localStorage.getItem(this.STORAGE_PREFIX+'customer_advance_balances')||'{}'); }
+    catch { credits = {}; }
 
     orders.forEach(order => {
       if (filterType && order.type !== filterType) return;
@@ -1931,6 +1958,7 @@ export class StorageManager {
     const list = Array.from(customersMap.values());
     list.forEach(client => {
       client.pinCode = pins[`${client.name}_${client.type}`] || null;
+      client.creditBalance = Number(credits[JSON.stringify([client.name,client.type])]) || 0;
     });
 
     return list;
@@ -1962,12 +1990,8 @@ export class StorageManager {
     if (type !== 'dtf' && type !== 'tshirt') {
       throw new Error('Chưa hỗ trợ thu tiền cho đơn hỗn hợp.');
     }
-    const outstanding = this.getOrders()
-      .filter(o => o.customerName === customerName && o.type === type)
-      .reduce((sum, o) => sum + o.debtAmount, 0);
-    if (!Number.isSafeInteger(outstanding) || amount > outstanding) {
-      throw new Error('Tiền thu vượt công nợ hiển thị. Hãy đồng bộ và kiểm tra trước.');
-    }
+    // Overpayment is valid: the SQL receipt settles FIFO and records the remainder
+    // as customer advance. No invoice is allowed to become negative.
     const customerId = `c_${type}_` +
       btoa(encodeURIComponent(customerName)).replace(/=/g, '');
     queueLegacyReceipt({
