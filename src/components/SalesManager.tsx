@@ -6,6 +6,7 @@ import { buildCartProductSummary } from '../utils/orderSummary';
 import { Search, Plus, Filter, FileText, Download, CheckCircle, Clock, Ban, ArrowUpRight, DollarSign, Upload, Image as ImageIcon, Eye, Calendar, Trash2, ShoppingBag, ChevronDown, ChevronUp, List, Layers, ChevronLeft, ChevronRight, ExternalLink, RotateCw, Sparkles, X } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
 import { confirmedImageUpload } from '../lib/orderImageSafety';
+import { verifyUploadedImage } from '../lib/verifyUploadedImage';
 import { getPendingOrders } from '../lib/orderOutbox';
 
 interface DtfItem {
@@ -214,12 +215,12 @@ export default function SalesManager({
         try {
           const fileExt = attachment.rawFile.name.split('.').pop() || 'png';
           const filePath = `originals/${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-          const { data, error } = await withTimeout(
-            supabase.storage.from('order-images').upload(filePath, attachment.rawFile, { cacheControl: '3600', upsert: false }),
-            12000
+          return await verifyUploadedImage(
+            attachment.rawFile.size,
+            () => withTimeout(supabase.storage.from('order-images').upload(filePath, attachment.rawFile!, { cacheControl: '3600', upsert: false }), 12000),
+            () => withTimeout(supabase.storage.from('order-images').info(filePath), 12000),
+            () => supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl,
           );
-          if (error) throw error;
-          if (data) return await confirmedImageUpload(async () => supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl);
         } catch (error) {
           console.error('Uploading DTF attachment failed:', error);
         }
@@ -269,8 +270,12 @@ export default function SalesManager({
         try {
           const fileExt = item.rawFile.name.split('.').pop() || 'png';
           const filePath = `originals/edit_tshirt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-          const { data, error } = await supabase.storage.from('order-images').upload(filePath, item.rawFile, { cacheControl: '3600', upsert: false });
-          if (!error && data) imageUrl = supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl;
+          imageUrl = await verifyUploadedImage(
+            item.rawFile.size,
+            () => withTimeout(supabase.storage.from('order-images').upload(filePath, item.rawFile!, { cacheControl: '3600', upsert: false }), 12000),
+            () => withTimeout(supabase.storage.from('order-images').info(filePath), 12000),
+            () => supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl,
+          );
         } catch (error) {
           console.error('Uploading edited T-shirt image failed:', error);
           throw new Error('Không tải được ảnh áo thun lên Supabase. Đơn chưa được cập nhật.');
