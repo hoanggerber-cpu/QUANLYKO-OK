@@ -5,6 +5,7 @@ import { generateInvoicePDF, formatCurrency } from '../utils/pdfGenerator';
 import { buildCartProductSummary } from '../utils/orderSummary';
 import { Search, Plus, Filter, FileText, Download, CheckCircle, Clock, Ban, ArrowUpRight, DollarSign, Upload, Image as ImageIcon, Eye, Calendar, Trash2, ShoppingBag, ChevronDown, ChevronUp, List, Layers, ChevronLeft, ChevronRight, ExternalLink, RotateCw, Sparkles, X } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
+import { confirmedImageUpload } from '../lib/orderImageSafety';
 
 interface DtfItem {
   name: string;
@@ -216,7 +217,8 @@ export default function SalesManager({
             supabase.storage.from('order-images').upload(filePath, attachment.rawFile, { cacheControl: '3600', upsert: false }),
             12000
           );
-          if (!error && data) return supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl;
+          if (error) throw error;
+          if (data) return await confirmedImageUpload(async () => supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl);
         } catch (error) {
           console.error('Uploading DTF attachment failed:', error);
         }
@@ -268,6 +270,7 @@ export default function SalesManager({
           if (!error && data) imageUrl = supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl;
         } catch (error) {
           console.error('Uploading edited T-shirt image failed:', error);
+          throw new Error('Không tải được ảnh áo thun lên Supabase. Đơn chưa được cập nhật.');
         }
       }
       const { rawFile, ...cleanItem } = item;
@@ -303,6 +306,7 @@ export default function SalesManager({
       showToast('Đã cập nhật chi tiết đơn áo thun thành công!', 'success');
     } catch (error) {
       console.error('Update T-shirt order failed:', error);
+      showToast(error instanceof Error ? error.message : 'Đơn chưa cập nhật. Vui lòng kiểm tra ảnh.', 'error');
       showToast(error instanceof Error ? error.message : 'Đơn chưa được lưu. Vui lòng kiểm tra ảnh tải lên Supabase.', 'error');
     }
   };
@@ -375,6 +379,7 @@ export default function SalesManager({
       showToast('Đã cập nhật đơn hàng thành công!', 'success');
     } catch (err) {
       console.error('Update order submit failed:', err);
+      showToast(err instanceof Error ? err.message : 'Đơn chưa cập nhật. Vui lòng kiểm tra ảnh.', 'error');
       showToast(err instanceof Error ? err.message : 'Đơn chưa được lưu. Vui lòng kiểm tra ảnh tải lên Supabase.', 'error');
     }
   };
