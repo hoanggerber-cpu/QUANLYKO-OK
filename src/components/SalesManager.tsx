@@ -6,6 +6,7 @@ import { buildCartProductSummary } from '../utils/orderSummary';
 import { Search, Plus, Filter, FileText, Download, CheckCircle, Clock, Ban, ArrowUpRight, DollarSign, Upload, Image as ImageIcon, Eye, Calendar, Trash2, ShoppingBag, ChevronDown, ChevronUp, List, Layers, ChevronLeft, ChevronRight, ExternalLink, RotateCw, Sparkles, X } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
 import { confirmedImageUpload } from '../lib/orderImageSafety';
+import { getPendingOrders } from '../lib/orderOutbox';
 
 interface DtfItem {
   name: string;
@@ -1372,6 +1373,8 @@ export default function SalesManager({
     ]));
     const finalStatus: OrderStatus = finalPaid >= totalPrice ? 'completed' : 'pending';
 
+      // An offline write can succeed locally before Supabase confirms it.
+      const pendingBefore = new Set(getPendingOrders().map(order => order.id));
       await onAddOrder({
         customerName: customerName.trim(),
         type: finalType,
@@ -1389,6 +1392,14 @@ export default function SalesManager({
         notes: orderNotes.trim(),
         surcharge: appliedTshirtSurcharge
       });
+
+      const pendingAfter = getPendingOrders();
+      const needsCloudConfirmation = pendingAfter.some(order => !pendingBefore.has(order.id));
+      if (needsCloudConfirmation) {
+        showToast('Đơn đã lưu trên máy nhưng CHƯA đồng bộ Supabase. Không tạo lại đơn; hãy kiểm tra trạng thái đồng bộ.', 'info');
+      } else {
+        showToast('Đơn đã được xác nhận trên Supabase.', 'success');
+      }
 
       // Reset Form
       setCustomerName('');
@@ -1409,7 +1420,7 @@ export default function SalesManager({
       setDtfUnitPrice(55000);
       setOrderDate(new Date().toISOString().split('T')[0]);
       setShowModal(false);
-      setShowOrderCelebration(true);
+      setShowOrderCelebration(!needsCloudConfirmation);
     } catch (err: any) {
       console.error('Lỗi khi ghi sổ hóa đơn:', err);
       showToast(`Lỗi ghi sổ hóa đơn: ${err?.message || 'Lỗi cơ sở dữ liệu'}`, 'error');
