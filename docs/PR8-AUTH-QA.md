@@ -1,42 +1,51 @@
-# PR #8 — Owner Auth Regression Checklist
+# PR #8: security rollout and acceptance gates (2026-10-24)
 
-This branch is **not production-ready**. No production RLS changes, merges, migrations or business-record writes are authorized by this checklist.
+## Scope and current live state
 
-## Auth callback (staging/preview, never send tokens in chat)
-- [ ] Valid new invite/recovery email opens "Thiết lập mật khẩu bảo mật" and retains Supabase session until password is saved
-- [ ] Invalid/expired link shows an error and does not enable password fields
-- [ ] New password under 12 characters and confirmation mismatch are rejected
-- [ ] Successful save signs out and returns to `hoanguyen` login
-- [ ] Login works with `hoanguyen` and the new Supabase Auth password
-- [ ] Wrong password or unknown username is rejected
-- [ ] Page reload restores only a verified owner session
-- [ ] Logout clears authenticated session
-- [ ] Old legacy `admin_users` and VITE_ADMIN_PASSWORD paths cannot authenticate
+- User-facing requirement: customers click **one link**, with NO PIN, login or form.
+- Owner UI username remains `hoanguyen`; owner Supabase Auth account `hoangkenlee@gmail.com`.
+- Production Vercel code is NOT updated by this draft PR.
+- Live Supabase project received two **additive / non-breaking** database security migrations:
+  - `add_service_only_customer_tracking_token_table`: new empty `public.customer_tracking_links`; RLS enabled, no anon or authenticated table access; only 256-bit token hashes will be stored.
+  - `remove_unneeded_browser_ddl_and_admin_write_grants`: removes unnecessary TRUNCATE/REFERENCES/TRIGGER privileges from business tables, and unauthenticated/admin browser writes to `admin_users`. Legacy SELECT remains so the live login does not break.
+- The new independent `customer-tracking` Edge Function is ACTIVE, version 1, configured `verify_jwt=false` only because public **read** uses an unguessable token; privileged **issue** explicitly verifies the owner's JWT and UID.
+- **IMPORTANT:** Production finance tables still have overly permissive policies and public read/write access; owner-only RLS is NOT active. The live site is NOT secured end to end.
+- Recorded pre/post-additive-migration data: 1,113 orders; invoice 1,193,912,387 VND; paid 714,247,004 VND; debt 479,665,383 VND; 71 payment_history rows. No financial records updated.
 
-## Business regression (isolated test DB and test browser profile only)
-- [ ] Insert, update, delete a test order and reconcile order_items
-- [ ] Record, undo and allocate a test payment; compare balances and payment_history
-- [ ] Test offline/online sync and restored local backup without clearing actual browser storage
-- [ ] Test public customer tracking with and without PIN
-- [ ] Test anonymous calls: no financial table reads/writes after RLS rollout
+## Secure tracking architecture
 
-## Deployment blockers
-1. Password recovery preview must be manually tested with a new non-shared link; Vercel status alone is insufficient.
-2. `PublicTracking.tsx` still reads all data as anonymous and checks PIN in browser; replace with server-side scoped tracking before tightening RLS.
-3. RLS policies and admin_users table remain insecure until a separate reviewed migration and rollback plan.
-4. Real localStorage and production finance data must not be reset or modified for tests.
+1. Owner opens a customer card and clicks **Copy Link Gửi Khách**.
+2. Edge Function action `issue` verifies the owner account server-side, ensures the customer has orders, generates 32 cryptographically random bytes and stores only SHA-256 in `customer_tracking_links`.
+3. Owner sends `/c/<43-char-opaque-token>` by Zalo. Anyone holding this link can see this customer's ledger; do not post it publicly.
+4. Customer opens the link: no PIN or login. Edge Function action `read` validates the hash, then fetches only matching `customer_name` + `type` orders and their items.
+5. Customer cannot get other customers' data merely by guessing customer names or editing the URL.
+6. `Referrer-Policy: no-referrer` on Vercel and HTML helps prevent the secret link from leaking when loading external images/links.
+7. Lost/stolen links require a future owner-facing **revoke/rotate** operation; not yet implemented. Generate-new-link currently does not revoke previous links.
 
-## 2026-10-24: customer tracking / owner RLS staged
+## Explicit limitations and must-test items
 
-- [x] `PublicTracking.tsx` no longer uses `syncAllDataFromSupabase()`, `getCustomerByTrackingId()`, client-side customer PIN read or client-side PIN comparison.
-- [x] Edge Function source `supabase/functions/customer-tracking/index.ts` added as **undepoyed draft**.
-- [x] `docs/PR8-OWNER-RLS-DRAFT.sql` staged but **never executed**.
-- [ ] CRITICAL: Backend verification must use dedicated non-plaintext PIN storage, compare hashes and enforce durable per-identity/IP rate limits; current draft compares existing plaintext PINs and must not be deployed.
-- [ ] CRITICAL: Reconcile legacy tracking links against `public.customers` before switchover; current table has far fewer rows than legacy order customer names. Links without a persisted PIN intentionally fail closed; migrate only with owner review.
-- [ ] CRITICAL: Verify customer-specific order list and multi-item details against reference customer and source data, especially aliases, cancellation, and duplicate names.
-- [ ] CRITICAL: Confirm image URLs returned by backend are safe to share; private file content should require scoped signed URLs.
-- [ ] Test CORS, JWT configuration, secrets, error throttling, anti-enumeration, and response size caps.
-- [ ] Check Vercel build/typecheck and run browser E2E for owner login, password recovery and tracking using an isolated staging database.
-- [ ] Save current policies/grants for a reversible production migration; DO NOT execute owner RLS migration before tracking endpoint and all CRUD test gates pass.
+- **Old links are NOT secure** (they contain guessable names or deterministic IDs). Requiring no PIN means old link formats cannot remain valid indefinitely while guaranteeing customer privacy. Each customer will need a **new link** after controlled cutover.
+- The current draft `PublicTracking` deliberately rejects old slugs. DO NOT merge into production without a communication/cutover plan: prior Zalo links will stop displaying balances.
+- Supabase `customers` has only 3 rows but orders represent ~58 name/type groups. The new flow correctly resolves identities from `orders`, not from missing `customers` records.
+- Need independent tests for at least two distinct customers. Assert amount totals, all historic orders, status, images and order items exactly equal source DB.
+- Need ensure customer rename doesn't silently orphan existing links (name/type currently define link association).
+- Bearer links grant read access to anyone who has the URL. For extra protection later: link revocation/rotation, optional expiry and leak monitoring without adding friction.
+- The active Edge Function has **not** been end-to-end exercised through an authenticated owner session. Vercel build success is NOT a behavioral or security test.
+- Verify JWT issuance only for the owner and deny fake/anonymous owner issuance; verify malformed, revoked and other-customer tokens cannot fetch records.
+- Verify Vercel preview origin CORS handling. Currently default origins are `http://localhost:3000` and the official domain; previews require an explicitly configured trusted origin.
+- Validate report against source accounting data without writing/modifying production finance records.
+- Owner login/password recovery must succeed before owner-only RLS can be applied; Supabase email rate limit is a temporary blocker.
 
-**Deploy block:** This change deliberately fails closed on unconfigured customer PINs. Neither the tracking function nor RLS migration may be enabled in production yet.
+## Cutover gate (DO NOT skip)
+
+- [ ] Owner signs in using `hoanguyen` and the new Supabase Auth password.
+- [ ] Owner issues an opaque customer link in localhost or configured preview; anonymous browsing loads only that ledger.
+- [ ] Reconcile two customer examples including longest history and totals; verify the data from independently checked DB rows.
+- [ ] Prove direct anonymous SELECT/INSERT/UPDATE/DELETE blocked against a **staging database** after owner-only RLS changes; prove owner permissions work.
+- [ ] Test create order, amend, delete, payment, payment reversal, image load, Supabase realtime and multi-device sync on isolated fixtures.
+- [ ] Inventory old shared URLs and communicate that customers must receive a replacement link; coordinate activation to avoid accidental outages.
+- [ ] Snapshot policies/grants and export restorable finance backup; dry-run reversible RLS deployment and rollback.
+- [ ] Only then apply `docs/PR8-OWNER-RLS-DRAFT.sql` after review for full table list, grants and future migrations; merge/deploy code in a controlled, monitored window.
+- [ ] Re-run SQL verification, auth checks and business smoke tests after the cutover.
+
+**BLOCKER:** DO NOT MERGE PR #8 OR APPLY FULL OWNER-ONLY FINANCE RLS YET.
