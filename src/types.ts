@@ -89,6 +89,8 @@ export interface Customer {
   totalSpent: number;
   paidAmount: number;
   debtAmount: number;
+  /** Money the customer paid beyond outstanding debt, available for future orders. */
+  creditBalance?: number;
   updatedAt: string;
   pinCode?: string | null;
 }
