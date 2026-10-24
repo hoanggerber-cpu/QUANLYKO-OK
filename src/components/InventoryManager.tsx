@@ -20,6 +20,46 @@ import {
 } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
 
+const readImageAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result === 'string') resolve(reader.result);
+    else reject(new Error('Không đọc được dữ liệu ảnh.'));
+  };
+  reader.onerror = () => reject(reader.error || new Error('Không đọc được tệp ảnh.'));
+  reader.readAsDataURL(file);
+});
+
+const resolveProductImageReference = async (file: File): Promise<string> => {
+  const localDataUrl = await readImageAsDataUrl(file);
+  if (!StorageManager.getIsSupabaseActive()) return localDataUrl;
+
+  const fileExt = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+  const randId = Math.random().toString(36).substring(2, 11);
+  const fileName = 'factory_' + randId + '_' + Date.now() + '.' + fileExt;
+  const filePath = 'originals/' + fileName;
+
+  try {
+    const { data, error } = await supabase.storage
+      .from('order-images')
+      .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+    if (error) {
+      console.warn('Supabase product-image upload failed; keeping local image data:', error.message);
+      return localDataUrl;
+    }
+    if (data) {
+      const { data: publicUrlData } = await supabase.storage.from('order-images').getPublicUrl(filePath);
+      if (publicUrlData?.publicUrl) return publicUrlData.publicUrl;
+    }
+  } catch (error) {
+    console.error('Supabase product-image upload failed; keeping local image data:', error);
+  }
+
+  return localDataUrl;
+};
+
+
 const ACTIVE_PRODUCT_SOURCES: ProductSource[] = [
   'self_produced',
   'external',
@@ -297,45 +337,14 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     if (!file) return;
 
     setUploading(true);
-
-    // FileReader base64 preview immediately
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImageUrl(reader.result as string);
+    try {
+      const image = await resolveProductImageReference(file);
+      setImageUrl(image);
+    } catch (error) {
+      console.error('Reading product design image failed:', error);
+      alert('Không đọc được ảnh đã chọn. Ảnh hiện tại vẫn được giữ nguyên.');
+    } finally {
       setUploading(false);
-    };
-    reader.readAsDataURL(file);
-
-    // Sync to Supabase Storage if active
-    const isActive = StorageManager.getIsSupabaseActive();
-    if (isActive) {
-      try {
-        const fileExt = file.name.split('.').pop();
-        const randId = Math.random().toString(36).substring(2, 11);
-        const fileName = `factory_${randId}_${Date.now()}.${fileExt}`;
-        const filePath = `originals/${fileName}`;
-
-        const { data, error } = await supabase.storage
-          .from('order-images')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (error) {
-          console.warn('Supabase storage upload failed:', error.message);
-        } else if (data) {
-          const { data: publicUrlData } = supabase.storage
-            .from('order-images')
-            .getPublicUrl(filePath);
-          
-          if (publicUrlData?.publicUrl) {
-            setImageUrl(publicUrlData.publicUrl);
-          }
-        }
-      } catch (err) {
-        console.error('Uploading product design image failed:', err);
-      }
     }
   };
 
@@ -344,43 +353,14 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
     if (!file) return;
 
     setEditUploading(true);
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setEditImageUrl(reader.result as string);
+    try {
+      const image = await resolveProductImageReference(file);
+      setEditImageUrl(image);
+    } catch (error) {
+      console.error('Reading replacement product image failed:', error);
+      alert('Không đọc được ảnh đã chọn. Ảnh hiện tại vẫn được giữ nguyên.');
+    } finally {
       setEditUploading(false);
-    };
-    reader.readAsDataURL(file);
-
-    const isActive = StorageManager.getIsSupabaseActive();
-    if (isActive) {
-      try {
-        const fileExt = file.name.split('.').pop();
-        const randId = Math.random().toString(36).substring(2, 11);
-        const fileName = `factory_${randId}_${Date.now()}.${fileExt}`;
-        const filePath = `originals/${fileName}`;
-
-        const { data, error } = await supabase.storage
-          .from('order-images')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (error) {
-          console.warn('Supabase storage upload failed:', error.message);
-        } else if (data) {
-          const { data: publicUrlData } = supabase.storage
-            .from('order-images')
-            .getPublicUrl(filePath);
-          
-          if (publicUrlData?.publicUrl) {
-            setEditImageUrl(publicUrlData.publicUrl);
-          }
-        }
-      } catch (err) {
-        console.error('Uploading product design image failed:', err);
-      }
     }
   };
 
@@ -570,13 +550,27 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
   };
 
   const handleClearLocalProductCache = async () => {
-    if (!confirm('Xóa cache kho áo trên máy này và tải lại từ Supabase? Dữ liệu local chưa đồng bộ có thể bị bỏ qua.')) return;
+    if (!confirm('Chỉ xóa cache khi Supabase có đủ sản phẩm và ảnh để khôi phục. Hệ thống sẽ tự kiểm tra trước, đồng thời giữ bản sao lưu cục bộ. Tiếp tục?')) return;
     const ok = await StorageManager.clearLocalProductCacheAndReloadFromSupabase();
     if (!ok) {
-      alert('Không tải được dữ liệu từ Supabase. Vui lòng kiểm tra kết nối.');
+      alert('Không thể xóa cache an toàn: cloud chưa xác nhận đủ sản phẩm và ảnh, hoặc kết nối đang lỗi. Dữ liệu trên máy này vẫn được giữ nguyên.');
       return;
     }
     window.location.reload();
+  };
+
+  const handleRecoverProductImages = () => {
+    const result = StorageManager.recoverMissingProductImagesFromLocalBackup();
+    if (result.recovered > 0) {
+      alert('Đã khôi phục ' + result.recovered + ' ảnh từ bản lưu trên máy. Chưa ghi ảnh lên Supabase. Trang sẽ tải lại để kiểm tra.');
+      window.location.reload();
+      return;
+    }
+    if (!result.backupFound) {
+      alert('Không tìm thấy bản lưu ảnh cục bộ. Đừng xóa cache trên máy còn ảnh; nếu máy khác vẫn hiện ảnh, hãy giữ nguyên máy đó để phục hồi an toàn.');
+      return;
+    }
+    alert('Không tìm thấy ảnh hợp lệ để khôi phục từ bản lưu trên máy. Còn ' + result.imagesStillMissing + ' sản phẩm chưa có ảnh. Dữ liệu hiện tại không bị thay đổi.');
   };
 
   return (
@@ -596,6 +590,14 @@ export default function InventoryManager({ products, onAddProduct, onUpdateProdu
           />
         </div>
         <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={handleRecoverProductImages}
+            className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer whitespace-nowrap"
+            title="Chỉ khôi phục trường ảnh từ bản lưu cục bộ; không sửa Supabase hoặc công nợ"
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span>Khôi phục ảnh</span>
+          </button>
           <button
             onClick={handleClearLocalProductCache}
             className="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer whitespace-nowrap"

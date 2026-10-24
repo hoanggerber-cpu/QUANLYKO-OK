@@ -5,6 +5,8 @@ import { generateInvoicePDF, formatCurrency } from '../utils/pdfGenerator';
 import { buildCartProductSummary } from '../utils/orderSummary';
 import { Search, Plus, Filter, FileText, Download, CheckCircle, Clock, Ban, ArrowUpRight, DollarSign, Upload, Image as ImageIcon, Eye, Calendar, Trash2, ShoppingBag, ChevronDown, ChevronUp, List, Layers, ChevronLeft, ChevronRight, ExternalLink, RotateCw, Sparkles, X } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
+import { verifyUploadedImage } from '../lib/verifyUploadedImage';
+import { getPendingOrders } from '../lib/orderOutbox';
 
 interface DtfItem {
   name: string;
@@ -207,19 +209,21 @@ export default function SalesManager({
     setUploadingEditDtfImages(true);
     try {
       return (await Promise.all(attachments.map(async attachment => {
-        if (!attachment.rawFile || /^https?:\/\//i.test(attachment.image)) return attachment.image;
+        if (/^https?:\/\//i.test(attachment.image)) return attachment.image;
+        if (!attachment.rawFile) throw new Error('Ảnh đính kèm chưa được tải lên Supabase. Giữ ảnh gốc và thử lại.');
         try {
           const fileExt = attachment.rawFile.name.split('.').pop() || 'png';
           const filePath = `originals/${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-          const { data, error } = await withTimeout(
-            supabase.storage.from('order-images').upload(filePath, attachment.rawFile, { cacheControl: '3600', upsert: false }),
-            12000
+          return await verifyUploadedImage(
+            attachment.rawFile.size,
+            () => withTimeout(supabase.storage.from('order-images').upload(filePath, attachment.rawFile!, { cacheControl: '3600', upsert: false }), 12000),
+            () => withTimeout(supabase.storage.from('order-images').info(filePath), 12000),
+            () => supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl,
           );
-          if (!error && data) return supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl;
         } catch (error) {
           console.error('Uploading DTF attachment failed:', error);
         }
-        return attachment.image;
+        throw new Error('Tải ảnh đính kèm thất bại. Đơn chưa được lưu.');
       }))).filter(Boolean);
     } finally {
       setUploadingEditDtfImages(false);
@@ -257,21 +261,33 @@ export default function SalesManager({
       }
     }
 
-    const cleanItems = await Promise.all(editTshirtItems.map(async item => {
+    let cleanItems;
+    try {
+      cleanItems = await Promise.all(editTshirtItems.map(async item => {
       let imageUrl = item.image;
       if (item.rawFile && (!imageUrl || !/^https?:\/\//i.test(imageUrl))) {
         try {
           const fileExt = item.rawFile.name.split('.').pop() || 'png';
           const filePath = `originals/edit_tshirt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-          const { data, error } = await supabase.storage.from('order-images').upload(filePath, item.rawFile, { cacheControl: '3600', upsert: false });
-          if (!error && data) imageUrl = supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl;
+          imageUrl = await verifyUploadedImage(
+            item.rawFile.size,
+            () => withTimeout(supabase.storage.from('order-images').upload(filePath, item.rawFile!, { cacheControl: '3600', upsert: false }), 12000),
+            () => withTimeout(supabase.storage.from('order-images').info(filePath), 12000),
+            () => supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl,
+          );
         } catch (error) {
           console.error('Uploading edited T-shirt image failed:', error);
+          throw new Error('Không tải được ảnh áo thun lên Supabase. Đơn chưa được cập nhật.');
         }
       }
       const { rawFile, ...cleanItem } = item;
       return { ...cleanItem, image: imageUrl };
     }));
+    } catch (error: any) {
+      console.error('Cannot upload edited T-shirt design:', error);
+      showToast(error?.message || 'Lỗi tải ảnh, đơn chưa được cập nhật.', 'error');
+      return;
+    }
 
     const productSubtotal = cleanItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const finalTotal = productSubtotal + editTshirtSurcharge;
@@ -302,6 +318,8 @@ export default function SalesManager({
       showToast('Đã cập nhật chi tiết đơn áo thun thành công!', 'success');
     } catch (error) {
       console.error('Update T-shirt order failed:', error);
+      showToast(error instanceof Error ? error.message : 'Đơn chưa cập nhật. Vui lòng kiểm tra ảnh.', 'error');
+      showToast(error instanceof Error ? error.message : 'Đơn chưa được lưu. Vui lòng kiểm tra ảnh tải lên Supabase.', 'error');
     }
   };
 
@@ -373,6 +391,8 @@ export default function SalesManager({
       showToast('Đã cập nhật đơn hàng thành công!', 'success');
     } catch (err) {
       console.error('Update order submit failed:', err);
+      showToast(err instanceof Error ? err.message : 'Đơn chưa cập nhật. Vui lòng kiểm tra ảnh.', 'error');
+      showToast(err instanceof Error ? err.message : 'Đơn chưa được lưu. Vui lòng kiểm tra ảnh tải lên Supabase.', 'error');
     }
   };
 
@@ -1253,6 +1273,7 @@ export default function SalesManager({
 
     setIsSavingOrder(true);
 
+    try {
     // 1. Process cart items to upload raw files or images to Supabase Storage and strip any tail-end descriptions
     const cleanCartItems = await Promise.all(
       cartItems.map(async (item) => {
@@ -1277,29 +1298,15 @@ export default function SalesManager({
             const fileName = `item_${randId}_${Date.now()}.${fileExt}`;
             const filePath = `originals/${fileName}`;
 
-            const { data, error } = await withTimeout(
-              supabase.storage
-                .from('order-images')
-                .upload(filePath, file, {
-                  cacheControl: '3600',
-                  upsert: false
-                }),
-              12000
+            imageUrl = await verifyUploadedImage(
+              file.size,
+              () => withTimeout(supabase.storage.from('order-images').upload(filePath, file, {cacheControl:'3600',upsert:false}),12000),
+              () => withTimeout(supabase.storage.from('order-images').info(filePath),12000),
+              () => supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl,
             );
-
-            if (error) {
-              console.warn('Cannot upload file of cart item to Supabase:', error.message);
-            } else if (data) {
-              const { data: publicUrlData } = supabase.storage
-                .from('order-images')
-                .getPublicUrl(filePath);
-
-              if (publicUrlData?.publicUrl) {
-                imageUrl = publicUrlData.publicUrl;
-              }
-            }
           } catch (uploadErr) {
             console.error('Error uploading item file during submit:', uploadErr);
+            throw new Error('Tải ảnh lên Supabase thất bại. Đơn chưa được lưu. Vui lòng thử lại.');
           }
         }
 
@@ -1355,7 +1362,8 @@ export default function SalesManager({
     ]));
     const finalStatus: OrderStatus = finalPaid >= totalPrice ? 'completed' : 'pending';
 
-    try {
+      // An offline write can succeed locally before Supabase confirms it.
+      const pendingBefore = new Set(getPendingOrders().map(order => order.id));
       await onAddOrder({
         customerName: customerName.trim(),
         type: finalType,
@@ -1373,6 +1381,14 @@ export default function SalesManager({
         notes: orderNotes.trim(),
         surcharge: appliedTshirtSurcharge
       });
+
+      const pendingAfter = getPendingOrders();
+      const needsCloudConfirmation = pendingAfter.some(order => !pendingBefore.has(order.id));
+      if (needsCloudConfirmation) {
+        showToast('Đơn đã lưu trên máy nhưng CHƯA đồng bộ Supabase. Không tạo lại đơn; hãy kiểm tra trạng thái đồng bộ.', 'info');
+      } else {
+        showToast('Đơn đã được xác nhận trên Supabase.', 'success');
+      }
 
       // Reset Form
       setCustomerName('');
@@ -1393,7 +1409,7 @@ export default function SalesManager({
       setDtfUnitPrice(55000);
       setOrderDate(new Date().toISOString().split('T')[0]);
       setShowModal(false);
-      setShowOrderCelebration(true);
+      setShowOrderCelebration(!needsCloudConfirmation);
     } catch (err: any) {
       console.error('Lỗi khi ghi sổ hóa đơn:', err);
       showToast(`Lỗi ghi sổ hóa đơn: ${err?.message || 'Lỗi cơ sở dữ liệu'}`, 'error');

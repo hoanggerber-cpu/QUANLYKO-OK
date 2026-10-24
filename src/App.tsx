@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Product, Order, Customer, OrderType } from './types';
 import { StorageManager, supabase } from './lib/storage';
 import Login from './components/Login';
+import PasswordRecovery from './components/PasswordRecovery';
 import SalesManager from './components/SalesManager';
 import DebtManager from './components/DebtManager';
 import PublicTracking from './components/PublicTracking';
@@ -22,38 +23,16 @@ import {
   Check
 } from 'lucide-react';
 
-const MIGRATION_SQL = `-- 1. Tạo bảng order_items nếu chưa tồn tại
-CREATE TABLE IF NOT EXISTS order_items (
-    id TEXT PRIMARY KEY,
-    order_id TEXT,
-    type TEXT NOT NULL,
-    product_name TEXT NOT NULL,
-    color TEXT,
-    size TEXT,
-    quantity NUMERIC DEFAULT 1,
-    unit_price NUMERIC DEFAULT 0,
-    total_price NUMERIC DEFAULT 0,
-    image TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 2. Đổi kiểu dữ liệu cột quantity thành NUMERIC để hỗ trợ mét lẻ
-ALTER TABLE orders ALTER COLUMN quantity TYPE NUMERIC;
-ALTER TABLE order_items ALTER COLUMN quantity TYPE NUMERIC;
-
--- 3. Cấu hình bảo mật RLS và quyền truy cập cho order_items
-ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Cho pheps doc order_items an danh" ON order_items;
-CREATE POLICY "Cho pheps doc order_items an danh"
-ON order_items FOR SELECT TO anon, authenticated USING (true);
-
-DROP POLICY IF EXISTS "Toan quyen order_items cho moi vai tro" ON order_items;
-CREATE POLICY "Toan quyen order_items cho moi vai tro"
-ON order_items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
+// Owner-only database RLS is managed through reviewed migrations.
+// Never give browser users a SQL snippet that grants anonymous CRUD privileges.
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [passwordSetupMode, setPasswordSetupMode] = useState(() => {
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    return ['recovery', 'invite'].includes(fragment.get('type') || '') ||
+      fragment.has('error_code');
+  });
   const [user, setUser] = useState('');
   const [activeSection, setActiveSection] = useState<string>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -68,6 +47,17 @@ export default function App() {
   const [isSupabaseOnline, setIsSupabaseOnline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dbMigrationNeeded, setDbMigrationNeeded] = useState(true);
+  const [pendingOrderTick, setPendingOrderTick] = useState(0);
+  const [syncingOutbox, setSyncingOutbox] = useState(false);
+  useEffect(() => {
+    const onPendingOrderChange = () => setPendingOrderTick(value => value + 1);
+    window.addEventListener('order_sync_status', onPendingOrderChange);
+    window.addEventListener('finance_sync_status', onPendingOrderChange);
+    return () => window.removeEventListener('order_sync_status', onPendingOrderChange);
+      window.removeEventListener('finance_sync_status', onPendingOrderChange);
+  }, []);
+  void pendingOrderTick;
+
   const [copiedCode, setCopiedCode] = useState(false);
 
   useEffect(() => {
@@ -107,7 +97,49 @@ export default function App() {
     }
   }, []);
 
-  // 1. Check database/storage state on boot
+  // An invite/recovery callback signs in temporarily so its password can be set.
+  // Do not sign out that valid recovery session before PasswordRecovery consumes it.
+  useEffect(() => {
+    let active = true;
+    const restore = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (!active || passwordSetupMode) return;
+        if (!error && data.user?.email?.toLowerCase() === 'hoangkenlee@gmail.com') {
+          setUser('hoanguyen');
+          setIsLoggedIn(true);
+        } else {
+          setUser('');
+          setIsLoggedIn(false);
+          if (data.user) await supabase.auth.signOut();
+        }
+      } catch (error) {
+        if (active && !passwordSetupMode) {
+          setUser('');
+          setIsLoggedIn(false);
+          console.error('Owner session verification failed:', error);
+        }
+      }
+    };
+    void restore();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (!active) return;
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordSetupMode(true);
+        setIsLoggedIn(false);
+        return;
+      }
+      if (event === 'SIGNED_OUT') {
+        setIsLoggedIn(false);
+        setUser('');
+        setIsSupabaseOnline(false);
+      }
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, [passwordSetupMode]);
+
+  // 1. Load records only after the owner has authenticated.
   useEffect(() => {
     async function initData() {
       try {
@@ -137,8 +169,8 @@ export default function App() {
         setLoading(false);
       }
     }
-    initData();
-  }, []);
+    if (isLoggedIn) void initData();
+  }, [isLoggedIn]);
 
   // Derive customer records without mutating persisted data.
   useEffect(() => {
@@ -147,7 +179,7 @@ export default function App() {
 
   // 3. Listen to Realtime updates from Supabase to auto-sync cross-device actions
   useEffect(() => {
-    if (isSupabaseOnline) {
+    if (isLoggedIn && isSupabaseOnline) {
       console.log('Initializing Supabase Realtime Listener...');
       const channel = supabase
         .channel('db_realtime_changes')
@@ -172,7 +204,7 @@ export default function App() {
         supabase.removeChannel(channel);
       };
     }
-  }, [isSupabaseOnline]);
+  }, [isLoggedIn, isSupabaseOnline]);
 
   // Auth logins
   const handleLoginSuccess = (adminUser: string) => {
@@ -180,9 +212,11 @@ export default function App() {
     setIsLoggedIn(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setIsLoggedIn(false);
     setUser('');
+    setIsSupabaseOnline(false);
   };
 
   // --- ACTIONS ---
@@ -205,6 +239,7 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể ghi nhận giao dịch thu tiền vào hệ thống!");
+      throw error;
     }
   };
 
@@ -215,15 +250,18 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể hủy giao dịch thu tiền!");
+      throw error;
     }
   };
 
   const handleRecordOrderPayment = async (orderId: string, amount: number) => {
     try {
-      await StorageManager.updateOrderPayment(orderId, amount);
+      const result = await StorageManager.updateOrderPayment(orderId, amount);
+      if (!result) throw new Error('Không tìm thấy đơn hàng cần gạch nợ.');
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể lưu hóa đơn thanh toán vào hệ thống!");
+      throw error;
     }
   };
 
@@ -268,11 +306,63 @@ export default function App() {
   };
 
 
+  let pendingOrderCount = 0;
+  let pendingOrderStatusError = '';
+  try {
+    pendingOrderCount = StorageManager.getPendingOrderSyncCount();
+  } catch (error) {
+    pendingOrderStatusError = error instanceof Error ? error.message : String(error);
+  }
+
+  let pendingFinance: ReturnType<typeof StorageManager.getPendingFinance> = null;
+  let pendingFinanceError = '';
+  try { pendingFinance = StorageManager.getPendingFinance(); }
+  catch (error) { pendingFinanceError = error instanceof Error ? error.message : String(error); }
+
+  const retryFinanceSync = async () => {
+    if (syncingOutbox) return;
+    setSyncingOutbox(true);
+    try {
+      if (!(await StorageManager.checkSupabaseConnection())) throw new Error('Chưa kết nối được Supabase.');
+      await StorageManager.retryPendingFinance();
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+      setPendingOrderTick(x => x + 1);
+    } catch (error) {
+      alert('Chưa xác nhận đồng bộ khoản thu. KHÔNG tạo giao dịch khác để thay thế. ' +
+        (error instanceof Error ? error.message : String(error)));
+    } finally { setSyncingOutbox(false); }
+  };
+
+  const retryOrderSync = async () => {
+    if (syncingOutbox) return;
+    setSyncingOutbox(true);
+    try {
+      if (!(await StorageManager.checkSupabaseConnection())) {
+        throw new Error('Chưa xác thực hoặc mất kết nối Supabase.');
+      }
+      await StorageManager.flushPendingOrderSync();
+      const refreshed = await StorageManager.syncAllDataFromSupabase();
+      if (!refreshed) throw new Error('Không thể xác nhận đọc lại dữ liệu từ cloud.');
+      setOrders(StorageManager.getOrders());
+      setProducts(StorageManager.getProducts());
+    } catch (error) {
+      console.error('Unable to reconcile pending orders:', error);
+      alert('Chưa thể xác nhận đồng bộ đơn hàng. KHÔNG ghi trùng. Kiểm tra kết nối và đối soát danh sách chờ.');
+    } finally {
+      setSyncingOutbox(false);
+    }
+  };
+
   const petOrders = orders.filter(order => order.type === 'dtf');
   const petCustomers = customers.filter(customer => customer.type === 'dtf');
 
   if (trackingId) {
     return <PublicTracking trackingId={trackingId} />;
+  }
+
+  if (passwordSetupMode) {
+    return <PasswordRecovery onComplete={() => setPasswordSetupMode(false)} />;
   }
 
   if (!isLoggedIn) {
@@ -374,6 +464,38 @@ export default function App() {
 
       {/* 2. Main Content Board */}
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
+        {(pendingOrderCount > 0 || pendingOrderStatusError) && (
+          <div role="alert" className="p-3 bg-amber-50 border-b border-amber-300 text-amber-900 text-xs font-semibold flex flex-wrap items-center gap-3">
+            <span>
+              {pendingOrderStatusError ||
+                `${pendingOrderCount} đơn đã lưu trên máy nhưng CHƯA XÁC NHẬN đồng bộ cloud. Không tạo lại các đơn đó trên máy khác.`}
+            </span>
+            {!pendingOrderStatusError && (
+              <button
+                type="button"
+                disabled={syncingOutbox}
+                onClick={() => { void retryOrderSync(); }}
+                className="bg-amber-700 text-white rounded-lg px-3 py-2 disabled:opacity-50"
+              >
+                {syncingOutbox ? 'Đang đối chiếu...' : 'Thử đồng bộ và đối chiếu'}
+              </button>
+            )}
+          </div>
+        )}
+        {(pendingFinance || pendingFinanceError) && (
+          <div role="alert" className="p-3 bg-red-50 border-b border-red-300 text-red-900 text-sm font-semibold flex flex-wrap items-center gap-3">
+            <span>{pendingFinanceError || (pendingFinance?.kind === 'receipt'
+              ? `Khoản thu ${pendingFinance.amount.toLocaleString('vi-VN')}đ của ${pendingFinance.customerName} đang CHỜ ĐỒNG BỘ. Chưa trừ nợ trên cloud. Không thu lại lần nữa.`
+              : 'Một bút toán hoàn tác đang chờ xác nhận. Không thực hiện lại.')}</span>
+            {!pendingFinanceError && (
+              <button type="button" disabled={syncingOutbox}
+                onClick={() => { void retryFinanceSync(); }}
+                className="bg-red-800 text-white rounded-lg px-3 py-2 disabled:opacity-50">
+                {syncingOutbox ? 'Đang đồng bộ...' : 'Đồng bộ khoản thu'}
+              </button>
+            )}
+          </div>
+        )}
         {/* Dynamic header navigation representing responsive layout toggles */}
         <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-6 sticky top-0 z-40">
           <div className="flex items-center gap-3">

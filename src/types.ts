@@ -101,6 +101,9 @@ export interface PaymentHistory {
   amount: number;
   paymentMethod: string;
   createdAt: string;
+  // Original receipt is kept for audit. A reversal is a separate DB entry.
+  isReversed?: boolean;
+  reversedAt?: string;
 }
 
 export interface DashboardStats {
