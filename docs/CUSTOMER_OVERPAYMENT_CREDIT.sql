@@ -135,7 +135,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.create_legacy_order_with_advance(p_order jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=public,pg_temp
-AS $
+AS $$
 DECLARE
  v_name text := p_order->>'customer_name';
  v_type text := p_order->>'type';
@@ -197,7 +197,7 @@ BEGIN
    'status',CASE WHEN v_debt-v_use=0 THEN 'completed' ELSE coalesce(p_order->>'status','pending') END,
    'credit_used',v_use,'duplicate',false);
 END;
-$;
+$$;
 REVOKE ALL ON FUNCTION public.create_legacy_order_with_advance(jsonb)
  FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.create_legacy_order_with_advance(jsonb)
