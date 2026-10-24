@@ -13,6 +13,9 @@ export interface PendingOrderSync {
   debtAmount: number;
   itemIds: string[];
   createdAt: string;
+  // A paid-at-creation invoice must replay with the exact same receipt ID after a timeout/offline restart.
+  initialPaymentId?: string | null;
+  initialPaymentMethod?: string;
   lastError?: string;
 }
 
@@ -47,7 +50,10 @@ function save(entries: PendingOrderSync[]): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('order_sync_status'));
 }
 
-export function queueOrderForSync(order: Order): void {
+export function queueOrderForSync(
+  order: Order,
+  initialPayment?: { id: string | null; method: string }
+): void {
   validateOrderAmounts(order);
   const current = getPendingOrders();
   if (current.some(item => item.id === order.id)) {
@@ -59,6 +65,8 @@ export function queueOrderForSync(order: Order): void {
     paidAmount: order.paidAmount, debtAmount: order.debtAmount,
     itemIds: order.items?.map(item => item.id) || [],
     createdAt: order.createdAt,
+    initialPaymentId: initialPayment?.id ?? null,
+    initialPaymentMethod: initialPayment?.method || 'Thanh toán khi tạo đơn',
   }]);
 }
 
