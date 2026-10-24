@@ -180,6 +180,32 @@ export default function DebtManager({
   const [isSyncing, setIsSyncing] = useState(false);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const paymentInFlight = useRef(false);
+  const [pendingCheckBusy, setPendingCheckBusy] = useState(false);
+  // Read at render, so a timeout/reload can't silently hide an unconfirmed receipt.
+  let pendingFinance: ReturnType<typeof StorageManager.getPendingFinance> = null;
+  let pendingFinanceError: string | null = null;
+  try {
+    pendingFinance = StorageManager.getPendingFinance();
+  } catch (error) {
+    pendingFinanceError = error instanceof Error ? error.message : 'Nhật ký thu tiền bị lỗi.';
+  }
+
+  const retryPendingFinance = async () => {
+    if (pendingCheckBusy || paymentInFlight.current) return;
+    paymentInFlight.current = true;
+    setPendingCheckBusy(true);
+    try {
+      const wasPending = await StorageManager.retryPendingFinance();
+      showToast(wasPending ? 'Đã xác nhận lại giao dịch cũ bằng đúng mã giao dịch ban đầu.' : 'Không còn giao dịch cần đối soát.', 'success');
+    } catch (error) {
+      console.error('Pending finance reconciliation failed:', error);
+      showToast('Chưa thể xác nhận giao dịch cũ. KHÔNG nhập lại bằng giao dịch mới; kiểm tra Supabase.', 'error');
+    } finally {
+      paymentInFlight.current = false;
+      setPendingCheckBusy(false);
+    }
+  };
+
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage(msg);
@@ -1013,6 +1039,7 @@ export default function DebtManager({
                     <tr key={pay.id} className="hover:bg-slate-50/40 transition-colors text-slate-650">
                       <td className="py-4 px-6 font-medium text-slate-550">
                         {new Date(pay.createdAt).toLocaleDateString('vi-VN')} {new Date(pay.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                        {pay.isReversed && <span className="block text-xs font-bold text-rose-600">Đã hoàn tác (lưu lịch sử)</span>}
                       </td>
                       <td className="py-4 px-6 text-right font-mono font-bold text-emerald-650">
                         {formatCurrency(pay.amount)}
@@ -1024,7 +1051,7 @@ export default function DebtManager({
                         <button
                           type="button"
                           onClick={async () => {
-                            if (!onUndoPayment || paymentInFlight.current) return;
+                            if (!onUndoPayment || pay.isReversed || paymentInFlight.current) return;
                             if (!window.confirm(`Bạn có chắc chắn muốn hoàn tác giao dịch thu ${formatCurrency(pay.amount)}? Hãy đối soát sổ trước khi thao tác.`)) return;
                             paymentInFlight.current = true;
                             setPaymentBusy(true);
@@ -1039,11 +1066,11 @@ export default function DebtManager({
                               setPaymentBusy(false);
                             }
                           }}
-                          disabled={paymentBusy}
+                          disabled={paymentBusy || pay.isReversed}
                           className="px-2.5 py-1 text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200/50 rounded-lg cursor-pointer transition-colors inline-flex items-center gap-1.5"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          <span>Hủy / Hoàn tác</span>
+                          <span>{pay.isReversed ? 'Đã hoàn tác' : 'Hủy / Hoàn tác'}</span>
                         </button>
                       </td>
                     </tr>
@@ -1090,6 +1117,27 @@ export default function DebtManager({
   // STANDARD SUMMARY CUSTOMERS LIST VIEW
   return (
     <div className="space-y-6 animate-fade-in text-slate-700">
+      {(pendingFinance || pendingFinanceError) && (
+        <div role="alert" className="p-4 rounded-xl border border-amber-400 bg-amber-50 text-amber-900 text-sm space-y-2">
+          <p className="font-bold">Có giao dịch thu tiền cần xác nhận lại trên cloud.</p>
+          <p>
+            {pendingFinanceError || (pendingFinance?.kind === 'receipt'
+              ? `Thu ${formatCurrency(pendingFinance.amount)} của ${pendingFinance.customerName}, mã ${pendingFinance.id}`
+              : `Hoàn tác biên nhận ${pendingFinance?.kind === 'reversal' ? pendingFinance.paymentId : ''}`)}
+          </p>
+          <p>Không tạo khoản thu mới hoặc xóa dữ liệu trên thiết bị. Kiểm tra rồi dùng lại đúng mã giao dịch cũ.</p>
+          {!pendingFinanceError && (
+            <button
+              type="button"
+              disabled={pendingCheckBusy}
+              onClick={() => { void retryPendingFinance(); }}
+              className="px-4 py-2 rounded-lg bg-amber-700 text-white disabled:opacity-50 font-semibold"
+            >
+              {pendingCheckBusy ? 'Đang đối chiếu...' : 'Xác nhận lại giao dịch trên cloud'}
+            </button>
+          )}
+        </div>
+      )}
       {selectedCustomer && currentCustomer ? renderDetailView() : (
         <>
           {/* PET customer section */}
