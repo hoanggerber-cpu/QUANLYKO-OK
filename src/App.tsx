@@ -205,6 +205,7 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể ghi nhận giao dịch thu tiền vào hệ thống!");
+      throw error;
     }
   };
 
@@ -215,6 +216,7 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể hủy giao dịch thu tiền!");
+      throw error;
     }
   };
 
@@ -224,6 +226,7 @@ export default function App() {
       setOrders(StorageManager.getOrders());
     } catch (error) {
       alert("Lỗi: Không thể lưu hóa đơn thanh toán vào hệ thống!");
+      throw error;
     }
   };
 
