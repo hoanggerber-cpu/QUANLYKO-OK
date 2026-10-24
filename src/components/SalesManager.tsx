@@ -5,7 +5,6 @@ import { generateInvoicePDF, formatCurrency } from '../utils/pdfGenerator';
 import { buildCartProductSummary } from '../utils/orderSummary';
 import { Search, Plus, Filter, FileText, Download, CheckCircle, Clock, Ban, ArrowUpRight, DollarSign, Upload, Image as ImageIcon, Eye, Calendar, Trash2, ShoppingBag, ChevronDown, ChevronUp, List, Layers, ChevronLeft, ChevronRight, ExternalLink, RotateCw, Sparkles, X } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
-import { confirmedImageUpload } from '../lib/orderImageSafety';
 import { verifyUploadedImage } from '../lib/verifyUploadedImage';
 import { getPendingOrders } from '../lib/orderOutbox';
 
@@ -1299,27 +1298,12 @@ export default function SalesManager({
             const fileName = `item_${randId}_${Date.now()}.${fileExt}`;
             const filePath = `originals/${fileName}`;
 
-            const { data, error } = await withTimeout(
-              supabase.storage
-                .from('order-images')
-                .upload(filePath, file, {
-                  cacheControl: '3600',
-                  upsert: false
-                }),
-              12000
+            imageUrl = await verifyUploadedImage(
+              file.size,
+              () => withTimeout(supabase.storage.from('order-images').upload(filePath, file, {cacheControl:'3600',upsert:false}),12000),
+              () => withTimeout(supabase.storage.from('order-images').info(filePath),12000),
+              () => supabase.storage.from('order-images').getPublicUrl(filePath).data.publicUrl,
             );
-
-            if (error) {
-              throw error;
-            } else if (data) {
-              const { data: publicUrlData } = supabase.storage
-                .from('order-images')
-                .getPublicUrl(filePath);
-
-              if (publicUrlData?.publicUrl) {
-                imageUrl = publicUrlData.publicUrl;
-              }
-            }
           } catch (uploadErr) {
             console.error('Error uploading item file during submit:', uploadErr);
             throw new Error('Tải ảnh lên Supabase thất bại. Đơn chưa được lưu. Vui lòng thử lại.');
