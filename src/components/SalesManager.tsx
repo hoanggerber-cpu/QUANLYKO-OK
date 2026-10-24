@@ -260,7 +260,9 @@ export default function SalesManager({
       }
     }
 
-    const cleanItems = await Promise.all(editTshirtItems.map(async item => {
+    let cleanItems;
+    try {
+      cleanItems = await Promise.all(editTshirtItems.map(async item => {
       let imageUrl = item.image;
       if (item.rawFile && (!imageUrl || !/^https?:\/\//i.test(imageUrl))) {
         try {
@@ -276,6 +278,11 @@ export default function SalesManager({
       const { rawFile, ...cleanItem } = item;
       return { ...cleanItem, image: imageUrl };
     }));
+    } catch (error: any) {
+      console.error('Cannot upload edited T-shirt design:', error);
+      showToast(error?.message || 'Lỗi tải ảnh, đơn chưa được cập nhật.', 'error');
+      return;
+    }
 
     const productSubtotal = cleanItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const finalTotal = productSubtotal + editTshirtSurcharge;
