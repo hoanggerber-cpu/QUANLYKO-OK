@@ -4,7 +4,8 @@ CREATE ROLE authenticated NOLOGIN;
 GRANT USAGE ON SCHEMA public TO anon,authenticated;
 CREATE TABLE public.orders (
   id text PRIMARY KEY,order_code text NOT NULL,customer_name text NOT NULL,type text NOT NULL,
-  product_name text,created_at timestamptz,total_price numeric,paid_amount numeric,debt_amount numeric,status text
+  product_name text,color text,quantity numeric,unit_price numeric,order_images text,
+  created_at timestamptz,total_price numeric,paid_amount numeric,debt_amount numeric,status text
 );
 CREATE TABLE public.payment_history (
   id uuid PRIMARY KEY,customer_id text NOT NULL,customer_name text NOT NULL,type text NOT NULL,
