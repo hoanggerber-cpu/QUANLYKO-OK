@@ -12,6 +12,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [recoverySent, setRecoverySent] = useState(false);
+
+  const requestRecovery = async () => {
+    if (loading) return;
+    setLoading(true);
+    setError('');
+    setRecoverySent(false);
+    try {
+      // The redirect URL must be included in Supabase Auth's Redirect URLs allowlist.
+      const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(
+        'hoangkenlee@gmail.com',
+        { redirectTo: window.location.origin + '/' }
+      );
+      if (recoveryError) throw recoveryError;
+      setRecoverySent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể gửi email khôi phục.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +96,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           </div>
         )}
 
+        {recoverySent && (
+          <p role="status" className="mb-4 rounded-xl border border-emerald-700/50 bg-emerald-950/40 p-4 text-sm text-emerald-200">
+            Đã yêu cầu email khôi phục. Hãy kiểm tra hộp thư hoangkenlee@gmail.com, kể cả Spam.
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="username" className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Tên đăng nhập hoặc Email</label>
@@ -131,6 +158,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             )}
           </button>
         </form>
+        <button
+          type="button"
+          onClick={() => void requestRecovery()}
+          disabled={loading}
+          className="mt-4 w-full text-center text-sm font-medium text-blue-300 hover:text-blue-200 disabled:opacity-50"
+        >
+          Quên mật khẩu? Gửi email đặt lại
+        </button>
       </div>
     </div>
   );
