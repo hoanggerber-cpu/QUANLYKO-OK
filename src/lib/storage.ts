@@ -1432,11 +1432,17 @@ export class StorageManager {
   }
 
   static async updateOrderPayment(id: string, additionalPay: number, status?: 'pending' | 'completed'): Promise<Order | null> {
+    if (!Number.isSafeInteger(additionalPay) || additionalPay <= 0) {
+      throw new Error('Số tiền thu phải là số nguyên VND dương.');
+    }
     const orders = this.getOrders();
     const idx = orders.findIndex(o => o.id === id);
     if (idx === -1) return null;
 
     const o = { ...orders[idx] };
+    if (!Number.isSafeInteger(o.debtAmount) || additionalPay > o.debtAmount) {
+      throw new Error('Tiền thu vượt số nợ hóa đơn. Không ghi đè và không tự làm tròn.');
+    }
     o.paidAmount = Math.min(o.totalPrice, o.paidAmount + additionalPay);
     o.debtAmount = o.totalPrice - o.paidAmount;
     if (status) {
@@ -1947,6 +1953,15 @@ export class StorageManager {
 
   // Helper to record payment directly from customer card
   static async recordCustomerPayment(customerName: string, type: OrderType, amount: number, paymentMethod: string): Promise<void> {
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      throw new Error('Số tiền thu phải là số nguyên VND dương.');
+    }
+    const outstanding = this.getOrders()
+      .filter(o => o.customerName === customerName && o.type === type)
+      .reduce((sum, o) => sum + o.debtAmount, 0);
+    if (!Number.isSafeInteger(outstanding) || amount > outstanding) {
+      throw new Error('Tiền thu vượt công nợ hiện có hoặc số dư không hợp lệ. Hãy đồng bộ và kiểm tra trước.');
+    }
     // 1. Record the transaction inside payment_history (insert in local state and push to database)
     const uuid = typeof crypto !== 'undefined' && crypto.randomUUID 
       ? crypto.randomUUID() 
@@ -2030,77 +2045,12 @@ export class StorageManager {
     this.saveOrders(orders);
   }
 
-  // Undo payment / recalculate FIFO
-  static async deletePaymentAndRecalculate(paymentId: string, customerName: string, type: OrderType): Promise<void> {
-    // 3.1: Delete record from local state payment_history
-    let payments = this.getPaymentHistory();
-    payments = payments.filter(p => p.id !== paymentId);
-    this.savePaymentHistory(payments);
-
-    // Sync deletion to Supabase
-    if (this.isSupabaseActive) {
-      try {
-        const { error } = await supabase.from('payment_history').delete().eq('id', paymentId);
-        if (error) console.error('Supabase delete from payment_history failed:', error.message);
-      } catch (err) {
-        console.error('Failed to post delete payment_history to Supabase:', err);
-      }
-    }
-
-    // 3.2: Get sum of remaining payment history records for this customer
-    const newTotalPaid = payments
-      .filter(p => p.customerName === customerName && p.type === type)
-      .reduce((sum, p) => sum + p.amount, 0);
-
-    // 3.3: Reset ALL orders of the customer for this specific type to paid_amount = 0 and status = 'pending'
-    const orders = this.getOrders();
-    const customerOrders = orders.filter(o => o.customerName === customerName && o.type === type);
-
-    for (const order of customerOrders) {
-      order.paidAmount = 0;
-      order.debtAmount = order.totalPrice;
-      order.status = 'pending';
-    }
-
-    // 3.4: Re-allocate old ones first (FIFO) using newTotalPaid
-    let remainingAmount = newTotalPaid;
-    const sortedOrders = [...customerOrders].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-    for (const order of sortedOrders) {
-      if (remainingAmount <= 0) {
-        order.paidAmount = 0;
-        order.debtAmount = order.totalPrice;
-        order.status = 'pending';
-        continue;
-      }
-      const paymentToApply = Math.min(order.totalPrice, remainingAmount);
-      order.paidAmount = paymentToApply;
-      order.debtAmount = order.totalPrice - paymentToApply;
-      order.status = order.paidAmount >= order.totalPrice ? 'completed' : 'pending';
-      remainingAmount -= paymentToApply;
-    }
-
-    // Save orders state locally
-    this.saveOrders(orders);
-
-    // Push updated orders to Supabase
-    if (this.isSupabaseActive) {
-      try {
-        await Promise.all(
-          customerOrders.map(async (order) => {
-            return supabase.from('orders')
-              .update({
-                paid_amount: order.paidAmount,
-                debt_amount: order.debtAmount,
-                status: order.status
-              })
-              .eq('id', order.id);
-          })
-        );
-      } catch (err) {
-        console.error('Failed to update orders after recalculation:', err);
-      }
-    }
+  // Historical receipts are not fully linked to initial invoice payments.
+  // The former 'reset all paid=0, replay payment_history' algorithm could
+  // increase debt incorrectly. Refuse deletion until a verifiable correction
+  // journal exists; NEVER alter pre-existing invoice balances implicitly.
+  static async deletePaymentAndRecalculate(_paymentId: string, _customerName: string, _type: OrderType): Promise<void> {
+    throw new Error('Chưa thể hoàn tác tự động khoản thu lịch sử an toàn. Không thay đổi số liệu; cần kiểm tra chứng từ và điều chỉnh có ghi lịch sử.');
   }
 
   // --- STATS CALCULATION ---
