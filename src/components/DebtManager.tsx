@@ -4,7 +4,7 @@ import { formatCurrency, generateReconciliationPDF } from '../utils/pdfGenerator
 import { getOrderProductSummary } from '../utils/orderSummary';
 import { getPublicAppUrl } from '../utils/publicUrl';
 import { exportCustomerProfile } from '../utils/customerExport';
-import { StorageManager } from '../lib/storage';
+import { StorageManager, supabase } from '../lib/storage';
 import { 
   Search, 
   Landmark, 
@@ -294,6 +294,7 @@ export default function DebtManager({
   const [payAmountInputStr, setPayAmountInputStr] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copyingTrackingLink, setCopyingTrackingLink] = useState(false);
 
   // Specific order payment state
   const [payOrder, setPayOrder] = useState<Order | null>(null);
@@ -596,15 +597,32 @@ export default function DebtManager({
       }
     };
 
-    const handleCopyTrackingLink = () => {
-      const slug = StorageManager.getTrackingSlugForCustomer(currentCustomer.name, currentCustomer.type);
-      const link = `${getPublicAppUrl()}/c/${slug}`;
-      navigator.clipboard.writeText(link).then(() => {
+    const handleCopyTrackingLink = async () => {
+      if (copyingTrackingLink) return;
+      setCopyingTrackingLink(true);
+      try {
+        // Only the owner session may issue a random, customer-scoped tracking link.
+        // Do not generate a predictable slug or fall back to the legacy public URL.
+        const { data, error } = await supabase.functions.invoke('customer-tracking', {
+          body: {
+            action: 'issue',
+            customerName: currentCustomer.name,
+            customerType: currentCustomer.type,
+          },
+        });
+        if (error || typeof data?.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(data.token)) {
+          throw new Error('Không thể cấp link công nợ bảo mật.');
+        }
+        const link = `${getPublicAppUrl()}/c/${data.token}`;
+        await navigator.clipboard.writeText(link);
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2500);
-      }).catch(err => {
-        console.error('Không thể copy liên kết: ', err);
-      });
+      } catch (error) {
+        console.error('Secure tracking-link issuance failed:', error);
+        showToast('Không thể tạo link bảo mật. Không dùng link công nợ cũ; vui lòng thử lại sau.', 'error');
+      } finally {
+        setCopyingTrackingLink(false);
+      }
     };
 
     return (
@@ -659,7 +677,8 @@ export default function DebtManager({
 
             {/* Copy Link to Client */}
             <button
-              onClick={handleCopyTrackingLink}
+              onClick={() => { void handleCopyTrackingLink(); }}
+              disabled={copyingTrackingLink}
               className={`px-4 py-2.5 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all hover:shadow cursor-pointer uppercase tracking-wider ${
                 copiedLink 
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/10' 
@@ -667,7 +686,7 @@ export default function DebtManager({
               }`}
             >
               <Link className="w-4 h-4" />
-              <span>{copiedLink ? 'Đã copy thành công!' : 'Copy Link Gửi Khách'}</span>
+              <span>{copyingTrackingLink ? 'Đang tạo link...' : copiedLink ? 'Đã copy thành công!' : 'Copy Link Gửi Khách'}</span>
             </button>
 
             {/* Export Receipt */}
