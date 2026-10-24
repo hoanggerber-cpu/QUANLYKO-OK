@@ -80,7 +80,7 @@ export class StorageManager {
           if (localOrder.paidAmount === 0 && initialPaymentId) {
             throw new Error('Đơn không có tiền trả trước nhưng hàng đợi chứa mã biên nhận. Cần đối soát.');
           }
-          const legacyCustomerId = \`c_\${localOrder.type}_\` +
+          const legacyCustomerId = `c_${localOrder.type}_` +
             btoa(encodeURIComponent(localOrder.customerName)).replace(/=/g, '');
           const orderImagesPayload = JSON.stringify({
             images: (localOrder.orderImages || []).filter(image =>
