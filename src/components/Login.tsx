@@ -12,6 +12,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [recoverySent, setRecoverySent] = useState(false);
+
+  const requestRecovery = async () => {
+    if (loading) return;
+    setLoading(true);
+    setError('');
+    setRecoverySent(false);
+    try {
+      // The redirect URL must be included in Supabase Auth's Redirect URLs allowlist.
+      const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(
+        'hoangkenlee@gmail.com',
+        { redirectTo: window.location.origin + '/' }
+      );
+      if (recoveryError) throw recoveryError;
+      setRecoverySent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể gửi email khôi phục.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,51 +49,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         return;
       }
 
-      // Cách 1: Xác thực bằng Supabase Auth (Nếu người dùng điền địa chỉ email đăng nhập)
-      if (inputUsername.includes('@')) {
-        const { data, error: authError } = await supabase.auth.signInWithPassword({
-          email: inputUsername,
-          password: inputPassword,
-        });
-
-        if (!authError && data?.user) {
-          onLoginSuccess(data.user.email || 'Admin');
-          setLoading(false);
-          return;
-        } else if (authError) {
-          setError(`Lỗi xác thực Supabase: ${authError.message}`);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Cách 2: Xác thực bằng bảng dữ liệu truyền thống "admin_users" trên Supabase
-      try {
-        const { data: adminDb, error: dbError } = await supabase
-          .from('admin_users')
-          .select('*')
-          .eq('username', inputUsername.toLowerCase())
-          .eq('password', inputPassword)
-          .maybeSingle();
-
-        if (!dbError && adminDb) {
-          onLoginSuccess(adminDb.username || 'Admin (DB)');
-          setLoading(false);
-          return;
-        }
-      } catch (dbErr) {
-        // Bảng không tồn tại hoặc lỗi kết nối, bỏ qua để đi tiếp xuống Cách 3
-      }
-
-      // Cách 3: Xác thực qua Biến môi trường Vercel/Vite (Hoàn hảo cho Github, mật khẩu ẩn hoàn toàn khỏi mã nguồn)
-      const expectedUser = (import.meta as any).env?.VITE_ADMIN_USERNAME || 'admin';
-      const expectedPass = (import.meta as any).env?.VITE_ADMIN_PASSWORD || 'admin123';
-
-      if (inputUsername.toLowerCase() === expectedUser.toLowerCase() && inputPassword === expectedPass) {
-        onLoginSuccess('Admin');
-      } else {
+      // Keep the familiar username while using server-verified Supabase Auth.
+      // Never query public.admin_users or compare passwords in browser code.
+      if (inputUsername.toLowerCase() !== 'hoanguyen') {
         setError('Tên đăng nhập hoặc mật khẩu không chính xác.');
+        return;
       }
+
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: 'hoangkenlee@gmail.com',
+        password: inputPassword,
+      });
+
+      if (authError || !data.user || data.user.email?.toLowerCase() !== 'hoangkenlee@gmail.com') {
+        if (data.session) await supabase.auth.signOut();
+        setError('Tên đăng nhập hoặc mật khẩu không chính xác.');
+        return;
+      }
+
+      onLoginSuccess('hoanguyen');
     } catch (err: any) {
       setError(`Lỗi hệ thống: ${err.message || err.toString()}`);
     } finally {
@@ -99,6 +94,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-200 text-sm text-center font-medium">
             {error}
           </div>
+        )}
+
+        {recoverySent && (
+          <p role="status" className="mb-4 rounded-xl border border-emerald-700/50 bg-emerald-950/40 p-4 text-sm text-emerald-200">
+            Đã yêu cầu email khôi phục. Hãy kiểm tra hộp thư hoangkenlee@gmail.com, kể cả Spam.
+          </p>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -157,6 +158,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             )}
           </button>
         </form>
+        <button
+          type="button"
+          onClick={() => void requestRecovery()}
+          disabled={loading}
+          className="mt-4 w-full text-center text-sm font-medium text-blue-300 hover:text-blue-200 disabled:opacity-50"
+        >
+          Quên mật khẩu? Gửi email đặt lại
+        </button>
       </div>
     </div>
   );
