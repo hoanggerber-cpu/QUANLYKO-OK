@@ -723,6 +723,7 @@ export default function DebtManager({
             {/* Copy Link to Client */}
             <button
               onClick={handleCopyTrackingLink}
+              disabled={copyingTrackingLink}
               className={`px-4 py-2.5 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all hover:shadow cursor-pointer uppercase tracking-wider ${
                 copiedLink 
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/10' 
@@ -733,6 +734,15 @@ export default function DebtManager({
               <span>{copiedLink ? 'Đã copy thành công!' : 'Copy Link Gửi Khách'}</span>
             </button>
 
+            <button
+              onClick={handleRevokeTrackingLinks}
+              disabled={revokingTrackingLinks}
+              className="px-4 py-2.5 font-bold text-xs rounded-xl bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 disabled:opacity-60"
+              title="Thu hồi tất cả link bảo mật đã cấp cho khách này"
+            >
+              {revokingTrackingLinks ? 'Đang thu hồi...' : 'Thu hồi link bảo mật'}
+            </button>
+            
             {/* Export Receipt */}
             <button
               onClick={handleExportCustomerProfile}
