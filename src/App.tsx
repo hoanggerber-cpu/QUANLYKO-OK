@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Product, Order, Customer, OrderType } from './types';
 import { StorageManager, supabase } from './lib/storage';
 import Login from './components/Login';
+import PasswordRecovery from './components/PasswordRecovery';
 import SalesManager from './components/SalesManager';
 import DebtManager from './components/DebtManager';
 import PublicTracking from './components/PublicTracking';
@@ -22,38 +23,14 @@ import {
   Check
 } from 'lucide-react';
 
-const MIGRATION_SQL = `-- 1. Tạo bảng order_items nếu chưa tồn tại
-CREATE TABLE IF NOT EXISTS order_items (
-    id TEXT PRIMARY KEY,
-    order_id TEXT,
-    type TEXT NOT NULL,
-    product_name TEXT NOT NULL,
-    color TEXT,
-    size TEXT,
-    quantity NUMERIC DEFAULT 1,
-    unit_price NUMERIC DEFAULT 0,
-    total_price NUMERIC DEFAULT 0,
-    image TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 2. Đổi kiểu dữ liệu cột quantity thành NUMERIC để hỗ trợ mét lẻ
-ALTER TABLE orders ALTER COLUMN quantity TYPE NUMERIC;
-ALTER TABLE order_items ALTER COLUMN quantity TYPE NUMERIC;
-
--- 3. Cấu hình bảo mật RLS và quyền truy cập cho order_items
-ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Cho pheps doc order_items an danh" ON order_items;
-CREATE POLICY "Cho pheps doc order_items an danh"
-ON order_items FOR SELECT TO anon, authenticated USING (true);
-
-DROP POLICY IF EXISTS "Toan quyen order_items cho moi vai tro" ON order_items;
-CREATE POLICY "Toan quyen order_items cho moi vai tro"
-ON order_items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
+// Security: owner-only access. Legacy anonymous grants must never be suggested from the UI.
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [passwordSetupMode, setPasswordSetupMode] = useState(() => {
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    return ['recovery', 'invite'].includes(fragment.get('type') || '') || fragment.has('error_code');
+  });
   const [user, setUser] = useState('');
   const [activeSection, setActiveSection] = useState<string>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -115,6 +92,30 @@ export default function App() {
     }
   }, []);
 
+  // Restore only the verified owner session; never trust local UI state as authorization.
+  useEffect(() => {
+    let active = true;
+    const restore = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (!active || passwordSetupMode) return;
+      if (!error && data.user?.email?.toLowerCase() === 'hoangkenlee@gmail.com') {
+        setUser('hoanguyen');
+        setIsLoggedIn(true);
+      } else {
+        setUser('');
+        setIsLoggedIn(false);
+        if (data.user) await supabase.auth.signOut();
+      }
+    };
+    void restore().catch(err => console.error('Owner auth restore failed:', err));
+    const { data: listener } = supabase.auth.onAuthStateChange(event => {
+      if (!active) return;
+      if (event === 'PASSWORD_RECOVERY') { setPasswordSetupMode(true); setIsLoggedIn(false); }
+      if (event === 'SIGNED_OUT') { setIsLoggedIn(false); setUser(''); setIsSupabaseOnline(false); }
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, [passwordSetupMode]);
+
   // 1. Check database/storage state on boot
   useEffect(() => {
     async function initData() {
@@ -145,8 +146,8 @@ export default function App() {
         setLoading(false);
       }
     }
-    initData();
-  }, []);
+    if (isLoggedIn) void initData();
+  }, [isLoggedIn]);
 
   // Derive customer records without mutating persisted data.
   useEffect(() => {
@@ -155,7 +156,7 @@ export default function App() {
 
   // 3. Listen to Realtime updates from Supabase to auto-sync cross-device actions
   useEffect(() => {
-    if (isSupabaseOnline) {
+    if (isLoggedIn && isSupabaseOnline) {
       console.log('Initializing Supabase Realtime Listener...');
       const channel = supabase
         .channel('db_realtime_changes')
@@ -180,7 +181,7 @@ export default function App() {
         supabase.removeChannel(channel);
       };
     }
-  }, [isSupabaseOnline]);
+  }, [isLoggedIn, isSupabaseOnline]);
 
   // Auth logins
   const handleLoginSuccess = (adminUser: string) => {
@@ -188,9 +189,11 @@ export default function App() {
     setIsLoggedIn(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setIsLoggedIn(false);
     setUser('');
+    setIsSupabaseOnline(false);
   };
 
   // --- ACTIONS ---
