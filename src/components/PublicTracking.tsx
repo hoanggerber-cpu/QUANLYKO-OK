@@ -88,6 +88,9 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
   };
 
   const [loading, setLoading] = useState(true);
+  const [legacyPinRequired, setLegacyPinRequired] = useState(false);
+  const [legacyPin, setLegacyPin] = useState('');
+  const [legacyPinError, setLegacyPinError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState<number>(1);
   const [lightboxRendering, setLightboxRendering] = useState<'smooth' | 'crisp'>('crisp');
@@ -103,12 +106,19 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
 
     const loadScopedLedger = async () => {
       try {
-        if (!/^[A-Za-z0-9_-]{43}$/.test(trackingId)) {
-          throw new Error('Invalid tracking link');
-        }
+        const secure = /^[A-Za-z0-9_-]{43}$/.test(trackingId);
         const { data, error } = await supabase.functions.invoke('customer-tracking', {
-          body: { action: 'read', token: trackingId },
+          body: secure
+            ? { action: 'read', token: trackingId }
+            : { action: 'read_legacy', slug: trackingId, pin: legacyPin },
         });
+        if (data?.error === 'pin_required' || data?.error === 'invalid_pin') {
+          if (active) {
+            setLegacyPinRequired(true);
+            setLegacyPinError(data.error === 'invalid_pin');
+          }
+          return;
+        }
         if (error || !data?.customer || !Array.isArray(data.orders)) {
           throw new Error('Invalid or unavailable tracking link');
         }
@@ -117,6 +127,8 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
         if (typeof scoped.name !== 'string' || typeof scoped.debtAmount !== 'number') {
           throw new Error('Invalid ledger response');
         }
+        setLegacyPinRequired(false);
+        setLegacyPinError(false);
         setCustomer(scoped);
         setSortedOrders(data.orders as Order[]);
       } catch {
@@ -130,13 +142,29 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
     };
     void loadScopedLedger();
     return () => { active = false; };
-  }, [trackingId]);
+  }, [trackingId, legacyPin]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 font-sans">
         <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-xs font-mono text-slate-400">Đang tải thông tin sổ nợ...</p>
+      </div>
+    );
+  }
+
+  if (legacyPinRequired && !customer) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
+        <form onSubmit={e => { e.preventDefault(); setLegacyPin((e.currentTarget.elements.namedItem('pin') as HTMLInputElement).value); }}
+          className="bg-slate-800 p-8 rounded-2xl w-full max-w-sm space-y-4">
+          <h2 className="text-xl font-bold">Mã bảo mật khách hàng</h2>
+          <p className="text-sm text-slate-300">Nhập mã PIN đã được cung cấp để xem công nợ.</p>
+          <input name="pin" type="password" required autoComplete="off" placeholder="Nhập PIN"
+            className="w-full p-3 rounded-lg bg-slate-950 text-white" />
+          {legacyPinError && <p className="text-rose-400">Mã PIN chưa đúng.</p>}
+          <button type="submit" className="w-full p-3 bg-blue-600 rounded-lg font-bold">Xác nhận</button>
+        </form>
       </div>
     );
   }
