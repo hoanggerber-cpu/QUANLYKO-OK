@@ -124,16 +124,63 @@ async function issue(req: Request, body: Record<string, unknown>, origin: string
 
 async function read(body: Record<string, unknown>, origin: string | null): Promise<Response> {
   const token = typeof body.token === 'string' ? body.token : '';
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
-    return reply({ error: 'invalid_link' }, 404, origin);
-  }
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return reply({ error: 'invalid_link' }, 404, origin);
   const hash = await digest(token);
   const { data: link, error: tokenError } = await admin.from('customer_tracking_links')
-    .select('customer_name,customer_type')
-    .eq('token_hash', hash).is('revoked_at', null).maybeSingle();
+    .select('customer_name,customer_type').eq('token_hash', hash).is('revoked_at', null).maybeSingle();
   if (tokenError) throw tokenError;
   if (!link) return reply({ error: 'invalid_link' }, 404, origin);
+  return readScoped(link.customer_name, link.customer_type, origin);
+}
 
+// Legacy customer URLs must remain readable without granting direct table access.
+// Resolve the old public slug only on the server. Where a PIN exists it must be checked here,
+// before loading or returning a single order. New links still use high-entropy tokens.
+function legacySlug(name: string, type: string): string {
+  const normalized = name.toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd')
+    .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-');
+  return normalized + (type === 'tshirt' ? '-ao' : '');
+}
+
+async function readLegacy(body: Record<string, unknown>, origin: string | null): Promise<Response> {
+  const slug = typeof body.slug === 'string' ? body.slug.trim().toLowerCase() : '';
+  if (!slug || slug.length > 240 || !/^[a-z0-9_-]+$/.test(slug)) {
+    return reply({ error: 'invalid_link' }, 404, origin);
+  }
+  const identities = new Map<string, {name:string,type:string}>();
+  const pageSize = 500;
+  for (let offset = 0; offset < 10000; offset += pageSize) {
+    const {data,error} = await admin.from('orders').select('customer_name,type')
+      .order('id').range(offset,offset+pageSize-1);
+    if(error) throw error;
+    for(const row of data || []) {
+      if(row.customer_name && (row.type === 'dtf' || row.type === 'tshirt')) {
+        identities.set(JSON.stringify([row.customer_name,row.type]),
+          {name:row.customer_name,type:row.type});
+      }
+    }
+    if(!data || data.length < pageSize) break;
+  }
+  const matches = [...identities.values()].filter(x => legacySlug(x.name,x.type) === slug);
+  if(matches.length !== 1) return reply({error:'invalid_link'},404,origin);
+  const match=matches[0];
+  const {data: customer, error} = await admin.from('customers').select('pin_code')
+    .eq('name',match.name).eq('type',match.type).maybeSingle();
+  if(error) throw error;
+  const requiredPin=String(customer?.pin_code || '').trim();
+  if(requiredPin) {
+    if(typeof body.pin !== 'string' || !body.pin.trim()) {
+      return reply({error:'pin_required'},401,origin);
+    }
+    // Compare server-side only; never send the stored customer PIN to the browser.
+    if(body.pin.trim() !== requiredPin) return reply({error:'invalid_pin'},403,origin);
+  }
+  return readScoped(match.name, match.type, origin);
+}
+
+async function readScoped(customerName: string, customerType: string, origin: string | null): Promise<Response> {
+  const link = {customer_name:customerName,customer_type:customerType};
   // Fetch by the exact name AND business type assigned when the owner created the link.
   // All pages are fetched, including older orders; no global customer/order download.
   const orders: Record<string, unknown>[] = [];
@@ -220,6 +267,7 @@ Deno.serve(async req => {
     }
     if (body.action === 'issue' || body.action === 'revoke') return await issue(req, body, origin);
     if (body.action === 'read') return await read(body, origin);
+    if (body.action === 'read_legacy') return await readLegacy(body, origin);
     return reply({ error: 'invalid_action' }, 400, origin);
   } catch (err) {
     console.error('customer-tracking:', err instanceof Error ? err.message : 'unknown error');
