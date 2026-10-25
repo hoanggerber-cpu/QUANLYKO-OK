@@ -4,7 +4,7 @@ import { formatCurrency, generateReconciliationPDF } from '../utils/pdfGenerator
 import { getOrderProductSummary } from '../utils/orderSummary';
 import { getPublicAppUrl } from '../utils/publicUrl';
 import { exportCustomerProfile } from '../utils/customerExport';
-import { StorageManager } from '../lib/storage';
+import { StorageManager, supabase } from '../lib/storage';
 import { 
   Search, 
   Landmark, 
@@ -296,6 +296,8 @@ export default function DebtManager({
   const [payAmountInputStr, setPayAmountInputStr] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copyingTrackingLink, setCopyingTrackingLink] = useState(false);
+  const [revokingTrackingLinks, setRevokingTrackingLinks] = useState(false);
 
   // Specific order payment state
   const [payOrder, setPayOrder] = useState<Order | null>(null);
@@ -623,15 +625,49 @@ export default function DebtManager({
       }
     };
 
-    const handleCopyTrackingLink = () => {
-      const slug = StorageManager.getTrackingSlugForCustomer(currentCustomer.name, currentCustomer.type);
-      const link = `${getPublicAppUrl()}/c/${slug}`;
-      navigator.clipboard.writeText(link).then(() => {
+    const handleCopyTrackingLink = async () => {
+      if (copyingTrackingLink) return;
+      setCopyingTrackingLink(true);
+      try {
+        // Only the owner session may issue a random, customer-scoped tracking link.
+        // Do not generate a predictable slug or fall back to the legacy public URL.
+        const { data, error } = await supabase.functions.invoke('customer-tracking', {
+          body: {
+            action: 'issue',
+            customerName: currentCustomer.name,
+            customerType: currentCustomer.type,
+          },
+        });
+        if (error || typeof data?.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(data.token)) {
+          throw new Error('Không thể cấp link công nợ bảo mật.');
+        }
+        const link = `${getPublicAppUrl()}/c/${data.token}`;
+        await navigator.clipboard.writeText(link);
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2500);
-      }).catch(err => {
-        console.error('Không thể copy liên kết: ', err);
-      });
+      } catch (error) {
+        console.error('Secure tracking-link issuance failed:', error);
+        showToast('Không thể tạo link bảo mật. Không dùng link công nợ cũ; vui lòng thử lại sau.', 'error');
+      } finally {
+        setCopyingTrackingLink(false);
+      }
+    };
+
+    const handleRevokeTrackingLinks = async () => {
+      if (revokingTrackingLinks) return;
+      if (!window.confirm('Thu hồi tất cả link công nợ đã gửi cho khách này? Khách sẽ cần link mới để xem công nợ.')) return;
+      setRevokingTrackingLinks(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('customer-tracking', {
+          body: { action: 'revoke', customerName: currentCustomer.name, customerType: currentCustomer.type },
+        });
+        if (error || data?.revoked !== true) throw new Error('Revocation failed');
+        showToast('Đã thu hồi link cũ. Hãy bấm Copy Link Gửi Khách để cấp link mới.', 'success');
+      } catch {
+        showToast('Không thể thu hồi link lúc này. Vui lòng thử lại.', 'error');
+      } finally {
+        setRevokingTrackingLinks(false);
+      }
     };
 
     return (
@@ -687,6 +723,7 @@ export default function DebtManager({
             {/* Copy Link to Client */}
             <button
               onClick={handleCopyTrackingLink}
+              disabled={copyingTrackingLink}
               className={`px-4 py-2.5 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all hover:shadow cursor-pointer uppercase tracking-wider ${
                 copiedLink 
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/10' 
@@ -697,6 +734,15 @@ export default function DebtManager({
               <span>{copiedLink ? 'Đã copy thành công!' : 'Copy Link Gửi Khách'}</span>
             </button>
 
+            <button
+              onClick={handleRevokeTrackingLinks}
+              disabled={revokingTrackingLinks}
+              className="px-4 py-2.5 font-bold text-xs rounded-xl bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 disabled:opacity-60"
+              title="Thu hồi tất cả link bảo mật đã cấp cho khách này"
+            >
+              {revokingTrackingLinks ? 'Đang thu hồi...' : 'Thu hồi link bảo mật'}
+            </button>
+            
             {/* Export Receipt */}
             <button
               onClick={handleExportCustomerProfile}

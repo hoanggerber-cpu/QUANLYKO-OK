@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Customer, Order } from '../types';
-import { StorageManager, supabase } from '../lib/storage';
+import { supabase } from '../lib/storage';
 import { formatCurrency } from '../utils/pdfGenerator';
 import { 
   ShieldAlert, 
@@ -14,7 +14,6 @@ import {
   Sparkles,
   Info,
   X,
-  Lock,
   Download,
   ExternalLink,
   RotateCw,
@@ -89,122 +88,83 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
   };
 
   const [loading, setLoading] = useState(true);
+  const [legacyPinRequired, setLegacyPinRequired] = useState(false);
+  const [legacyPin, setLegacyPin] = useState('');
+  const [legacyPinError, setLegacyPinError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState<number>(1);
   const [lightboxRendering, setLightboxRendering] = useState<'smooth' | 'crisp'>('crisp');
   const [lightboxRotate, setLightboxRotate] = useState<number>(0);
 
-  // Secure PIN Code feature states
-  const [hasPinCode, setHasPinCode] = useState(false);
-  const [isVerified, setIsVerified] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
-
+  // The link itself is a 256-bit bearer capability, issued only by the owner.
+  // Never download all customer/order rows into a public browser.
   useEffect(() => {
-    async function loadData() {
-      setLoading(true);
+    let active = true;
+    setLoading(true);
+    setCustomer(null);
+    setOrders([]);
+
+    const loadScopedLedger = async () => {
       try {
-        // Sync live data from Supabase first so anonymous devices have the latest context
-        await StorageManager.syncAllDataFromSupabase();
-      } catch (err) {
-        console.warn('Failed to sync live data:', err);
-      }
-      
-      const cust = StorageManager.getCustomerByTrackingId(trackingId);
-      if (cust) {
-        setCustomer(cust);
-        
-        let pinCodeValue: string | null = cust.pinCode || null;
-        if (StorageManager.getIsSupabaseActive()) {
-          try {
-            const customerId = `c_${cust.type}_` + btoa(encodeURIComponent(cust.name)).replace(/=/g, '');
-            const { data } = await supabase
-              .from('customers')
-              .select('pin_code')
-              .eq('id', customerId)
-              .maybeSingle();
-            if (data && data.pin_code !== undefined) {
-              pinCodeValue = data.pin_code;
-            }
-          } catch (e) {
-            console.warn('Failed to get PIN from remote DB:', e);
+        const secure = /^[A-Za-z0-9_-]{43}$/.test(trackingId);
+        const { data, error } = await supabase.functions.invoke('customer-tracking', {
+          body: secure
+            ? { action: 'read', token: trackingId }
+            : { action: 'read_legacy', slug: trackingId, pin: legacyPin },
+        });
+        if (data?.error === 'pin_required' || data?.error === 'invalid_pin') {
+          if (active) {
+            setLegacyPinRequired(true);
+            setLegacyPinError(data.error === 'invalid_pin');
           }
+          return;
         }
-
-        if (pinCodeValue) {
-          setHasPinCode(true);
-          const sessionAuthKey = 'tracking_auth_' + trackingId;
-          const isAuthedInSession = sessionStorage.getItem(sessionAuthKey) === 'true';
-          if (isAuthedInSession) {
-            setIsVerified(true);
-            const custOrders = StorageManager.getOrdersForCustomer(cust.name, cust.type);
-            setSortedOrders(custOrders);
-          } else {
-            setIsVerified(false);
-            setOrders([]); // Security: Ensure orders are completely empty until PIN matches
-          }
-        } else {
-          setHasPinCode(false);
-          setIsVerified(true);
-          const custOrders = StorageManager.getOrdersForCustomer(cust.name, cust.type);
-          setSortedOrders(custOrders);
+        if (error || !data?.customer || !Array.isArray(data.orders)) {
+          throw new Error('Invalid or unavailable tracking link');
         }
+        if (!active) return;
+        const scoped = data.customer as Customer;
+        if (typeof scoped.name !== 'string' || typeof scoped.debtAmount !== 'number') {
+          throw new Error('Invalid ledger response');
+        }
+        setLegacyPinRequired(false);
+        setLegacyPinError(false);
+        setCustomer(scoped);
+        setSortedOrders(data.orders as Order[]);
+      } catch {
+        if (active) {
+          setCustomer(null);
+          setOrders([]);
+        }
+      } finally {
+        if (active) setLoading(false);
       }
-      setLoading(false);
-    }
-    loadData();
-  }, [trackingId]);
-
-  const handleVerifyPin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customer) return;
-
-    setVerifying(true);
-    setPinError(null);
-
-    const enteredPin = pinInput.trim();
-    if (!enteredPin) {
-      setPinError('Vui lòng nhập mã bảo mật.');
-      setVerifying(false);
-      return;
-    }
-
-    let correctPin: string | null = customer.pinCode || null;
-    if (StorageManager.getIsSupabaseActive()) {
-      try {
-        const customerId = `c_${customer.type}_` + btoa(encodeURIComponent(customer.name)).replace(/=/g, '');
-        const { data } = await supabase
-          .from('customers')
-          .select('pin_code')
-          .eq('id', customerId)
-          .maybeSingle();
-        if (data && data.pin_code !== undefined) {
-          correctPin = data.pin_code;
-        }
-      } catch (err) {
-        console.error('DB error during PIN check:', err);
-      }
-    }
-
-    if (correctPin === enteredPin) {
-      const sessionAuthKey = 'tracking_auth_' + trackingId;
-      sessionStorage.setItem(sessionAuthKey, 'true');
-      setIsVerified(true);
-
-      const custOrders = StorageManager.getOrdersForCustomer(customer.name, customer.type);
-      setSortedOrders(custOrders);
-    } else {
-      setPinError('Mã bảo mật không chính xác. Vui lòng nhập lại.');
-    }
-    setVerifying(false);
-  };
+    };
+    void loadScopedLedger();
+    return () => { active = false; };
+  }, [trackingId, legacyPin]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 font-sans">
         <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-xs font-mono text-slate-400">Đang tải thông tin sổ nợ...</p>
+      </div>
+    );
+  }
+
+  if (legacyPinRequired && !customer) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
+        <form onSubmit={e => { e.preventDefault(); setLegacyPin((e.currentTarget.elements.namedItem('pin') as HTMLInputElement).value); }}
+          className="bg-slate-800 p-8 rounded-2xl w-full max-w-sm space-y-4">
+          <h2 className="text-xl font-bold">Mã bảo mật khách hàng</h2>
+          <p className="text-sm text-slate-300">Nhập mã PIN đã được cung cấp để xem công nợ.</p>
+          <input name="pin" type="password" required autoComplete="off" placeholder="Nhập PIN"
+            className="w-full p-3 rounded-lg bg-slate-950 text-white" />
+          {legacyPinError && <p className="text-rose-400">Mã PIN chưa đúng.</p>}
+          <button type="submit" className="w-full p-3 bg-blue-600 rounded-lg font-bold">Xác nhận</button>
+        </form>
       </div>
     );
   }
@@ -233,90 +193,11 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
     );
   }
 
-  if (customer && hasPinCode && !isVerified) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-6 font-sans select-none relative overflow-hidden">
-        {/* Glow backgrounds */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl opacity-60 pointer-events-none" />
-        <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl opacity-40 pointer-events-none" />
-
-        <div className="w-full max-w-md bg-slate-900/80 backdrop-blur-md rounded-3xl border border-white/5 py-8 px-6 shadow-2xl relative overflow-hidden text-center space-y-6">
-          {/* Logo details */}
-          <div className="space-y-2">
-            <div className="w-14 h-14 bg-blue-600/10 text-blue-500 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-blue-500/5">
-              <Lock className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest font-mono">
-                CỔNG TRA CỨU ĐỐI TÁC
-              </span>
-              <h2 className="text-lg font-black tracking-tight text-white mt-1 uppercase">
-                XƯỞNG IN HOÀNG UYÊN
-              </h2>
-            </div>
-          </div>
-
-          <div className="space-y-1 bg-slate-100/5 p-4 rounded-xl border border-white/5">
-            <p className="text-xs text-slate-300 leading-relaxed font-sans">
-              Yêu cầu bảo mật: Sổ công nợ của quý khách <strong className="text-white font-bold">{customer.name}</strong> đã được khóa bằng mã bảo mật.
-            </p>
-            <p className="text-[10px] text-slate-400 font-sans mt-1">
-              Vui lòng nhập mã bảo mật để xem công nợ tài chính chi tiết.
-            </p>
-          </div>
-
-          <form onSubmit={handleVerifyPin} className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 font-mono text-left">
-                MÃ BẢO MẬT (PIN)
-              </label>
-              <input
-                type="password"
-                pattern="[a-zA-Z0-9]*"
-                inputMode="numeric"
-                maxLength={10}
-                autoFocus
-                placeholder="Nhập mã PIN..."
-                value={pinInput}
-                onChange={(e) => {
-                  setPinError(null);
-                  setPinInput(e.target.value.replace(/[^a-zA-Z0-9]/g, ''));
-                }}
-                className="w-full px-5 py-3.5 bg-slate-950 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-center font-mono text-lg font-bold tracking-widest text-white placeholder:text-slate-600 placeholder:text-sm placeholder:font-normal placeholder:tracking-normal"
-              />
-              {pinError && (
-                <p className="text-rose-500 text-[11px] font-semibold mt-2.5 flex items-center justify-center gap-1.5 animate-bounce">
-                  <ShieldAlert className="w-3.5 h-3.5" />
-                  <span>{pinError}</span>
-                </p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={verifying}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-sm font-bold rounded-xl transition-all shadow-lg shadow-blue-500/10 text-white cursor-pointer select-none flex items-center justify-center gap-2"
-            >
-              {verifying ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <span>Xác nhận mở khóa</span>
-              )}
-            </button>
-          </form>
-
-          <div className="text-[10px] text-slate-500 font-mono leading-normal">
-            * Nếu quý khách quên mã bảo vệ hoặc đổi mã PIN, vui lòng liên hệ trực tiếp với Xưởng in để được cập nhật.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Derived calculations
   const totalDue = customer.debtAmount;
   const totalPaid = customer.paidAmount;
   const grandTotal = customer.totalSpent;
+  const advanceCredit = Math.max(0, Number(customer.creditBalance || 0));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
@@ -384,6 +265,14 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
             <span className="text-base font-bold text-emerald-400 mt-1 font-mono">{formatCurrency(totalPaid)}</span>
           </div>
         </div>
+
+        {advanceCredit > 0 && (
+          <div className="bg-emerald-950/60 border border-emerald-500/30 rounded-xl p-4">
+            <div className="text-xs font-bold text-emerald-300 uppercase">Số tiền khách đã trả trước</div>
+            <div className="text-xl font-bold font-mono text-emerald-400 mt-1">+{formatCurrency(advanceCredit)}</div>
+            <p className="text-xs text-emerald-200/70 mt-1">Khoản trả dư được dùng tự động cho đơn hàng mới.</p>
+          </div>
+        )}
 
         {/* Timeline of Orders (Sổ nợ chi tiết) */}
         <div className="space-y-3.5">
