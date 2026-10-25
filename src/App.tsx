@@ -44,8 +44,6 @@ export default function App() {
   // Status flags
   const [isSupabaseOnline, setIsSupabaseOnline] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [dbMigrationNeeded, setDbMigrationNeeded] = useState(true);
-  const [copiedCode, setCopiedCode] = useState(false);
   const [legacyFinanceTick, setLegacyFinanceTick] = useState(0);
   const [legacyFinanceSyncing, setLegacyFinanceSyncing] = useState(false);
   useEffect(() => {
@@ -56,19 +54,12 @@ export default function App() {
 
 
   useEffect(() => {
-    const handleSyncError = () => {
-      if (localStorage.getItem('supabase_migration_needed') === 'true') {
-        setDbMigrationNeeded(true);
-      }
-    };
     const handleSyncSuccess = () => {
       setProducts(StorageManager.getProducts());
       setOrders(StorageManager.getOrders());
     };
-    window.addEventListener('supabase_sync_error', handleSyncError);
     window.addEventListener('supabase_sync_success', handleSyncSuccess);
     return () => {
-      window.removeEventListener('supabase_sync_error', handleSyncError);
       window.removeEventListener('supabase_sync_success', handleSyncSuccess);
     };
   }, []);
@@ -308,6 +299,10 @@ export default function App() {
 
   if (trackingId) {
     return <PublicTracking trackingId={trackingId} />;
+  }
+
+  if (passwordSetupMode) {
+    return <PasswordRecovery onComplete={() => setPasswordSetupMode(false)} />;
   }
 
   if (!isLoggedIn) {
