@@ -171,10 +171,10 @@ async function readLegacy(body: Record<string, unknown>, origin: string | null):
   const requiredPin=String(customer?.pin_code || '').trim();
   if(requiredPin) {
     if(typeof body.pin !== 'string' || !body.pin.trim()) {
-      return reply({error:'pin_required'},401,origin);
+      return reply({error:'pin_required'},200,origin);
     }
     // Compare server-side only; never send the stored customer PIN to the browser.
-    if(body.pin.trim() !== requiredPin) return reply({error:'invalid_pin'},403,origin);
+    if(body.pin.trim() !== requiredPin) return reply({error:'invalid_pin'},200,origin);
   }
   return readScoped(match.name, match.type, origin);
 }
