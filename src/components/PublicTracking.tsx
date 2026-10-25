@@ -197,6 +197,7 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
   const totalDue = customer.debtAmount;
   const totalPaid = customer.paidAmount;
   const grandTotal = customer.totalSpent;
+  const advanceCredit = Math.max(0, Number(customer.creditBalance || 0));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
@@ -264,6 +265,14 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
             <span className="text-base font-bold text-emerald-400 mt-1 font-mono">{formatCurrency(totalPaid)}</span>
           </div>
         </div>
+
+        {advanceCredit > 0 && (
+          <div className="bg-emerald-950/60 border border-emerald-500/30 rounded-xl p-4">
+            <div className="text-xs font-bold text-emerald-300 uppercase">Số tiền khách đã trả trước</div>
+            <div className="text-xl font-bold font-mono text-emerald-400 mt-1">+{formatCurrency(advanceCredit)}</div>
+            <p className="text-xs text-emerald-200/70 mt-1">Khoản trả dư được dùng tự động cho đơn hàng mới.</p>
+          </div>
+        )}
 
         {/* Timeline of Orders (Sổ nợ chi tiết) */}
         <div className="space-y-3.5">
