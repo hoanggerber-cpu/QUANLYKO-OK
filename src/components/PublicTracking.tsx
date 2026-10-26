@@ -90,6 +90,7 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
   const [loading, setLoading] = useState(true);
   const [legacyPinRequired, setLegacyPinRequired] = useState(false);
   const [legacyPin, setLegacyPin] = useState('');
+  const [paymentHistory, setPaymentHistory] = useState<Array<{ id: string; amount: number; paymentMethod: string; createdAt: string }>>([]);
   const [legacyPinError, setLegacyPinError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState<number>(1);
@@ -103,13 +104,14 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
     setLoading(true);
     setCustomer(null);
     setOrders([]);
+    setPaymentHistory([]);
 
     const loadScopedLedger = async () => {
       try {
         const secure = /^[A-Za-z0-9_-]{43}$/.test(trackingId);
         const { data, error } = await supabase.functions.invoke('customer-tracking', {
           body: secure
-            ? { action: 'read', token: trackingId }
+            ? { action: 'read', token: trackingId, pin: legacyPin }
             : { action: 'read_legacy', slug: trackingId, pin: legacyPin },
         });
         if (data?.error === 'pin_required' || data?.error === 'invalid_pin') {
@@ -131,6 +133,7 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
         setLegacyPinError(false);
         setCustomer(scoped);
         setSortedOrders(data.orders as Order[]);
+        setPaymentHistory(Array.isArray(data.paymentHistory) ? data.paymentHistory : []);
       } catch {
         if (active) {
           setCustomer(null);
@@ -159,7 +162,7 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
         <form onSubmit={e => { e.preventDefault(); setLegacyPin((e.currentTarget.elements.namedItem('pin') as HTMLInputElement).value); }}
           className="bg-slate-800 p-8 rounded-2xl w-full max-w-sm space-y-4">
           <h2 className="text-xl font-bold">Mã bảo mật khách hàng</h2>
-          <p className="text-sm text-slate-300">Nhập mã PIN đã được cung cấp để xem công nợ.</p>
+          <p className="text-sm text-slate-300">Nhập mã PIN bảo mật đã được xưởng cung cấp để xem công nợ.</p>
           <input name="pin" type="password" required autoComplete="off" placeholder="Nhập PIN"
             className="w-full p-3 rounded-lg bg-slate-950 text-white" />
           {legacyPinError && <p className="text-rose-400">Mã PIN chưa đúng.</p>}
@@ -273,6 +276,35 @@ export default function PublicTracking({ trackingId }: PublicTrackingProps) {
             <p className="text-xs text-emerald-200/70 mt-1">Khoản trả dư được dùng tự động cho đơn hàng mới.</p>
           </div>
         )}
+
+        {/* Individual historical receipts: display stored transactions, not inferred order payments. */}
+        <section className="bg-slate-900 border border-white/5 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Lịch sử từng lần thanh toán</h4>
+            <span className="text-[11px] text-emerald-400 font-bold">{paymentHistory.length} lần</span>
+          </div>
+          {paymentHistory.length === 0 ? (
+            <p className="text-xs text-slate-400">Chưa có giao dịch thu tiền riêng được ghi nhận trong lịch sử.</p>
+          ) : (
+            <div className="space-y-2">
+              {paymentHistory.map((payment, index) => (
+                <div key={payment.id} className="rounded-xl bg-slate-950/70 border border-white/5 px-3 py-3 flex items-center justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-xs text-slate-200 font-semibold">Lần {paymentHistory.length - index}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {payment.createdAt ? new Date(payment.createdAt).toLocaleString('vi-VN') : 'Không có thời gian'}
+                    </p>
+                    <p className="text-[11px] text-slate-500 truncate">{payment.paymentMethod || 'Không có ghi chú'}</p>
+                  </div>
+                  <span className="text-sm font-bold text-emerald-400 font-mono whitespace-nowrap">
+                    +{formatCurrency(payment.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] text-slate-500">Danh sách này lấy từ nhật ký thu tiền đã ghi nhận, không tự tạo các lần thanh toán từ tổng tiền đơn hàng.</p>
+        </section>
 
         {/* Timeline of Orders (Sổ nợ chi tiết) */}
         <div className="space-y-3.5">

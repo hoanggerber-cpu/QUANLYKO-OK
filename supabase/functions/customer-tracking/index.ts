@@ -1,4 +1,4 @@
-// Secure customer ledger links; no PIN or customer login required.
+// Secure customer ledger links with optional customer PIN checked server-side.
 // A link contains 256 bits of random entropy. Only its SHA-256 hash is stored.
 // Deployment must use verify_jwt=false because the 'read' action is anonymous.
 // The 'issue' action independently verifies the owner's Supabase Auth JWT.
@@ -130,7 +130,24 @@ async function read(body: Record<string, unknown>, origin: string | null): Promi
     .select('customer_name,customer_type').eq('token_hash', hash).is('revoked_at', null).maybeSingle();
   if (tokenError) throw tokenError;
   if (!link) return reply({ error: 'invalid_link' }, 404, origin);
+  const pinCheck = await requireCustomerPin(link.customer_name, link.customer_type, body.pin, origin);
+  if (pinCheck) return pinCheck;
   return readScoped(link.customer_name, link.customer_type, origin);
+}
+
+async function requireCustomerPin(name: string, type: string, attemptedPin: unknown, origin: string | null): Promise<Response | null> {
+  const {data, error} = await admin.from('customers').select('pin_code')
+    .eq('name', name).eq('type', type).maybeSingle();
+  if (error) throw error;
+  const requiredPin = String(data?.pin_code || '').trim();
+  if (!requiredPin) return null;
+  if (typeof attemptedPin !== 'string' || !attemptedPin.trim()) {
+    return reply({error:'pin_required'}, 200, origin);
+  }
+  if (attemptedPin.trim() !== requiredPin) {
+    return reply({error:'invalid_pin'}, 200, origin);
+  }
+  return null;
 }
 
 // Legacy customer URLs must remain readable without granting direct table access.
@@ -165,17 +182,8 @@ async function readLegacy(body: Record<string, unknown>, origin: string | null):
   const matches = [...identities.values()].filter(x => legacySlug(x.name,x.type) === slug);
   if(matches.length !== 1) return reply({error:'invalid_link'},404,origin);
   const match=matches[0];
-  const {data: customer, error} = await admin.from('customers').select('pin_code')
-    .eq('name',match.name).eq('type',match.type).maybeSingle();
-  if(error) throw error;
-  const requiredPin=String(customer?.pin_code || '').trim();
-  if(requiredPin) {
-    if(typeof body.pin !== 'string' || !body.pin.trim()) {
-      return reply({error:'pin_required'},200,origin);
-    }
-    // Compare server-side only; never send the stored customer PIN to the browser.
-    if(body.pin.trim() !== requiredPin) return reply({error:'invalid_pin'},200,origin);
-  }
+  const pinCheck = await requireCustomerPin(match.name, match.type, body.pin, origin);
+  if (pinCheck) return pinCheck;
   return readScoped(match.name, match.type, origin);
 }
 
@@ -246,7 +254,26 @@ async function readScoped(customerName: string, customerType: string, origin: st
     totalSpent, paidAmount, debtAmount, creditBalance: Number(advance?.credit_balance || 0),
     updatedAt: mapped.length ? mapped[0].createdAt : new Date().toISOString(),
   };
-  return reply({ customer, orders: mapped }, 200, origin);
+  // Payment history is independently scoped by customer identity and never rewrites order accounting.
+  const payments: Record<string, unknown>[] = [];
+  for (let offset = 0; offset < 10000; offset += size) {
+    const { data, error } = await admin.from('payment_history')
+      .select('id,customer_name,type,amount,payment_method,created_at')
+      .eq('customer_name', link.customer_name)
+      .eq('type', link.customer_type)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + size - 1);
+    if (error) throw error;
+    payments.push(...(data || []));
+    if (!data || data.length < size) break;
+  }
+  if (payments.length >= 10000) return reply({ error: 'too_many_payments' }, 413, origin);
+  const paymentHistory = payments.map(p => ({
+    id: String(p.id), amount: Number(p.amount || 0),
+    paymentMethod: String(p.payment_method || ''), createdAt: String(p.created_at || ''),
+  }));
+  return reply({ customer, orders: mapped, paymentHistory }, 200, origin);
 }
 
 Deno.serve(async req => {
