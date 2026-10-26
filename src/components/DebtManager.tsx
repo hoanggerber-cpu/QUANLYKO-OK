@@ -1431,16 +1431,27 @@ export default function DebtManager({
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 font-sans flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"></span>
-                  <span>Mã bảo mật (PIN Code)</span>
+                  <span>Mã PIN cho cả link cũ và link mới</span>
                 </label>
                 <input
                   type="text"
                   maxLength={10}
-                  placeholder="Để trống nếu không khóa. Khuyên dùng: 4-6 số cuối ĐT"
+                  placeholder="Nhập hoặc tạo mã PIN riêng cho khách"
                   value={editCustPinCode}
                   onChange={(e) => setEditCustPinCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-normal"
                 />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => {
+                    const digits = new Uint32Array(1);
+                    crypto.getRandomValues(digits);
+                    setEditCustPinCode(String(digits[0] % 900000 + 100000));
+                  }} className="px-3 py-2 text-xs font-bold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200">
+                    Tạo mã PIN 6 số
+                  </button>
+                  <span className="text-xs text-slate-500">Nhấn Lưu để áp dụng cho cả link bảo mật mới và link cũ.</span>
+                </div>
+
                 <span className="text-[10px] text-slate-400 block mt-1">
                   Khóa trang tra cứu công nợ ngoại quan công khai của khách hàng này.
                 </span>
