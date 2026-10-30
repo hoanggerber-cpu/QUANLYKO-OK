@@ -297,6 +297,7 @@ export default function DebtManager({
   const [paymentNote, setPaymentNote] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [copyingTrackingLink, setCopyingTrackingLink] = useState(false);
+  const [manualTrackingLink, setManualTrackingLink] = useState<string | null>(null);
   const [revokingTrackingLinks, setRevokingTrackingLinks] = useState(false);
 
   // Specific order payment state
@@ -628,9 +629,10 @@ export default function DebtManager({
     const handleCopyTrackingLink = async () => {
       if (copyingTrackingLink) return;
       setCopyingTrackingLink(true);
+      setManualTrackingLink(null);
+      let link: string;
       try {
-        // Only the owner session may issue a random, customer-scoped tracking link.
-        // Do not generate a predictable slug or fall back to the legacy public URL.
+        // Only the owner may issue a customer-scoped token; never use a legacy public URL.
         const { data, error } = await supabase.functions.invoke('customer-tracking', {
           body: {
             action: 'issue',
@@ -639,15 +641,26 @@ export default function DebtManager({
           },
         });
         if (error || typeof data?.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(data.token)) {
-          throw new Error('Không thể cấp link công nợ bảo mật.');
+          throw error || new Error('Invalid secure tracking token');
         }
-        const link = `${getPublicAppUrl()}/c/${data.token}`;
+        link = `${getPublicAppUrl()}/c/${data.token}`;
+      } catch (error) {
+        console.error('Secure tracking-link issuance failed:', error);
+        showToast('Không thể tạo link bảo mật. Vui lòng kiểm tra đăng nhập hoặc thử lại sau.', 'error');
+        setCopyingTrackingLink(false);
+        return;
+      }
+
+      // Safari may reject clipboard writes after the asynchronous network request.
+      // Preserve the successfully issued link instead of issuing another token.
+      try {
         await navigator.clipboard.writeText(link);
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2500);
       } catch (error) {
-        console.error('Secure tracking-link issuance failed:', error);
-        showToast('Không thể tạo link bảo mật. Không dùng link công nợ cũ; vui lòng thử lại sau.', 'error');
+        console.warn('Clipboard unavailable; showing manual copy option:', error);
+        setManualTrackingLink(link);
+        showToast('Link đã tạo thành công. Hãy sao chép thủ công bên dưới.', 'success');
       } finally {
         setCopyingTrackingLink(false);
       }
@@ -733,6 +746,24 @@ export default function DebtManager({
               <Link className="w-4 h-4" />
               <span>{copiedLink ? 'Đã copy thành công!' : 'Copy Link Gửi Khách'}</span>
             </button>
+
+            {manualTrackingLink && (
+              <div role="dialog" aria-label="Sao chép link bảo mật" className="w-full rounded-xl border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+                <p className="text-xs font-semibold text-indigo-900">Link đã được tạo. Safari không cho phép sao chép tự động. Chọn link bên dưới rồi nhấn ⌘ + C.</p>
+                <input
+                  type="text"
+                  readOnly
+                  aria-label="Link bảo mật để sao chép"
+                  value={manualTrackingLink}
+                  onFocus={(event) => event.currentTarget.select()}
+                  onClick={(event) => event.currentTarget.select()}
+                  className="w-full rounded-lg border border-indigo-200 bg-white p-2 text-sm text-slate-800"
+                />
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setManualTrackingLink(null)} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-700 border border-slate-200">Đóng</button>
+                </div>
+              </div>
+            )}
 
             <button
               onClick={handleRevokeTrackingLinks}
