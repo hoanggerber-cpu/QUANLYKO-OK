@@ -598,18 +598,36 @@ export default function DebtManager({
     const totalDebt = totalAmount - totalPaid;
 
     const handleExportPDF = () => {
+      // The order table follows the selected month/year, while cumulative balances
+      // include every order up to the end of that reporting period.
+      const reportEnd = filterYear === 'all'
+        ? Number.POSITIVE_INFINITY
+        : filterMonth === 'all'
+          ? new Date(Number(filterYear) + 1, 0, 1).getTime()
+          : new Date(Number(filterYear), Number(filterMonth), 1).getTime();
+      const cumulativeOrders = customerOrders.filter(
+        order => new Date(order.createdAt).getTime() < reportEnd
+      );
+      const cumulativeAmount = cumulativeOrders.reduce((sum, order) => sum + order.totalPrice, 0);
+      const cumulativePaid = cumulativeOrders.reduce((sum, order) => sum + order.paidAmount, 0);
+      const paymentHistory = StorageManager.getPaymentHistory()
+        .filter(payment =>
+          payment.customerName === currentCustomer.name &&
+          payment.type === currentCustomer.type &&
+          new Date(payment.createdAt).getTime() < reportEnd
+        )
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
       generateReconciliationPDF(
         currentCustomer.name,
         currentCustomer.type,
         filterMonth,
         filterYear,
         filteredCustomerOrders,
-        {
-          totalQty,
-          totalAmount,
-          totalPaid,
-          totalDebt
-        }
+        { totalQty, totalAmount, totalPaid, totalDebt },
+        { totalAmount: cumulativeAmount, totalPaid: cumulativePaid, totalDebt: cumulativeAmount - cumulativePaid },
+        paymentHistory,
+        cumulativeOrders
       );
     };
 
