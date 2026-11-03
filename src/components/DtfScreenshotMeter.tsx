@@ -3,12 +3,16 @@ import React, { useEffect, useRef, useState } from 'react';
 type MeterRow = { filename: string; length: string; copies: string };
 type OcrWindow = Window & { Tesseract?: any };
 const parseFilename = (text: string): MeterRow | null => {
-  // Require decimal metres AND a complete image extension: never accept "7" as 7 metres.
-  const match = text.trim().replace(/,/g, '.').match(/^(\d+\.\d{1,4})\s*(?:[x×*]\s*(\d+))?\s*\.\s*(png|jpe?g|webp|tiff?)$/i);
+  // User-editable names: read the leading decimal length, and optional x multiplier.
+  // OCR must still start with a decimal length, never a lone artwork digit.
+  const match = text.trim().replace(/,/g, '.').match(/^(\d+\.\d{1,4})(?!\d)\s*(?:[x×*]\s*(\d+)(?!\d))?/i);
   if (!match) return null;
   const length = Number(match[1]);
   const copies = Number(match[2] || '1');
   if (!Number.isFinite(length) || length <= 0 || length > 100 || !Number.isInteger(copies) || copies < 1 || copies > 10000) return null;
+  // Reject a dangling x without a valid number.
+  const remainder = text.trim().replace(/,/g, '.').slice(match[0].length);
+  if (/^\s*[x×*]/i.test(remainder)) return null;
   return { filename: text.trim(), length: match[1], copies: String(copies) };
 };
 const loadOcr = async (): Promise<any> => {
@@ -44,11 +48,10 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
   const [columns, setColumns] = useState('5');
   const total = rows.reduce((sum, row) => sum + (Number(row.length) || 0) * (Number(row.copies) || 0), 0);
   const valid = Number.isInteger(Number(expectedCount)) && Number(expectedCount) > 0 &&
-    rows.length === Number(expectedCount) && rows.every(row => {
-      const parsed = parseFilename(row.filename);
-      return !!parsed && Number(row.length) > 0 && Number.isInteger(Number(row.copies)) &&
-        Number(row.copies) > 0 && Number(row.length) <= 100;
-    });
+    rows.length === Number(expectedCount) && rows.every(row =>
+      Number.isFinite(Number(row.length)) && Number(row.length) > 0 && Number(row.length) <= 100 &&
+      Number.isInteger(Number(row.copies)) && Number(row.copies) > 0 && Number(row.copies) <= 10000
+    );
   const edit = (index: number, field: keyof MeterRow, value: string) => {
     setReviewed(false);
     setRows(old => old.map((row, i) => {
@@ -73,7 +76,7 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
       const colCount = Math.max(1, Math.min(10, Number(columns) || 5));
       const found: { row: MeterRow; column: number; y: number }[] = [];
       // Scan the ENTIRE height of each column: works with 2, 3 or more thumbnail rows.
-      // OCR only accepts complete decimal filename + extension, never artwork numerals.
+      // OCR accepts decimal-leading names with optional x multiplier; reject artwork-only integers.
       for (let col = 0; col < colCount; col++) {
         const sx = Math.floor(bitmap.width * col / colCount);
         const sw = Math.max(1, Math.floor(bitmap.width * (col + 1) / colCount) - sx);
@@ -100,8 +103,8 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
           : String(result.data.text || '').split(/\r?\n/).map((text, i) => ({ text, y: i * 100 }));
         for (const candidate of candidates) {
           const text = candidate.text.trim().replace(/\s+/g, ' ');
-          // Reject any line without a full filename extension.
-          const match = text.match(/\d+\s*[.,]\s*\d{1,4}\s*(?:[x×*]\s*\d+)?\s*\.\s*(?:png|jpe?g|webp|tiff?)/i);
+          // Require the line to START with decimal metres, but do not require .png.
+          const match = text.match(/^\d+\s*[.,]\s*\d{1,4}(?:\s*[x×*]\s*\d+)?(?:\s*\.\s*(?:png|jpe?g|webp|tiff?))?/i);
           if (!match) continue;
           const normalized = match[0].replace(/\s*([.,])\s*/g, '$1');
           const parsed = parseFilename(normalized);
@@ -161,7 +164,7 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
           </div>
           <button type="button" className="text-xs font-bold text-blue-700" onClick={() => { setRows(old => [...old, { filename: '', length: '', copies: '1' }]); setReviewed(false); }}>+ Thêm file bị bỏ sót</button>
           <div className="flex justify-between text-xs font-bold"><span>Tổng ({rows.length}/{expectedCount || '?'} file)</span><span>{total.toFixed(4)} mét</span></div>
-          {!valid && <p role="alert" className="text-xs text-red-700">Chưa thể xác nhận: cần đủ số file thực tế và tên file hợp lệ (ví dụ 0.31 x 28.png). Không chấp nhận các dòng chỉ có số 7 hoặc 8.</p>}
+          {!valid && <p role="alert" className="text-xs text-red-700">Chưa thể xác nhận: cần đủ số file thực tế và các ô Mét / Số lần hợp lệ. Có thể sửa tên file tự do; kiểm tra kỹ các dòng OCR nhận sai.</p>}
           <label className="flex items-center gap-2 text-xs font-bold text-emerald-800">
             <input type="checkbox" disabled={!valid || busy} checked={reviewed} onChange={e => {
               if (e.target.checked && valid) {
