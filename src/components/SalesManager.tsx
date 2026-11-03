@@ -3,6 +3,7 @@ import html2canvas from 'html2canvas';
 import { Order, Product, OrderType, OrderStatus, OrderItem } from '../types';
 import { generateInvoicePDF, formatCurrency } from '../utils/pdfGenerator';
 import { buildCartProductSummary } from '../utils/orderSummary';
+import DtfScreenshotMeter from './DtfScreenshotMeter';
 import { Search, Plus, Filter, FileText, Download, CheckCircle, Clock, Ban, ArrowUpRight, DollarSign, Upload, Image as ImageIcon, Eye, Calendar, Trash2, ShoppingBag, ChevronDown, ChevronUp, List, Layers, ChevronLeft, ChevronRight, ExternalLink, RotateCw, Sparkles, X } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
 
@@ -831,9 +832,7 @@ export default function SalesManager({
     }));
   };
 
-  const handleImageUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleDtfImageFile = async (index: number, file: File) => {
 
     // Set design name from file name
     const designName = file.name.replace(/\.[^/.]+$/, "");
@@ -875,6 +874,22 @@ export default function SalesManager({
         console.error('Supabase Storage Upload failed unexpectedly:', err);
       }
     }
+  };
+
+  const handleImageUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await handleDtfImageFile(index, file);
+    e.target.value = '';
+  };
+
+  const handleDtfImagePaste = (index: number, event: React.ClipboardEvent<HTMLDivElement>) => {
+    const image = Array.from(event.clipboardData.items)
+      .find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+    if (!image) return;
+    event.preventDefault();
+    const extension = image.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+    const file = new File([image], `anh-chup-dan-file-${Date.now()}.${extension}`, { type: image.type });
+    void handleDtfImageFile(index, file);
   };
 
   // Match the inventory screen: one selectable group per product name.
@@ -2684,7 +2699,12 @@ export default function SalesManager({
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                               <div className="sm:col-span-3">
                                 <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5">Hình ảnh thiết kế mẫu in</label>
-                                <div className="flex items-center gap-3 bg-slate-50 p-2 border border-slate-200/60 rounded-xl">
+                                <div
+                                  tabIndex={0}
+                                  onPaste={event => handleDtfImagePaste(idx, event)}
+                                  title="Nhấp vào đây rồi nhấn Ctrl+V để dán ảnh"
+                                  className="flex items-center gap-3 bg-slate-50 p-2 border border-slate-200/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                >
                                   {item.image ? (
                                     <div className="relative group flex-shrink-0">
                                       <img
@@ -2739,11 +2759,15 @@ export default function SalesManager({
                                     </div>
                                     <div className="text-[10px] text-slate-400 mt-1 truncate">
                                       Mẫu in: <span className="font-bold text-slate-600">{item.name || `Chưa tải ảnh (${idx + 1})`}</span>
+                                      <span className="block text-blue-600">Nhấp vào khung ảnh và nhấn Ctrl+V để dán</span>
                                     </div>
                                   </div>
                                 </div>
                               </div>
 
+                              <DtfScreenshotMeter key={idx} sourceFile={item.rawFile} onConfirm={meters => {
+                                setDtfItems(prev => prev.map((entry, i) => i === idx ? { ...entry, length: meters, quantity: 1 } : entry));
+                              }} />
                               <div className="sm:col-span-2">
                                 <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Chiều dài (Mét)</label>
                                 <input
