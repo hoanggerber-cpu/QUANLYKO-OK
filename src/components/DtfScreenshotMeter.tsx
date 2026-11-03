@@ -46,8 +46,6 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
   const [reviewed, setReviewed] = useState(false);
   const [expectedCount, setExpectedCount] = useState('');
   const [columns, setColumns] = useState('5');
-  const [extraImages, setExtraImages] = useState<File[]>([]);
-  const [processedImages, setProcessedImages] = useState<string[]>([]);
   const total = rows.reduce((sum, row) => sum + (Number(row.length) || 0) * (Number(row.copies) || 0), 0);
   const valid = rows.length > 0 && (expectedCount.trim() === '' || (Number.isInteger(Number(expectedCount)) && Number(expectedCount) > 0 && rows.length === Number(expectedCount))) && rows.every(row =>
       Number.isFinite(Number(row.length)) && Number(row.length) > 0 && Number(row.length) <= 100 &&
@@ -64,9 +62,9 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
       return { ...row, [field]: value };
     }));
   };
-  const scan = async (file?: File, append = false) => {
+  const scan = async (file?: File) => {
     if (!file) return;
-    setBusy(true); if (!append) { setRows([]); setProcessedImages([]); } setReviewed(false); setError('');
+    setBusy(true); setRows([]); setReviewed(false); setError('');
     let worker: any;
     let bitmap: ImageBitmap | undefined;
     try {
@@ -116,9 +114,8 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
         }
       }
       found.sort((a, b) => Math.floor(a.y / 120) - Math.floor(b.y / 120) || a.column - b.column);
-      setRows(previous => append ? [...previous, ...found.map(item => item.row)] : found.map(item => item.row));
-      setProcessedImages(previous => append ? [...previous, file.name] : [file.name]);
-      if (!found.length) setError('OCR chưa đọc được tên file hợp lệ. Hãy kiểm tra số cột hoặc nhập tên file thủ công.');
+      setRows(found.map(item => item.row));
+      if (!found.length) setError('Chưa nhận diện được tên file. Có thể thêm dòng và nhập số M thủ công.');
       else setError('OCR nhận diện ' + found.length + ' file. Đối chiếu với số file thực tế và bổ sung file thiếu trước khi xác nhận.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không thể đọc ảnh');
@@ -128,12 +125,7 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
       setBusy(false);
     }
   };
-  scanRef.current = async file => scan(file, false);
-  const addImages = async (files: File[]) => {
-    if (!files.length || busy) return;
-    setExtraImages(previous => [...previous, ...files]);
-    for (const file of files) await scan(file, true);
-  };
+  scanRef.current = scan;
   useEffect(() => {
     if (!enabled || !sourceFile || lastScanned.current === sourceFile) return;
     lastScanned.current = sourceFile;
@@ -141,19 +133,14 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
   }, [enabled, sourceFile]);
   return (
     <div className="sm:col-span-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
-      <label className="flex items-center gap-2 text-xs font-bold text-indigo-900">
-        <input type="checkbox" checked={enabled} onChange={e => { setEnabled(e.target.checked); setReviewed(false); if (!e.target.checked) lastScanned.current = undefined; }} />
-        Tự tính toán bằng AI (OCR miễn phí)
-      </label>
+      <button type="button" disabled={!sourceFile} onClick={() => { setEnabled(value => !value); setReviewed(false); }} className="w-full text-left text-xs font-bold text-indigo-900 disabled:opacity-50 flex items-center gap-2" aria-expanded={enabled}>
+        <span aria-hidden="true" className="text-lg">∑</span>
+        <span>Cộng số M từ hình ảnh đơn hàng</span>
+        <span className="ml-auto">{enabled ? 'Thu gọn ▲' : 'Mở công cụ ▼'}</span>
+      </button>
+      {!sourceFile && <p className="text-[10px] text-slate-500">Tải hoặc dán ảnh đơn hàng ở ô phía trên trước khi mở công cụ.</p>}
       {enabled && <>
         <p className="text-[10px] text-slate-600">{sourceFile ? 'Đang dùng ảnh đã nhập ở phía trên: ' + sourceFile.name : 'Hãy tải hoặc Ctrl+V ảnh chụp vào ô Upload Hình Ảnh phía trên. Chỉ cần nhập ảnh một lần.'}</p>
-        <div className="space-y-1 rounded border border-blue-200 p-2">
-          <label className="block text-xs font-semibold">Thêm ảnh chụp để tính gộp (có thể chọn 2–5 ảnh cùng lúc)
-            <input type="file" multiple accept="image/*" disabled={busy} className="block w-full text-xs mt-1"
-              onChange={e => { const files = Array.from(e.target.files || []); void addImages(files); e.target.value = ''; }} />
-          </label>
-          <p className="text-[10px] text-slate-600">Đã đọc {processedImages.length} ảnh: {processedImages.join(', ') || 'chưa có'}. Kết quả cộng dồn tất cả ảnh.</p>
-        </div>
         <div className="grid grid-cols-2 gap-2">
           <label className="text-xs">Tổng số file thực tế (tất cả ảnh, không bắt buộc)
             <input type="number" min="1" step="1" value={expectedCount} onChange={e => { setExpectedCount(e.target.value); setReviewed(false); }} placeholder="Để trống nếu chưa đếm" className="block w-full border rounded p-1" />
