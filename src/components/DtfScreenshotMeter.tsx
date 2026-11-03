@@ -161,7 +161,7 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
           </div>
           <button type="button" className="text-xs font-bold text-blue-700" onClick={() => { setRows(old => [...old, { filename: '', length: '', copies: '1' }]); setReviewed(false); }}>+ Thêm file bị bỏ sót</button>
           <div className="flex justify-between text-xs font-bold"><span>Tổng ({rows.length}/{expectedCount || '?'} file)</span><span>{total.toFixed(4)} mét</span></div>
-          {!valid && <p role="alert" className="text-xs text-red-700">Chưa thể xác nhận: cần đủ số file thực tế và tên file hợp lệ (ví dụ 0.31 x 28.png). Không chấp nhận các dòng chỉ có số 7 hoặc 8.</p>
+          {!valid && <p role="alert" className="text-xs text-red-700">Chưa thể xác nhận: cần đủ số file thực tế và tên file hợp lệ (ví dụ 0.31 x 28.png). Không chấp nhận các dòng chỉ có số 7 hoặc 8.</p>}
           <label className="flex items-center gap-2 text-xs font-bold text-emerald-800">
             <input type="checkbox" disabled={!valid || busy} checked={reviewed} onChange={e => {
               if (e.target.checked && valid) {
