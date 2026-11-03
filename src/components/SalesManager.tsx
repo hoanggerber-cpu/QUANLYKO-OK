@@ -3,6 +3,7 @@ import html2canvas from 'html2canvas';
 import { Order, Product, OrderType, OrderStatus, OrderItem } from '../types';
 import { generateInvoicePDF, formatCurrency } from '../utils/pdfGenerator';
 import { buildCartProductSummary } from '../utils/orderSummary';
+import DtfScreenshotMeter from './DtfScreenshotMeter';
 import { Search, Plus, Filter, FileText, Download, CheckCircle, Clock, Ban, ArrowUpRight, DollarSign, Upload, Image as ImageIcon, Eye, Calendar, Trash2, ShoppingBag, ChevronDown, ChevronUp, List, Layers, ChevronLeft, ChevronRight, ExternalLink, RotateCw, Sparkles, X } from 'lucide-react';
 import { supabase, StorageManager } from '../lib/storage';
 
@@ -2744,6 +2745,9 @@ export default function SalesManager({
                                 </div>
                               </div>
 
+                              <DtfScreenshotMeter key={idx} onConfirm={meters => {
+                                setDtfItems(prev => prev.map((entry, i) => i === idx ? { ...entry, length: meters, quantity: 1 } : entry));
+                              }} />
                               <div className="sm:col-span-2">
                                 <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Chiều dài (Mét)</label>
                                 <input
