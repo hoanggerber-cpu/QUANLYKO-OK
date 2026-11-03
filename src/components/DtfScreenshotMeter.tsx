@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 type MeterRow = { filename: string; length: string; copies: string };
 type OcrWindow = Window & { Tesseract?: any };
@@ -28,8 +28,10 @@ const loadOcr = async (): Promise<any> => {
   return win.Tesseract;
 };
 
-export default function DtfScreenshotMeter({ onConfirm }: { onConfirm: (meters: number) => void }) {
+export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfirm: (meters: number) => void; sourceFile?: File }) {
   const [enabled, setEnabled] = useState(false);
+  const scanRef = useRef<(file?: File) => Promise<void>>(async () => {});
+  const lastScanned = useRef<File | undefined>(undefined);
   const [rows, setRows] = useState<MeterRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -83,15 +85,20 @@ export default function DtfScreenshotMeter({ onConfirm }: { onConfirm: (meters: 
       setBusy(false);
     }
   };
+  scanRef.current = scan;
+  useEffect(() => {
+    if (!enabled || !sourceFile || lastScanned.current === sourceFile) return;
+    lastScanned.current = sourceFile;
+    void scanRef.current(sourceFile);
+  }, [enabled, sourceFile]);
   return (
     <div className="sm:col-span-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
       <label className="flex items-center gap-2 text-xs font-bold text-indigo-900">
-        <input type="checkbox" checked={enabled} onChange={e => { setEnabled(e.target.checked); setReviewed(false); }} />
+        <input type="checkbox" checked={enabled} onChange={e => { setEnabled(e.target.checked); setReviewed(false); if (!e.target.checked) lastScanned.current = undefined; }} />
         Tự tính toán bằng AI (OCR miễn phí)
       </label>
       {enabled && <>
-        <p className="text-[10px] text-slate-600">Tải ảnh chụp danh sách file dạng 5 cột × 2 hàng. Không thay thế ảnh mẫu in.</p>
-        <input type="file" accept="image/*" aria-label="Ảnh chụp tên file" disabled={busy} onChange={e => { void scan(e.target.files?.[0]); e.target.value = ''; }} className="block w-full text-xs" />
+        <p className="text-[10px] text-slate-600">{sourceFile ? 'Đang dùng ảnh đã nhập ở phía trên: ' + sourceFile.name : 'Hãy tải hoặc Ctrl+V ảnh chụp vào ô Upload Hình Ảnh phía trên. Chỉ cần nhập ảnh một lần.'}</p>
         {busy && <p role="status" className="text-xs text-blue-700">Đang đọc tên file bằng OCR trên trình duyệt...</p>}
         {error && <p role="alert" className="text-xs text-amber-700">{error}</p>}
         {(rows.length > 0 || error) && <>
