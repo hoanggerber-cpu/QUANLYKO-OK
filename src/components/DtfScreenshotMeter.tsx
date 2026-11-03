@@ -36,14 +36,15 @@ const loadOcr = async (): Promise<any> => {
   return win.Tesseract;
 };
 
-export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfirm: (meters: number) => void; sourceFile?: File }) {
+export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[] }) {
   const [enabled, setEnabled] = useState(false);
-  const scanRef = useRef<(file?: File) => Promise<void>>(async () => {});
-  const lastScanned = useRef<File | undefined>(undefined);
+  const scanRef = useRef<(files: File[]) => Promise<void>>(async () => {});
+  const lastScanned = useRef<string>('');
   const [rows, setRows] = useState<MeterRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [reviewed, setReviewed] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [expectedCount, setExpectedCount] = useState('');
   const [columns, setColumns] = useState('5');
   const total = rows.reduce((sum, row) => sum + (Number(row.length) || 0) * (Number(row.copies) || 0), 0);
@@ -62,8 +63,8 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
       return { ...row, [field]: value };
     }));
   };
-  const scan = async (file?: File) => {
-    if (!file) return;
+  const scan = async (files: File[]) => {
+    if (!files.length) return;
     setBusy(true); setRows([]); setReviewed(false); setError('');
     let worker: any;
     let bitmap: ImageBitmap | undefined;
@@ -71,6 +72,8 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
       const Tesseract = await loadOcr();
       worker = await Tesseract.createWorker('eng');
       await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
+      const collected: MeterRow[] = [];
+      for (const file of files) {
       bitmap = await createImageBitmap(file);
       const colCount = Math.max(1, Math.min(10, Number(columns) || 5));
       const found: { row: MeterRow; column: number; y: number }[] = [];
@@ -114,9 +117,12 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
         }
       }
       found.sort((a, b) => Math.floor(a.y / 120) - Math.floor(b.y / 120) || a.column - b.column);
-      setRows(found.map(item => item.row));
-      if (!found.length) setError('Chưa nhận diện được tên file. Có thể thêm dòng và nhập số M thủ công.');
-      else setError('OCR nhận diện ' + found.length + ' file. Đối chiếu với số file thực tế và bổ sung file thiếu trước khi xác nhận.');
+      collected.push(...found.map(item => item.row));
+      bitmap.close(); bitmap = undefined;
+      }
+      setRows(collected);
+      if (!collected.length) setError('Chưa nhận diện được tên file. Có thể thêm dòng và nhập số M thủ công.');
+      else setError('OCR nhận diện ' + collected.length + ' file từ ' + files.length + ' ảnh. Kiểm tra và bổ sung file thiếu trước khi xác nhận.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không thể đọc ảnh');
     } finally {
@@ -126,27 +132,28 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
     }
   };
   scanRef.current = scan;
+  const fileSignature = sourceFiles.map(f => f.name + ':' + f.size + ':' + f.lastModified).join('|');
   useEffect(() => {
-    if (!enabled || !sourceFile || lastScanned.current === sourceFile) return;
-    lastScanned.current = sourceFile;
-    void scanRef.current(sourceFile);
-  }, [enabled, sourceFile]);
+    if (!enabled || !sourceFiles.length || lastScanned.current === fileSignature) return;
+    lastScanned.current = fileSignature;
+    void scanRef.current(sourceFiles);
+  }, [enabled, fileSignature]);
   return (
     <div className="sm:col-span-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
-      <button type="button" disabled={!sourceFile} onClick={() => { setEnabled(value => !value); setReviewed(false); }} className="w-full text-left text-xs font-bold text-indigo-900 disabled:opacity-50 flex items-center gap-2" aria-expanded={enabled}>
+      <button type="button" disabled={!sourceFiles.length} onClick={() => { setEnabled(value => !value); setReviewed(false); }} className="w-full text-left text-xs font-bold text-indigo-900 disabled:opacity-50 flex items-center gap-2" aria-expanded={enabled}>
         <span aria-hidden="true" className="text-lg">∑</span>
         <span>Cộng số M từ hình ảnh đơn hàng</span>
         <span className="ml-auto">{enabled ? 'Thu gọn ▲' : 'Mở công cụ ▼'}</span>
       </button>
-      {!sourceFile && <p className="text-[10px] text-slate-500">Tải hoặc dán ảnh đơn hàng ở ô phía trên trước khi mở công cụ.</p>}
+      {!sourceFiles.length && <p className="text-[10px] text-slate-500">Tải ảnh đơn hàng trước khi mở công cụ.</p>}
       {enabled && <>
-        <p className="text-[10px] text-slate-600">{sourceFile ? 'Đang dùng ảnh đã nhập ở phía trên: ' + sourceFile.name : 'Hãy tải hoặc Ctrl+V ảnh chụp vào ô Upload Hình Ảnh phía trên. Chỉ cần nhập ảnh một lần.'}</p>
+        <p className="text-[10px] text-slate-600">Đang tính gộp {sourceFiles.length} ảnh đã tải lên trong đơn hàng. Không cần tải lại.</p>
         <div className="grid grid-cols-2 gap-2">
           <label className="text-xs">Tổng số file thực tế (tất cả ảnh, không bắt buộc)
             <input type="number" min="1" step="1" value={expectedCount} onChange={e => { setExpectedCount(e.target.value); setReviewed(false); }} placeholder="Để trống nếu chưa đếm" className="block w-full border rounded p-1" />
           </label>
           <label className="text-xs">Số cột ảnh
-            <select value={columns} onChange={e => { setColumns(e.target.value); lastScanned.current = undefined; setRows([]); setReviewed(false); }} className="block w-full border rounded p-1">
+            <select value={columns} onChange={e => { setColumns(e.target.value); lastScanned.current = ''; setRows([]); setReviewed(false); }} className="block w-full border rounded p-1">
               {[3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} cột</option>)}
             </select>
           </label>
@@ -169,13 +176,17 @@ export default function DtfScreenshotMeter({ onConfirm, sourceFile }: { onConfir
           <label className="flex items-center gap-2 text-xs font-bold text-emerald-800">
             <input type="checkbox" disabled={!valid || busy} checked={reviewed} onChange={e => {
               if (e.target.checked && valid) {
-                // Each row already includes its repetition count; parent quantity becomes 1.
-                onConfirm(Math.round(total * 10000) / 10000);
                 setReviewed(true);
               } else setReviewed(false);
             }} />
-            Đã kiểm tra đủ file — điền tổng vào Chiều dài
+            Đã kiểm tra đủ file — xác nhận kết quả (không tự nhập đơn)
           </label>
+          {reviewed && <div className="flex items-center justify-between gap-2 rounded border border-emerald-200 bg-emerald-50 p-2">
+            <span className="text-sm font-bold text-emerald-800">Tổng đơn: {total.toFixed(4)} mét</span>
+            <button type="button" className="rounded bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white" onClick={() => {
+              void navigator.clipboard.writeText(String(Math.round(total * 10000) / 10000)).then(() => setCopied(true)).catch(() => setError('Không thể sao chép tự động. Hãy nhập số mét hiển thị vào ô thủ công.'));
+            }}>{copied ? 'Đã sao chép' : 'Sao chép số M'}</button>
+          </div>}
         </>}
       </>}
     </div>
