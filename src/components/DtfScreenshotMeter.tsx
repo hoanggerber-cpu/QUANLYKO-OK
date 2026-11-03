@@ -48,10 +48,35 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
   const scanId = useRef(0);
   const [expectedCount, setExpectedCount] = useState('');
   const [columns, setColumns] = useState('5');
+  const [sourceMode, setSourceMode] = useState<'ocr' | 'files'>('ocr');
+  const [rejectedNames, setRejectedNames] = useState<string[]>([]);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const filesInputRef = useRef<HTMLInputElement>(null);
+  const readDirectFilenames = (files: File[]) => {
+    scanId.current += 1;
+    lastScanned.current = '';
+    setBusy(false);
+    setReviewed(false);
+    setCopied(false);
+    const pngs = files.filter(file => /\.png$/i.test(file.name));
+    const accepted: MeterRow[] = [];
+    const rejected: string[] = [];
+    for (const file of pngs) {
+      const parsed = parseFilename(file.name);
+      if (parsed) accepted.push(parsed);
+      else rejected.push(file.webkitRelativePath || file.name);
+    }
+    setRows(accepted);
+    setRejectedNames(rejected);
+    setExpectedCount(String(pngs.length));
+    setError(rejected.length
+      ? 'Có ' + rejected.length + ' file PNG không đọc được số M. Hãy đổi tên file hoặc kiểm tra trước khi xác nhận.'
+      : pngs.length ? '' : 'Không tìm thấy file PNG trong lựa chọn.');
+  };
   // Integer units of 0.0001m prevent floating point drift across many files.
   const totalUnits = rows.reduce((sum, row) => sum + Math.round((Number(row.length) || 0) * 10000) * (Number(row.copies) || 0), 0);
   const total = totalUnits / 10000;
-  const valid = rows.length > 0 && (expectedCount.trim() === '' || (Number.isInteger(Number(expectedCount)) && Number(expectedCount) > 0 && rows.length === Number(expectedCount))) && rows.every(row =>
+  const valid = rejectedNames.length === 0 && rows.length > 0 && (expectedCount.trim() === '' || (Number.isInteger(Number(expectedCount)) && Number(expectedCount) > 0 && rows.length === Number(expectedCount))) && rows.every(row =>
       Number.isFinite(Number(row.length)) && Number(row.length) > 0 && Number(row.length) <= 100 &&
       Number.isInteger(Number(row.copies)) && Number(row.copies) > 0 && Number(row.copies) <= 10000
     );
@@ -70,7 +95,7 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
   const scan = async (files: File[]) => {
     if (!files.length) return;
     const currentScan = ++scanId.current;
-    setBusy(true); setRows([]); setReviewed(false); setCopied(false); setError('');
+    setBusy(true); setRows([]); setRejectedNames([]); setReviewed(false); setCopied(false); setError('');
     let worker: any;
     let bitmap: ImageBitmap | undefined;
     try {
@@ -140,26 +165,50 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
   scanRef.current = scan;
   const fileSignature = sourceFiles.map(f => f.name + ':' + f.size + ':' + f.lastModified).join('|');
   useEffect(() => {
-    if (!enabled || !sourceFiles.length || lastScanned.current === fileSignature) return;
+    if (!enabled || sourceMode !== 'ocr' || !sourceFiles.length || lastScanned.current === fileSignature) return;
     lastScanned.current = fileSignature;
     void scanRef.current(sourceFiles);
-  }, [enabled, fileSignature]);
+  }, [enabled, sourceMode, fileSignature]);
   useEffect(() => {
-    if (!sourceFiles.length) {
+    if (!sourceFiles.length && sourceMode === 'ocr') {
       scanId.current += 1;
       lastScanned.current = '';
       setRows([]); setReviewed(false); setCopied(false); setBusy(false);
     }
-  }, [fileSignature, sourceFiles.length]);
+  }, [fileSignature, sourceFiles.length, sourceMode]);
   return (
     <div className="sm:col-span-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
-      <button type="button" disabled={!sourceFiles.length} onClick={() => { setEnabled(value => !value); setReviewed(false); setCopied(false); }} className="w-full text-left text-xs font-bold text-indigo-900 disabled:opacity-50 flex items-center gap-2" aria-expanded={enabled}>
+      <button type="button" onClick={() => { setEnabled(value => !value); setReviewed(false); setCopied(false); }} className="w-full text-left text-xs font-bold text-indigo-900 disabled:opacity-50 flex items-center gap-2" aria-expanded={enabled}>
         <span aria-hidden="true" className="text-lg">∑</span>
         <span>Cộng số M từ hình ảnh đơn hàng</span>
         <span className="ml-auto">{enabled ? 'Thu gọn ▲' : 'Mở công cụ ▼'}</span>
       </button>
-      {!sourceFiles.length && <p className="text-[10px] text-slate-500">Tải ảnh đơn hàng trước khi mở công cụ.</p>}
+
       {enabled && <>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => { setSourceMode('ocr'); setRows([]); setRejectedNames([]); setExpectedCount(''); setReviewed(false); lastScanned.current = ''; }}
+            className={`rounded px-3 py-1.5 text-xs font-semibold ${sourceMode === 'ocr' ? 'bg-indigo-700 text-white' : 'bg-white border text-slate-700'}`}>Đọc ảnh chụp (OCR)</button>
+          <button type="button" onClick={() => { setSourceMode('files'); setRows([]); setRejectedNames([]); setExpectedCount(''); setError(''); setReviewed(false); scanId.current += 1; }}
+            className={`rounded px-3 py-1.5 text-xs font-semibold ${sourceMode === 'files' ? 'bg-indigo-700 text-white' : 'bg-white border text-slate-700'}`}>Đọc tên file PNG trực tiếp</button>
+        </div>
+        {sourceMode === 'files' && <div className="space-y-2 rounded border border-indigo-200 bg-white p-2">
+          <p className="text-xs text-slate-700">Chọn thư mục PNG hoặc chọn nhiều file PNG. Chỉ đọc tên file trên thiết bị, không tải nội dung file lên máy chủ.</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="rounded bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white" onClick={() => folderInputRef.current?.click()}>Chọn thư mục PNG</button>
+            <button type="button" className="rounded border border-blue-700 px-3 py-1.5 text-xs font-semibold text-blue-700" onClick={() => filesInputRef.current?.click()}>Chọn nhiều file PNG</button>
+          </div>
+          <input ref={folderInputRef} type="file" multiple accept=".png,image/png" className="hidden"
+            {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
+            onChange={e => { readDirectFilenames(Array.from(e.target.files || [])); e.target.value = ''; }} />
+          <input ref={filesInputRef} type="file" multiple accept=".png,image/png" className="hidden"
+            onChange={e => { readDirectFilenames(Array.from(e.target.files || [])); e.target.value = ''; }} />
+          <p className="text-[10px] text-amber-700">Chọn đúng thư mục của đơn hàng. Nếu thư mục có thư mục con, các file PNG bên trong cũng có thể được tính.</p>
+          {rejectedNames.length > 0 && <div role="alert" className="rounded border border-rose-200 p-2 text-xs text-rose-700">
+            <p className="font-bold">File không đọc được số M ({rejectedNames.length}) — chưa thể xác nhận:</p>
+            <ul className="list-disc pl-4">{rejectedNames.map((name, i) => <li key={i}>{name}</li>)}</ul>
+          </div>}
+        </div>}
+        {sourceMode === 'ocr' && <>
         <p className="text-[10px] text-slate-600">Đang tính gộp {sourceFiles.length} ảnh đã tải lên trong đơn hàng. Không cần tải lại.</p>
         <div className="grid grid-cols-2 gap-2">
           <label className="text-xs">Tổng số file thực tế (tất cả ảnh, không bắt buộc)
@@ -174,6 +223,7 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
         <p className="text-[10px] font-semibold text-amber-800">OCR chỉ hỗ trợ đọc nhanh, không đảm bảo nhận đủ hoặc đúng mọi file. Đối chiếu tên, số lần và tổng số file với ảnh gốc trước khi xác nhận.</p>
         {busy && <p role="status" className="text-xs text-blue-700">Đang đọc tên file bằng OCR trên trình duyệt...</p>}
         {error && <p role="alert" className="text-xs text-amber-700">{error}</p>}
+        </>}
         {(rows.length > 0 || error) && <>
           <div className="max-h-52 overflow-y-auto space-y-1">
             {rows.map((row, i) => <div key={i} className="grid grid-cols-[1fr_70px_55px_60px_18px] gap-1 items-center">
