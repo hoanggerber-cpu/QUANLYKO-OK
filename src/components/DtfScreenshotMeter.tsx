@@ -45,15 +45,19 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
   const [error, setError] = useState('');
   const [reviewed, setReviewed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const scanId = useRef(0);
   const [expectedCount, setExpectedCount] = useState('');
   const [columns, setColumns] = useState('5');
-  const total = rows.reduce((sum, row) => sum + (Number(row.length) || 0) * (Number(row.copies) || 0), 0);
+  // Integer units of 0.0001m prevent floating point drift across many files.
+  const totalUnits = rows.reduce((sum, row) => sum + Math.round((Number(row.length) || 0) * 10000) * (Number(row.copies) || 0), 0);
+  const total = totalUnits / 10000;
   const valid = rows.length > 0 && (expectedCount.trim() === '' || (Number.isInteger(Number(expectedCount)) && Number(expectedCount) > 0 && rows.length === Number(expectedCount))) && rows.every(row =>
       Number.isFinite(Number(row.length)) && Number(row.length) > 0 && Number(row.length) <= 100 &&
       Number.isInteger(Number(row.copies)) && Number(row.copies) > 0 && Number(row.copies) <= 10000
     );
   const edit = (index: number, field: keyof MeterRow, value: string) => {
     setReviewed(false);
+    setCopied(false);
     setRows(old => old.map((row, i) => {
       if (i !== index) return row;
       if (field === 'filename') {
@@ -65,7 +69,8 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
   };
   const scan = async (files: File[]) => {
     if (!files.length) return;
-    setBusy(true); setRows([]); setReviewed(false); setError('');
+    const currentScan = ++scanId.current;
+    setBusy(true); setRows([]); setReviewed(false); setCopied(false); setError('');
     let worker: any;
     let bitmap: ImageBitmap | undefined;
     try {
@@ -120,15 +125,16 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
       collected.push(...found.map(item => item.row));
       bitmap.close(); bitmap = undefined;
       }
+      if (currentScan !== scanId.current) return;
       setRows(collected);
       if (!collected.length) setError('Chưa nhận diện được tên file. Có thể thêm dòng và nhập số M thủ công.');
       else setError('OCR nhận diện ' + collected.length + ' file từ ' + files.length + ' ảnh. Kiểm tra và bổ sung file thiếu trước khi xác nhận.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Không thể đọc ảnh');
+      if (currentScan === scanId.current) setError(e instanceof Error ? e.message : 'Không thể đọc ảnh');
     } finally {
       bitmap?.close();
       if (worker) await worker.terminate().catch(() => {});
-      setBusy(false);
+      if (currentScan === scanId.current) setBusy(false);
     }
   };
   scanRef.current = scan;
@@ -138,9 +144,16 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
     lastScanned.current = fileSignature;
     void scanRef.current(sourceFiles);
   }, [enabled, fileSignature]);
+  useEffect(() => {
+    if (!sourceFiles.length) {
+      scanId.current += 1;
+      lastScanned.current = '';
+      setRows([]); setReviewed(false); setCopied(false); setBusy(false);
+    }
+  }, [fileSignature, sourceFiles.length]);
   return (
     <div className="sm:col-span-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
-      <button type="button" disabled={!sourceFiles.length} onClick={() => { setEnabled(value => !value); setReviewed(false); }} className="w-full text-left text-xs font-bold text-indigo-900 disabled:opacity-50 flex items-center gap-2" aria-expanded={enabled}>
+      <button type="button" disabled={!sourceFiles.length} onClick={() => { setEnabled(value => !value); setReviewed(false); setCopied(false); }} className="w-full text-left text-xs font-bold text-indigo-900 disabled:opacity-50 flex items-center gap-2" aria-expanded={enabled}>
         <span aria-hidden="true" className="text-lg">∑</span>
         <span>Cộng số M từ hình ảnh đơn hàng</span>
         <span className="ml-auto">{enabled ? 'Thu gọn ▲' : 'Mở công cụ ▼'}</span>
@@ -150,14 +163,15 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
         <p className="text-[10px] text-slate-600">Đang tính gộp {sourceFiles.length} ảnh đã tải lên trong đơn hàng. Không cần tải lại.</p>
         <div className="grid grid-cols-2 gap-2">
           <label className="text-xs">Tổng số file thực tế (tất cả ảnh, không bắt buộc)
-            <input type="number" min="1" step="1" value={expectedCount} onChange={e => { setExpectedCount(e.target.value); setReviewed(false); }} placeholder="Để trống nếu chưa đếm" className="block w-full border rounded p-1" />
+            <input type="number" min="1" step="1" value={expectedCount} onChange={e => { setExpectedCount(e.target.value); setReviewed(false); setCopied(false); }} placeholder="Để trống nếu chưa đếm" className="block w-full border rounded p-1" />
           </label>
           <label className="text-xs">Số cột ảnh
-            <select value={columns} onChange={e => { setColumns(e.target.value); lastScanned.current = ''; setRows([]); setReviewed(false); }} className="block w-full border rounded p-1">
+            <select value={columns} onChange={e => { setColumns(e.target.value); lastScanned.current = ''; setRows([]); setReviewed(false); setCopied(false); }} className="block w-full border rounded p-1">
               {[3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} cột</option>)}
             </select>
           </label>
         </div>
+        <p className="text-[10px] font-semibold text-amber-800">OCR chỉ hỗ trợ đọc nhanh, không đảm bảo nhận đủ hoặc đúng mọi file. Đối chiếu tên, số lần và tổng số file với ảnh gốc trước khi xác nhận.</p>
         {busy && <p role="status" className="text-xs text-blue-700">Đang đọc tên file bằng OCR trên trình duyệt...</p>}
         {error && <p role="alert" className="text-xs text-amber-700">{error}</p>}
         {(rows.length > 0 || error) && <>
@@ -167,10 +181,10 @@ export default function DtfScreenshotMeter({ sourceFiles }: { sourceFiles: File[
               <input aria-label={'Mét ' + (i + 1)} type="number" min="0.0001" step="any" className="min-w-0 rounded border p-1 text-[10px]" value={row.length} onChange={e => edit(i, 'length', e.target.value)} />
               <input aria-label={'Số lần ' + (i + 1)} type="number" min="1" step="1" className="min-w-0 rounded border p-1 text-[10px]" value={row.copies} onChange={e => edit(i, 'copies', e.target.value)} />
               <span className="text-[10px] text-right">{((Number(row.length) || 0) * (Number(row.copies) || 0)).toFixed(3)}m</span>
-              <button type="button" aria-label="Xóa dòng" onClick={() => { setRows(old => old.filter((_, j) => j !== i)); setReviewed(false); }} className="text-rose-600">×</button>
+              <button type="button" aria-label="Xóa dòng" onClick={() => { setRows(old => old.filter((_, j) => j !== i)); setReviewed(false); setCopied(false); }} className="text-rose-600">×</button>
             </div>)}
           </div>
-          <button type="button" className="text-xs font-bold text-blue-700" onClick={() => { setRows(old => [...old, { filename: '', length: '', copies: '1' }]); setReviewed(false); }}>+ Thêm file bị bỏ sót</button>
+          <button type="button" className="text-xs font-bold text-blue-700" onClick={() => { setRows(old => [...old, { filename: '', length: '', copies: '1' }]); setReviewed(false); setCopied(false); }}>+ Thêm file bị bỏ sót</button>
           <div className="flex justify-between text-xs font-bold"><span>Tổng ({rows.length}{expectedCount.trim() ? '/' + expectedCount : ''} file)</span><span>{total.toFixed(4)} mét</span></div>
           {!valid && <p role="alert" className="text-xs text-red-700">Chưa thể xác nhận: kiểm tra các ô Mét / Số lần, và số file thực tế nếu đã nhập. Có thể sửa tên file tự do; kiểm tra kỹ các dòng OCR nhận sai.</p>}
           <label className="flex items-center gap-2 text-xs font-bold text-emerald-800">
