@@ -2765,9 +2765,6 @@ export default function SalesManager({
                                 </div>
                               </div>
 
-                              <DtfScreenshotMeter key={idx} sourceFile={item.rawFile} onConfirm={meters => {
-                                setDtfItems(prev => prev.map((entry, i) => i === idx ? { ...entry, length: meters, quantity: 1 } : entry));
-                              }} />
                               <div className="sm:col-span-2">
                                 <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Chiều dài (Mét)</label>
                                 <input
@@ -2808,6 +2805,12 @@ export default function SalesManager({
                     </div>
                   </div>
                   )}
+                  
+                  {/* Separate calculator for the ENTIRE order. Does not modify any order field. */}
+                  <DtfScreenshotMeter sourceFiles={isManualDtf
+                    ? [manualDtfFile, ...dtfOrderAttachments.map(a => a.rawFile)].filter((file): file is File => !!file)
+                    : dtfItems.map(item => item.rawFile).filter((file): file is File => !!file)
+                  } />
                   
                   {/* Universal DTF Add to Cart trigger */}
                   <button
