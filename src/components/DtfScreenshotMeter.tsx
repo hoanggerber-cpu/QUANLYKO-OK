@@ -11,7 +11,8 @@ const parseFilename = (text: string): MeterRow | null => {
   if (!match) return null;
   const remainder = normalized.slice(match[0].length).trim();
   // Accept a simple filename, its PNG extension, and optional duplicate index
-  // either before the extension ("0.31 x 28 (1).png") or after it.\n  // Finder may produce extra dots: "0.20 x 3..png" or "0.22 x 7...png".
+  // either before the extension ("0.31 x 28 (1).png") or after it.
+  // Finder may produce extra dots: "0.20 x 3..png" or "0.22 x 7...png".
   if (remainder && !/^(?:\(\d+\)\s*)?(?:\.+png)?(?:\s*\(\d+\))?$/i.test(remainder)) return null;
   const length = Number(match[1]);
   const copies = Number(match[2] || '1');
