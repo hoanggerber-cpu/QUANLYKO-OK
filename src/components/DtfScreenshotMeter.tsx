@@ -7,15 +7,15 @@ const parseFilename = (text: string): MeterRow | null => {
   // NOT a multiplier. Each selected PNG is still counted as a separate file.
   const filename = text.trim();
   const normalized = filename.replace(/,/g, '.');
-  const match = normalized.match(/^(\d+\.\d{1,4})(?!\d)\s*(?:[x×*]\s*(\d+)(?!\d))?(?=\s|\(|\.|$)/i);
+  const match = normalized.match(/^(\d+\.\d{1,4})(?!\d)(?:\s*[x×*]\s*(\d+)(?!\d)|\s+(\d+)(?!\d))?(?=\s|\(|\.|$)/i);
   if (!match) return null;
   const remainder = normalized.slice(match[0].length).trim();
   // Accept a simple filename, its PNG extension, and optional duplicate index
   // either before the extension ("0.31 x 28 (1).png") or after it.
-  // Finder may produce extra dots: "0.20 x 3..png" or "0.22 x 7...png".
+  // A whitespace-separated integer can also mean copies: "0.29 2.png".\n  // Finder may produce extra dots: "0.20 x 3..png" or "0.22 x 7...png".
   if (remainder && !/^(?:\(\d+\)\s*)?(?:\.+png)?(?:\s*\(\d+\))?$/i.test(remainder)) return null;
   const length = Number(match[1]);
-  const copies = Number(match[2] || '1');
+  const copies = Number(match[2] || match[3] || '1');
   if (!Number.isFinite(length) || length <= 0 || length > 100 ||
       !Number.isInteger(copies) || copies < 1 || copies > 10000) return null;
   return { filename, length: match[1], copies: String(copies) };
