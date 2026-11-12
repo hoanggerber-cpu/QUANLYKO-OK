@@ -3,17 +3,16 @@ import React, { useEffect, useRef, useState } from 'react';
 type MeterRow = { filename: string; length: string; copies: string };
 type OcrWindow = Window & { Tesseract?: any };
 const parseFilename = (text: string): MeterRow | null => {
-  // A trailing (1), (2), ... is an OS-generated duplicate filename suffix,
-  // NOT a multiplier. Each selected PNG is still counted as a separate file.
+  // Only an explicit x / × / * multiplies the meter length.
+  // Bare trailing numbers and (1), (2), etc. are duplicate filename indices.
   const filename = text.trim();
   const normalized = filename.replace(/,/g, '.');
-  const match = normalized.match(/^(\d+\.\d{1,4})(?!\d)\s*(?:[x×*]\s*(\d+)(?!\d))?(?=\s|\(|\.|$)/i);
+  const match = normalized.match(/^(\d+\.\d{1,4})(?!\d)(?:\s*[x×*]\s*(\d+)(?!\d))?/i);
   if (!match) return null;
   const remainder = normalized.slice(match[0].length).trim();
-  // Accept a simple filename, its PNG extension, and optional duplicate index
-  // either before the extension ("0.31 x 28 (1).png") or after it.
-  // Finder may produce extra dots: "0.20 x 3..png" or "0.22 x 7...png".
-  if (remainder && !/^(?:\(\d+\)\s*)?(?:\.+png)?(?:\s*\(\d+\))?$/i.test(remainder)) return null;
+  // Accept optional " 2" or " (2)" before .png, including repeated dots.
+  // Examples: 0.29 2.png, 0.29 x 2 (1).png, 0.20 x 3..png.
+  if (remainder && !/^(?:(?:\d+|\(\d+\))\s*)?(?:\.+png)?(?:\s*\(\d+\))?$/i.test(remainder)) return null;
   const length = Number(match[1]);
   const copies = Number(match[2] || '1');
   if (!Number.isFinite(length) || length <= 0 || length > 100 ||
