@@ -414,52 +414,11 @@ export class StorageManager {
         e.name?.toLowerCase().includes('quota');
 
       if (isQuotaError) {
-        console.warn('LocalStorage storage quota exceeded, cleaning up base64 image data from older orders to recover space...');
-        // Create a deep copy to prune images safely without side-effects in memory
-        try {
-          const pruned = JSON.parse(JSON.stringify(orders)) as Order[];
-          
-          // Loop backwards from oldest to newest and clear heavy base64 image data
-          for (let i = pruned.length - 1; i >= 0; i--) {
-            let cleared = false;
-            if (pruned[i].orderImages && pruned[i].orderImages!.length > 0) {
-              pruned[i].orderImages = undefined;
-              cleared = true;
-            }
-            if (pruned[i].items && pruned[i].items!.length > 0) {
-              pruned[i].items!.forEach(item => {
-                if (item.image) {
-                  item.image = undefined;
-                  cleared = true;
-                }
-              });
-            }
-            
-            if (cleared) {
-              try {
-                localStorage.setItem(key, JSON.stringify(pruned));
-                console.log(`Pruned images up to index ${i} to fit quota successfully.`);
-                
-                // Mutate original in-memory array if we want it synchronized
-                orders.forEach((o, index) => {
-                  o.orderImages = pruned[index].orderImages;
-                  if (o.items && pruned[index].items) {
-                    o.items!.forEach((it, itIdx) => {
-                      it.image = pruned[index].items![itIdx].image;
-                    });
-                  }
-                });
-                return;
-              } catch (innerErr) {
-                // Keep trimming older orders if it still fails
-              }
-            }
-          }
-          
-          console.error('Refusing to truncate accounting records because browser storage is full.');
-        } catch (copyErr) {
-          console.error('Failed to parse clean copy for pruning:', copyErr);
-        }
+        // Never remove image references to make localStorage fit: those references
+        // may be the only recoverable links and can be synced back to Supabase.
+        // Keep the existing persisted copy intact and surface the quota error.
+        console.error('LocalStorage quota exceeded. Refusing to remove order image references.');
+        window.dispatchEvent(new Event('supabase_sync_error'));
       }
       throw e;
     }
@@ -1537,7 +1496,17 @@ export class StorageManager {
       }
     }
     const notesToSave = updatedFields.notes !== undefined ? updatedFields.notes : (existingOrder.notes || '');
-    const imagesToSave = updatedFields.orderImages !== undefined ? updatedFields.orderImages : (existingOrder.orderImages || []);
+    let imagesToSave = updatedFields.orderImages !== undefined ? updatedFields.orderImages : (existingOrder.orderImages || []);
+    // A stale browser cache may have lost image references. Preserve the
+    // persisted cloud image list when the user did not explicitly edit images.
+    if (this.isSupabaseActive && updatedFields.orderImages === undefined &&
+        (!Array.isArray(imagesToSave) || imagesToSave.length === 0)) {
+      const { data: remoteImageRow, error: remoteImageError } = await supabase
+        .from('orders').select('order_images').eq('id', id).single();
+      if (remoteImageError) throw remoteImageError;
+      const remoteImages = this.parseOrderImagesArray(remoteImageRow?.order_images);
+      if (remoteImages.length > 0) imagesToSave = remoteImages;
+    }
 
     payload.order_images = JSON.stringify({
       images: Array.isArray(imagesToSave) ? imagesToSave : [imagesToSave],
