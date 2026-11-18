@@ -119,7 +119,8 @@ async function issue(req: Request, body: Record<string, unknown>, origin: string
     customer_type: type,
   });
   if (insertError) throw insertError;
-  return reply({ token }, 200, origin);
+  // Bind the issued token to an explicit identity confirmation for the caller.
+  return reply({ token, customerName: name, customerType: type }, 200, origin);
 }
 
 async function read(body: Record<string, unknown>, origin: string | null): Promise<Response> {
