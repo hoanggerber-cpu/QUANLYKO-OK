@@ -309,6 +309,10 @@ export default function DebtManager({
     ? customers.find(c => c.name === selectedCustomer.name && c.type === selectedCustomer.type) || selectedCustomer
     : null;
 
+  // Track the currently visible customer across asynchronous token issuance.
+  const visibleCustomerRef = useRef<string | null>(null);
+  visibleCustomerRef.current = currentCustomer ? JSON.stringify([currentCustomer.name, currentCustomer.type]) : null;
+
   const countUnpaidOrders = (customerName: string, type: OrderType) => {
     return orders.filter(
       (o) => o.customerName === customerName && o.type === type && o.debtAmount > 0
@@ -628,6 +632,8 @@ export default function DebtManager({
 
     const handleCopyTrackingLink = async () => {
       if (copyingTrackingLink) return;
+      const requestedIdentity = JSON.stringify([currentCustomer.name, currentCustomer.type]);
+      if (visibleCustomerRef.current !== requestedIdentity) return;
       setCopyingTrackingLink(true);
       setManualTrackingLink(null);
       let link: string;
@@ -643,10 +649,24 @@ export default function DebtManager({
         if (error || typeof data?.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(data.token)) {
           throw error || new Error('Invalid secure tracking token');
         }
+        if (data.customerName !== currentCustomer.name || data.customerType !== currentCustomer.type ||
+            visibleCustomerRef.current !== requestedIdentity) {
+          throw new Error('Tracking link customer identity mismatch');
+        }
         link = `${getPublicAppUrl()}/c/${data.token}`;
       } catch (error) {
         console.error('Secure tracking-link issuance failed:', error);
-        showToast('Không thể tạo link bảo mật. Vui lòng kiểm tra đăng nhập hoặc thử lại sau.', 'error');
+        showToast('Không thể xác minh đúng khách hàng cho link. Không sao chép; vui lòng thử lại.', 'error');
+        setCopyingTrackingLink(false);
+        return;
+      }
+
+      if (visibleCustomerRef.current !== requestedIdentity) {
+        showToast('Bạn đã chuyển khách hàng trong lúc tạo link. Vui lòng tạo lại.', 'error');
+        setCopyingTrackingLink(false);
+        return;
+      }
+      if (!window.confirm(`Xác nhận sao chép link công nợ cho: ${currentCustomer.name} (${currentCustomer.type.toUpperCase()})?`)) {
         setCopyingTrackingLink(false);
         return;
       }
@@ -655,6 +675,16 @@ export default function DebtManager({
       // Preserve the successfully issued link instead of issuing another token.
       try {
         await navigator.clipboard.writeText(link);
+        // Safari can retain an older clipboard value; verify when read permission allows it.
+        if (navigator.clipboard.readText) {
+          try {
+            const pasted = await navigator.clipboard.readText();
+            if (pasted !== link) throw new Error('Clipboard mismatch');
+          } catch (verifyError) {
+            if (verifyError instanceof Error && verifyError.message === 'Clipboard mismatch') throw verifyError;
+            // Clipboard read permission can be denied even after a successful write.
+          }
+        }
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2500);
       } catch (error) {
