@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Product, Order, Customer, OrderType } from './types';
 import { StorageManager, supabase } from './lib/storage';
 import Login from './components/Login';
@@ -46,6 +46,52 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [legacyFinanceTick, setLegacyFinanceTick] = useState(0);
   const [legacyFinanceSyncing, setLegacyFinanceSyncing] = useState(false);
+  // A Safari tab can remain open for days. Never refresh while an editor is active.
+  const refreshInFlight = useRef(false);
+  const lastRefreshAt = useRef(0);
+  const [refreshNotice, setRefreshNotice] = useState('');
+  const isEditing = () => {
+    const active = document.activeElement;
+    return active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLSelectElement || (active instanceof HTMLElement && active.isContentEditable);
+  };
+  const refreshCloudSnapshot = async () => {
+    if (refreshInFlight.current || isEditing() || StorageManager.isRestoreProtectionActive()) return;
+    refreshInFlight.current = true;
+    try {
+      const online = await StorageManager.checkSupabaseConnection();
+      setIsSupabaseOnline(online);
+      if (!online) { setRefreshNotice('Mất kết nối Supabase. Kiểm tra mạng trước khi ghi đơn.'); return; }
+      await StorageManager.syncAllDataFromSupabase();
+      setProducts(StorageManager.getProducts());
+      setOrders(StorageManager.getOrders());
+      lastRefreshAt.current = Date.now();
+      setRefreshNotice('');
+    } catch (error) {
+      console.error('Long-lived tab refresh failed:', error);
+      setRefreshNotice('Chưa thể đồng bộ dữ liệu mới. Hãy kiểm tra kết nối.');
+    } finally {
+      refreshInFlight.current = false;
+    }
+  };
+  useEffect(() => {
+    if (!isLoggedIn || trackingId) return;
+    const onReturn = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastRefreshAt.current < 60_000) return;
+      if (isEditing()) {
+        setRefreshNotice('Có dữ liệu mới cần kiểm tra. Lưu xong nội dung đang nhập rồi bấm Đồng bộ.');
+        return;
+      }
+      void refreshCloudSnapshot();
+    };
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('online', onReturn);
+    return () => {
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('online', onReturn);
+    };
+  }, [isLoggedIn, trackingId]);
+
   useEffect(() => {
     const onFinanceChange = () => setLegacyFinanceTick(v => v+1);
     window.addEventListener('legacy_finance_status', onFinanceChange);
@@ -158,9 +204,11 @@ export default function App() {
             console.log('Realtime change event received from Supabase:', payload);
             try {
               // Re-fetch all fresh records from database and update local storage/memory states
-              await StorageManager.syncAllDataFromSupabase();
-              setProducts(StorageManager.getProducts());
-              setOrders(StorageManager.getOrders());
+              if (isEditing()) {
+                setRefreshNotice('Dữ liệu trên cloud đã thay đổi. Lưu nội dung đang nhập rồi bấm Đồng bộ.');
+                return;
+              }
+              await refreshCloudSnapshot();
             } catch (e) {
               console.error('Realtime auto-sync error:', e);
             }
@@ -311,6 +359,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans selection:bg-blue-600 selection:text-white">
+      {refreshNotice && (
+        <div role="status" className="fixed top-2 right-2 z-[100] max-w-sm rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 shadow-lg">
+          <p>{refreshNotice}</p>
+          <button type="button" onClick={() => void refreshCloudSnapshot()} className="mt-2 rounded bg-amber-900 px-3 py-1 text-white">Đồng bộ khi đã lưu xong</button>
+        </div>
+      )}
       {/* 1. Left Sidebar Navigation (Static & Fixed Desktop Menu) */}
       <aside className={`w-64 bg-slate-900 border-r border-slate-800 text-slate-300 flex flex-col fixed inset-y-0 left-0 z-50 transition-transform md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Core Branding Portal */}
